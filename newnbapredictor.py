@@ -816,16 +816,51 @@ def _estimate_total(home_row, away_row, league_avg_off):
     return round(h100 * ep/100 + a100 * ep/100, 1)
 
 
+def _resolve_team(name: str, ratings: pd.DataFrame):
+    """Find the team row whose TEAM_NAME best matches 'name'."""
+    for tid, row in ratings.iterrows():
+        if row["TEAM_NAME"].lower() in name.lower() or name.lower() in row["TEAM_NAME"].lower():
+            return int(tid), row
+    return None, None
+
+
+def _compute_rest_adj(home_form: dict, away_form: dict) -> float:
+    """Rest & schedule margin adjustment (B2B penalty + rest-day advantage + road fatigue)."""
+    adj = 0.0
+    if home_form["b2b"] and not away_form["b2b"]:
+        adj = -BACK_TO_BACK_PENALTY
+    elif away_form["b2b"] and not home_form["b2b"]:
+        adj = +BACK_TO_BACK_PENALTY
+    elif not home_form["b2b"] and not away_form["b2b"]:
+        dd = min(max(home_form["days_rest"] - away_form["days_rest"], -2), 2)
+        adj = dd * REST_DAY_ADVANTAGE
+    if away_form["consec_road"] > 3:
+        adj += (away_form["consec_road"] - 3) * ROAD_TRIP_PEN_PER_GAME
+    if home_form["consec_road"] > 3:
+        adj -= (home_form["consec_road"] - 3) * ROAD_TRIP_PEN_PER_GAME
+    return adj
+
+
+def _build_learned_feature_dict(home_row, away_row, home_form, away_form, h2h) -> dict:
+    """Build the feature dict expected by _sigmoid_learned()."""
+    return {
+        "net_rtg_diff": float(home_row["NET_RATING"]) - float(away_row["NET_RATING"]),
+        "efg_diff":  home_row.get("EFG_PCT", 0.50)    - away_row.get("EFG_PCT", 0.50),
+        "tov_diff":  away_row.get("TM_TOV_PCT", 0.14) - home_row.get("TM_TOV_PCT", 0.14),
+        "orb_diff":  home_row.get("OREB_PCT", 0.27)   - away_row.get("OREB_PCT", 0.27),
+        "ftr_diff":  home_row.get("FTA_RATE", 0.24)   - away_row.get("FTA_RATE", 0.24),
+        "form_diff": home_form["l10_net_rtg"]          - away_form["l10_net_rtg"],
+        "home_b2b":  int(home_form["b2b"]),
+        "away_b2b":  int(away_form["b2b"]),
+        "rest_diff": float(home_form["days_rest"] - away_form["days_rest"]),
+        "h2h_margin": h2h["avg_margin"] * h2h.get("shrinkage", 0.0),
+    }
+
+
 def _compute_prediction(m: dict, ratings: pd.DataFrame, season: str,
                          injuries: dict, league_avgs: dict) -> Optional[Dict]:
-    def resolve(name):
-        for tid, row in ratings.iterrows():
-            if row["TEAM_NAME"].lower() in name.lower() or name.lower() in row["TEAM_NAME"].lower():
-                return int(tid), row
-        return None, None
-
-    away_id, away_row = resolve(m["away_name"])
-    home_id, home_row = resolve(m["home_name"])
+    away_id, away_row = _resolve_team(m["away_name"], ratings)
+    home_id, home_row = _resolve_team(m["home_name"], ratings)
     if away_id is None or home_id is None:
         print(f"  Could not resolve: {m['away_name']} / {m['home_name']}")
         return None
@@ -845,91 +880,47 @@ def _compute_prediction(m: dict, ratings: pd.DataFrame, season: str,
     h2h = _fetch_h2h(home_id, away_id, season)
     time.sleep(1.0)
 
-    breakdown = {}
+    breakdown: dict = {}
 
-    # ═══════════════════════════════════════════════════════════════════════
-    # FACTOR 1: NET RATING (base)
-    # ═══════════════════════════════════════════════════════════════════════
+    # Factor 1: Net Rating base
     base_margin = float(home_row["NET_RATING"]) - float(away_row["NET_RATING"])
     breakdown["net_rtg"] = round(base_margin, 2)
 
-    # ═══════════════════════════════════════════════════════════════════════
-    # FACTOR 7: HOME COURT ADVANTAGE (applied early since it's part of base)
-    # Venue-adjusted: teams with exceptional home records get a small boost
-    # ═══════════════════════════════════════════════════════════════════════
+    # Factor 7: Home court advantage (applied to base)
     home_wpct = float(home_row.get("HOME_W_PCT", 0.55))
-    # Scale HCA: league avg home W% is ~0.57. Deviation from that adjusts HCA.
-    venue_adj = (home_wpct - 0.57) * HCA_VENUE_SCALE
-    hca = BASE_HCA + venue_adj
-    hca = max(1.5, min(5.0, hca))  # cap between 1.5 and 5.0
+    hca = max(1.5, min(5.0, BASE_HCA + (home_wpct - 0.57) * HCA_VENUE_SCALE))
     breakdown["hca"] = round(hca, 2)
-
     margin = base_margin + hca
 
-    # ═══════════════════════════════════════════════════════════════════════
-    # FACTOR 2: INJURIES
-    # ═══════════════════════════════════════════════════════════════════════
-    h_ppg = float(home_row.get("PPG", 112))
-    a_ppg = float(away_row.get("PPG", 112))
-    h_inj_adj, h_inj_det = compute_injury_adj(m["home_name"], injuries, h_ppg)
-    a_inj_adj, a_inj_det = compute_injury_adj(m["away_name"], injuries, a_ppg)
+    # Factor 2: Injuries
+    h_inj_adj, _ = compute_injury_adj(m["home_name"], injuries, float(home_row.get("PPG", 112)))
+    a_inj_adj, _ = compute_injury_adj(m["away_name"], injuries, float(away_row.get("PPG", 112)))
     injury_margin = h_inj_adj - a_inj_adj
     margin += injury_margin
     breakdown["injuries"] = round(injury_margin, 2)
 
-    # ═══════════════════════════════════════════════════════════════════════
-    # FACTOR 3: FOUR FACTORS
-    # ═══════════════════════════════════════════════════════════════════════
-    ff_adj, ff_details = compute_four_factors_edge(home_row, away_row, league_avgs)
+    # Factor 3: Four Factors
+    ff_adj, _ = compute_four_factors_edge(home_row, away_row, league_avgs)
     margin += ff_adj
     breakdown["four_factors"] = round(ff_adj, 2)
 
-    # ═══════════════════════════════════════════════════════════════════════
-    # FACTOR 4: MATCHUP-SPECIFIC
-    # ═══════════════════════════════════════════════════════════════════════
-    mu_adj, mu_details = compute_matchup_edge(home_row, away_row, league_avgs)
+    # Factor 4: Matchup-specific
+    mu_adj, _ = compute_matchup_edge(home_row, away_row, league_avgs)
     margin += mu_adj
     breakdown["matchup"] = round(mu_adj, 2)
 
-    # ═══════════════════════════════════════════════════════════════════════
-    # FACTOR 5: REST & SCHEDULE
-    # ═══════════════════════════════════════════════════════════════════════
-    rest_adj = 0.0
-    if home_form["b2b"] and not away_form["b2b"]:
-        rest_adj = -BACK_TO_BACK_PENALTY
-    elif away_form["b2b"] and not home_form["b2b"]:
-        rest_adj = +BACK_TO_BACK_PENALTY
-    elif not home_form["b2b"] and not away_form["b2b"]:
-        dd = min(max(home_form["days_rest"] - away_form["days_rest"], -2), 2)
-        rest_adj = dd * REST_DAY_ADVANTAGE
-
-    # Road trip fatigue (away team on extended road trip)
-    if away_form["consec_road"] > 3:
-        rest_adj += (away_form["consec_road"] - 3) * ROAD_TRIP_PEN_PER_GAME
-    if home_form["consec_road"] > 3:
-        rest_adj -= (home_form["consec_road"] - 3) * ROAD_TRIP_PEN_PER_GAME
-
+    # Factor 5: Rest & schedule
+    rest_adj = _compute_rest_adj(home_form, away_form)
     margin += rest_adj
     breakdown["rest"] = round(rest_adj, 2)
 
-    # ═══════════════════════════════════════════════════════════════════════
-    # FACTOR 6: RECENT FORM (L10 rolling net rating)
-    # ═══════════════════════════════════════════════════════════════════════
+    # Factor 6: Recent form (L10)
     form_adj = (home_form["l10_net_rtg"] - away_form["l10_net_rtg"]) * FORM_WEIGHT
     margin += form_adj
     breakdown["form"] = round(form_adj, 2)
 
-    # ═══════════════════════════════════════════════════════════════════════
-    # FACTOR 8: OFF/DEF RATINGS — already incorporated in factors 3 & 4
-    # (They inform the four factors and matchup analysis rather than
-    #  being a separate additive term, avoiding double-counting with net rtg)
-    # ═══════════════════════════════════════════════════════════════════════
-
-    # ═══════════════════════════════════════════════════════════════════════
-    # FACTOR 9: PACE-TALENT INTERACTION
-    # ═══════════════════════════════════════════════════════════════════════
-    pace_adj = compute_pace_variance_adj(
-        home_row, away_row, margin, league_avgs.get("PACE", 100))
+    # Factor 9: Pace-talent interaction
+    pace_adj = compute_pace_variance_adj(home_row, away_row, margin, league_avgs.get("PACE", 100))
     margin += pace_adj
     breakdown["pace"] = round(pace_adj, 2)
 
@@ -938,30 +929,14 @@ def _compute_prediction(m: dict, ratings: pd.DataFrame, season: str,
     margin += h2h_adj
     breakdown["h2h"] = round(h2h_adj, 2)
 
-    # ═══════════════════════════════════════════════════════════════════════
-    # FACTOR 10: CLUTCH (only for close games)
-    # ═══════════════════════════════════════════════════════════════════════
-    clutch_adj, clutch_det = compute_clutch_adj(home_row, away_row, margin)
+    # Factor 10: Clutch (close games only)
+    clutch_adj, _ = compute_clutch_adj(home_row, away_row, margin)
     margin += clutch_adj
     breakdown["clutch"] = round(clutch_adj, 2)
 
-    # ─── Final calculations ──────────────────────────────────────────────
+    # Final probability: prefer learned model when enabled, fall back to sigmoid
     expected_margin = round(margin, 2)
-
-    # Use learned logistic model if enabled and loaded
-    _learned_features = {
-        "net_rtg_diff": float(home_row["NET_RATING"]) - float(away_row["NET_RATING"]),
-        "efg_diff":  home_row.get("EFG_PCT", 0.50) - away_row.get("EFG_PCT", 0.50),
-        "tov_diff":  away_row.get("TM_TOV_PCT", 0.14) - home_row.get("TM_TOV_PCT", 0.14),
-        "orb_diff":  home_row.get("OREB_PCT", 0.27) - away_row.get("OREB_PCT", 0.27),
-        "ftr_diff":  home_row.get("FTA_RATE", 0.24) - away_row.get("FTA_RATE", 0.24),
-        "form_diff": home_form["l10_net_rtg"] - away_form["l10_net_rtg"],
-        "home_b2b":  int(home_form["b2b"]),
-        "away_b2b":  int(away_form["b2b"]),
-        "rest_diff": float(home_form["days_rest"] - away_form["days_rest"]),
-        "h2h_margin": h2h["avg_margin"] * h2h.get("shrinkage", 0.0),
-    }
-    _lp = _sigmoid_learned(_learned_features)
+    _lp = _sigmoid_learned(_build_learned_feature_dict(home_row, away_row, home_form, away_form, h2h))
     home_prob = _lp if _lp is not None else _sigmoid(expected_margin)
     away_prob = 1.0 - home_prob
 

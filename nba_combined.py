@@ -615,16 +615,10 @@ def export_picks_json(all_picks: list, game_date: date):
 # =============================================================================
 # MAIN
 # =============================================================================
-def main():
-    print("\n" + "═" * WIDTH)
-    print("  NBA ANALYSIS  —  Team Model  ×  Player Props")
-    if VERBOSE:
-        print("  [ VERBOSE ]")
-    print("═" * WIDTH)
-
-    # ── FIX-1: Load calibration at startup so all adjustments apply ───────────
-    props_model._load_calibration()
+def _init_calibration() -> None:
+    """Load calibration.json and populate global rank weights."""
     global _CALIB_RANK_WEIGHTS
+    props_model._load_calibration()
     _CALIB_RANK_WEIGHTS = _build_calib_rank_weights(props_model.CALIB)
     if _CALIB_RANK_WEIGHTS:
         top3 = sorted(_CALIB_RANK_WEIGHTS.items(), key=lambda x: x[1], reverse=True)[:3]
@@ -633,30 +627,29 @@ def main():
               f"top: {', '.join(f'{k}={v:.2f}' for k,v in top3)}  "
               f"bottom: {', '.join(f'{k}={v:.2f}' for k,v in bot3)}")
 
-    # ── 1. Today's games (ESPN) ──────────────────────────────────────────────
+
+def _fetch_matchups_and_lean() -> tuple:
+    """Return (matchups, game_date) and populate today's book-lean snapshot."""
+    global _TODAY_LEAN
     print("\n  Fetching games from ESPN…")
     matchups = team_model.get_todays_games()
     if not matchups:
-        print("  No games found."); return
-
-    game_date = matchups[0].get("game_date", date.today())
-
-    # ── 1b. Load book lean snapshot (auto-fetches if missing) ────────────────
-    global _TODAY_LEAN
+        print("  No games found.")
+        return [], None
+    game_date  = matchups[0].get("game_date", date.today())
     _TODAY_LEAN = _load_today_lean(game_date)
-    tag       = "TODAY" if game_date == date.today() else game_date.strftime("%A %B %d")
+    tag = "TODAY" if game_date == date.today() else game_date.strftime("%A %B %d")
     print(f"  {len(matchups)} game(s)  —  {tag}")
     for m in matchups:
         print(f"    {m['away_abbr']} @ {m['home_abbr']}")
+    return matchups, game_date
 
-    # ── 2. Injuries ───────────────────────────────────────────────────────────
-    # FIX-2: fetch injuries separately for each model so each gets its native
-    # format. Team model enriches PPG via nba_api internally; props model needs
-    # rpg/apg fields for REB/AST usage redistribution.
+
+def _fetch_injuries() -> tuple:
+    """Return (team_injuries, props_injuries) and print significant absences."""
     print("\n  Fetching injury report…")
-    team_injuries  = team_model.get_espn_injuries()    # enriched with real PPG
-    props_injuries = props_model.get_espn_injuries()   # has rpg/apg fields
-
+    team_injuries  = team_model.get_espn_injuries()
+    props_injuries = props_model.get_espn_injuries()
     inj_count = sum(len(v) for v in team_injuries.values())
     print(f"  {inj_count} player(s) on report")
     for tn, injs in team_injuries.items():
@@ -665,18 +658,22 @@ def main():
             ab    = team_model.NAME_TO_ESPN_ABBR.get(tn, "???")
             names = ", ".join(f"{i['player']} ({i['status']})" for i in sig[:4])
             print(f"    {ab}: {names}")
+    return team_injuries, props_injuries
 
-    # ── 3. Team model ─────────────────────────────────────────────────────────
+
+def _run_team_model(matchups: list, team_injuries: dict) -> tuple:
+    """Run the 10-factor team model; return (team_preds, team_map)."""
     print("\n  Running team model (10 factors)…")
-    # FIX-4: try-except so a team model failure doesn't kill props output
     team_preds = []
     try:
         team_preds = team_model.predict_games_data(SEASON, matchups, team_injuries)
     except Exception as e:
         print(f"  ⚠  Team model error: {e} — continuing with props only.")
-    team_map = {(p["away_abbr"], p["home_abbr"]): p for p in team_preds}
+    return team_preds, {(p["away_abbr"], p["home_abbr"]): p for p in team_preds}
 
-    # ── 4. Odds API events ────────────────────────────────────────────────────
+
+def _setup_odds_and_spreads(matchups: list, team_map: dict) -> list:
+    """Fetch Odds API events, resolve spreads; return event list."""
     print("\n  Fetching Odds API events…")
     try:
         all_events = props_model.get_all_odds_events()
@@ -685,109 +682,91 @@ def main():
         all_events = []
     if not all_events:
         print("  No events returned — props unavailable for all games.")
+        return []
 
-    # ── 5. Spreads: team model preferred over market ─────────────────────────
-    if all_events:
-        print("  Resolving spreads…")
+    print("  Resolving spreads…")
     for m in matchups:
         ha      = m["home_abbr"]
         aa      = m["away_abbr"]
         gk      = f"{aa}@{ha}"
         odds_ev = _match_odds_event(all_events, ha, aa)
         pred    = team_map.get((aa, ha))
-
         if odds_ev and gk not in props_model.GAME_SPREADS:
-            mkt_sprd = props_model._auto_fetch_spread(odds_ev["id"], m["home_name"])
-            props_model.GAME_SPREADS[gk] = mkt_sprd
-
+            props_model.GAME_SPREADS[gk] = props_model._auto_fetch_spread(
+                odds_ev["id"], m["home_name"])
         if pred:
             props_model.GAME_SPREADS[gk] = pred["expected_margin"]
             print(f"    {gk}: model spread {pred['expected_margin']:+.1f}")
+    return all_events
 
-    # ── 6. Shared player data ─────────────────────────────────────────────────
-    print("\n  Loading player data (stats, USG%, DvP rosters)…")
-    props_model.get_team_season_stats()
-    props_model.get_league_logs()
-    # FIX-3: trigger USG + DvP prefetches (were silently skipped before)
-    props_model.get_all_player_usage()
-    props_model.prefetch_rosters_for_games(all_events)
 
-    # ── 7. Per-game combined output ───────────────────────────────────────────
-    all_props_results = []
-    all_picks_export  = []      # FIX-7: for JSON export
+def _process_single_game(m: dict, team_map: dict, all_events: list,
+                          props_injuries: dict, all_picks_export: list) -> tuple:
+    """Run team model section + props for one matchup; return (results, props_df)."""
+    ha   = m["home_abbr"]
+    aa   = m["away_abbr"]
+    gk   = f"{aa}@{ha}"
+    pred = team_map.get((aa, ha))
+    ev   = _match_odds_event(all_events, ha, aa)
+    sprd = props_model.GAME_SPREADS.get(gk, 0.0)
 
-    for m in matchups:
-        ha   = m["home_abbr"]
-        aa   = m["away_abbr"]
-        gk   = f"{aa}@{ha}"
-        pred = team_map.get((aa, ha))
-        ev   = _match_odds_event(all_events, ha, aa)
-        sprd = props_model.GAME_SPREADS.get(gk, 0.0)
+    tip_str = f"  │  {m.get('status', '')}" if m.get("status") else ""
+    print(f"\n{'━'*WIDTH}")
+    print(f"  {aa} @ {ha}{tip_str}")
+    print(f"{'━'*WIDTH}")
 
-        # Game header
-        tip_str = f"  │  {m.get('status', '')}" if m.get("status") else ""
-        print(f"\n{'━'*WIDTH}")
-        print(f"  {aa} @ {ha}{tip_str}")
-        print(f"{'━'*WIDTH}")
+    if pred:
+        print_team_section(pred)
+    else:
+        print("  [Team model: could not resolve — check ESPN game data]")
 
-        # Team model section
-        if pred:
-            print_team_section(pred)
-        else:
-            print("  [Team model: could not resolve — check ESPN game data]")
+    print()
+    props_df = pd.DataFrame()
+    results  = []
+    if ev:
+        try:
+            _hp          = pred.get("home_pace", 99.5) if pred else 99.5
+            _ap          = pred.get("away_pace", 99.5) if pred else 99.5
+            pace_factor  = (_hp + _ap) / 2.0 / 99.5
+            results = props_model.process_game(
+                m["home_name"], m["away_name"], ha, aa,
+                ev, props_injuries, spread=sprd, pace_factor=pace_factor)
+            if results:
+                props_df = print_props_tables(results)
+                if not props_df.empty:
+                    dfF = _edge_floored(props_df)
+                    dfF["_rscore"] = dfF.apply(
+                        lambda r: _rank_score(r["Edge%"], r["Confidence"],
+                                              r["Market"], r["Pick"], r["Line"]), axis=1)
+                    N     = props_model.TOP_BETS_PER_GAME
+                    top_e = _apply_market_cap(
+                        dfF.sort_values("_rscore", ascending=False)
+                           .drop_duplicates(subset=["Player"], keep="first").head(N))
+                    top_c = _apply_market_cap(
+                        dfF.sort_values("Confidence", ascending=False)
+                           .drop_duplicates(subset=["Player"], keep="first").head(N))
+                    for _, row in pd.concat([top_e, top_c]).iterrows():
+                        all_picks_export.append(_pick_to_dict(row, gk, pred))
+            else:
+                print("  No props returned for this game.")
+        except Exception as e:
+            print(f"  Props error: {e}")
+    else:
+        print("  No Odds API event found — props unavailable for this game.")
 
-        # Props section
-        print()
-        props_df = pd.DataFrame()
-        if ev:
-            try:
-                # Fix 3: matchup-specific pace factor; pred may be None for unknown teams
-                _hp = pred.get("home_pace", 99.5) if pred else 99.5
-                _ap = pred.get("away_pace", 99.5) if pred else 99.5
-                _pace_factor = (_hp + _ap) / 2.0 / 99.5
-                results = props_model.process_game(
-                    m["home_name"], m["away_name"], ha, aa,
-                    ev, props_injuries,          # FIX-2: use props-specific injuries
-                    spread=sprd,
-                    pace_factor=_pace_factor,
-                )
-                if results:
-                    all_props_results.extend(results)
-                    props_df = print_props_tables(results)
+    if pred and not props_df.empty:
+        print_best_bets(pred, props_df)
 
-                    # FIX-7: collect top picks for JSON export
-                    if not props_df.empty:
-                        dfF = _edge_floored(props_df)
-                        dfF["_rscore"] = dfF.apply(
-                            lambda r: _rank_score(r["Edge%"], r["Confidence"], r["Market"], r["Pick"], r["Line"]), axis=1)
-                        N   = props_model.TOP_BETS_PER_GAME
-                        top_e = _apply_market_cap(
-                            dfF.sort_values("_rscore", ascending=False)
-                               .drop_duplicates(subset=["Player"], keep="first")
-                               .head(N))
-                        top_c = _apply_market_cap(
-                            dfF.sort_values("Confidence", ascending=False)
-                               .drop_duplicates(subset=["Player"], keep="first")
-                               .head(N))
-                        for _, row in pd.concat([top_e, top_c]).iterrows():
-                            all_picks_export.append(_pick_to_dict(row, gk, pred))
-                else:
-                    print("  No props returned for this game.")
-            except Exception as e:
-                print(f"  Props error: {e}")
-        else:
-            print("  No Odds API event found — props unavailable for this game.")
+    return results, props_df
 
-        # Cross-reference: team narrative × props
-        if pred and not props_df.empty:
-            print_best_bets(pred, props_df)
 
-    # ── 8. Global summary ─────────────────────────────────────────────────────
+def _print_global_summary(team_preds: list, all_props_results: list,
+                           all_picks_export: list, game_date) -> None:
+    """Print the end-of-run summary: game picks table + top props + exports."""
     print(f"\n{'═'*WIDTH}")
     print(f"  SUMMARY  —  {len(team_preds)} game(s)  ·  {len(all_props_results)} props analyzed")
     print(f"{'═'*WIDTH}")
 
-    # Game picks table
     if team_preds:
         print(f"\n  ── GAME PICKS  sorted by confidence")
         print(f"  {'Matchup':<12}  {'Fav':<5}  {'Win%':>6}  {'Spread':>9}  "
@@ -800,31 +779,27 @@ def main():
             conf = "Strong ✓" if prob >= 0.68 else ("Lean" if prob >= 0.57 else "Toss-up")
             gp   = (r.get("home_pace", 99.5) + r.get("away_pace", 99.5)) / 2
             pace = "FAST" if gp > 101 else ("SLOW" if gp < 97.5 else "AVG ")
-            b2b  = f"  ⚠ {r['away_abbr']} B2B" if r.get("away_rest") == "B2B" \
-                   else (f"  ⚠ {r['home_abbr']} B2B" if r.get("home_rest") == "B2B" else "")
+            b2b  = (f"  ⚠ {r['away_abbr']} B2B" if r.get("away_rest") == "B2B"
+                    else (f"  ⚠ {r['home_abbr']} B2B" if r.get("home_rest") == "B2B" else ""))
             print(f"  {r['away_abbr']} @ {r['home_abbr']:<4}  "
                   f"{fav:<5}  {prob:>5.1%}  {fav} -{spv:<5.1f}  "
                   f"{r['predicted_total']:>6.1f}  {pace}  {conf}{b2b}")
         print(f"  {'─'*WIDTH}")
         print(f"  Strong ✓ ≥68%  ·  Lean 57–68%  ·  Toss-up <57%")
 
-    # Top props across all games — two separate ranked lists
     if all_props_results:
         all_df  = pd.DataFrame(all_props_results)
         floored = _edge_floored(all_df)
         floored["_rscore"] = floored.apply(
-            lambda r: _rank_score(r["Edge%"], r["Confidence"], r["Market"], r["Pick"], r["Line"]), axis=1)
-
+            lambda r: _rank_score(r["Edge%"], r["Confidence"],
+                                  r["Market"], r["Pick"], r["Line"]), axis=1)
         top_conf = _apply_market_cap(
             floored.sort_values("Confidence", ascending=False)
-                   .drop_duplicates(subset=["Player", "Market"])
-                   .head(10))
+                   .drop_duplicates(subset=["Player", "Market"]).head(10))
         top_edge = _apply_market_cap(
             floored.sort_values("_rscore", ascending=False)
-                   .drop_duplicates(subset=["Player", "Market"])
-                   .head(10))
+                   .drop_duplicates(subset=["Player", "Market"]).head(10))
 
-        # Summary header includes rank + team column
         sum_hdr = (f"  {'#':<3} {'Player':<22} {'Team':<5} {'Mkt':<8} "
                    f"{'Line':>5} {'Proj':>5}   {'E%':>5}   {'Conf':>6}   {'Pick':<5}")
         sum_sep = (f"  {'─'*3} {'─'*22} {'─'*5} {'─'*8} "
@@ -840,19 +815,14 @@ def main():
             print(sum_sep)
             print(f"  ★ = High ≥66%   * = below breakeven 53%")
 
-        _print_top("TOP 10 BY CONFIDENCE  most likely to hit",  top_conf)
-        _print_top("TOP 10 BY EDGE%       biggest mispricing",  top_edge)
+        _print_top("TOP 10 BY CONFIDENCE  most likely to hit", top_conf)
+        _print_top("TOP 10 BY EDGE%       biggest mispricing", top_edge)
 
-    # FIX-7: export picks to JSON
     export_picks_json(all_picks_export, game_date)
     export_game_picks_json(team_preds, game_date)
     if all_picks_export:
         print("  Run calibrate.py after grading to keep the model improving.")
 
-    # v8 Fix 4: no market-level bans exist — PTS/PTS+REB/PTS+AST/PRA are all live.
-    # Player-level penalties in MANUAL_PLAYER_PENALTIES handle suppression instead.
-
-    # v8 Fix 6: surface any players that still lack position data after MANUAL_POSITIONS.
     if hasattr(props_model, "NULL_POS_PLAYERS") and props_model.NULL_POS_PLAYERS:
         print(f"\n  ⚠ {len(props_model.NULL_POS_PLAYERS)} player(s) had no position "
               f"(DvP=1.0 for these). Consider adding to MANUAL_POSITIONS in playerlinepredictor.py:")
@@ -861,6 +831,39 @@ def main():
 
     print(f"\n{'═'*WIDTH}")
     print("  For informational purposes only. Not financial advice.")
+
+
+def main():
+    print("\n" + "═" * WIDTH)
+    print("  NBA ANALYSIS  —  Team Model  ×  Player Props")
+    if VERBOSE:
+        print("  [ VERBOSE ]")
+    print("═" * WIDTH)
+
+    _init_calibration()
+
+    matchups, game_date = _fetch_matchups_and_lean()
+    if not matchups:
+        return
+
+    team_injuries, props_injuries = _fetch_injuries()
+    team_preds, team_map          = _run_team_model(matchups, team_injuries)
+    all_events                    = _setup_odds_and_spreads(matchups, team_map)
+
+    print("\n  Loading player data (stats, USG%, DvP rosters)…")
+    props_model.get_team_season_stats()
+    props_model.get_league_logs()
+    props_model.get_all_player_usage()
+    props_model.prefetch_rosters_for_games(all_events)
+
+    all_props_results: list = []
+    all_picks_export:  list = []
+    for m in matchups:
+        results, _ = _process_single_game(
+            m, team_map, all_events, props_injuries, all_picks_export)
+        all_props_results.extend(results)
+
+    _print_global_summary(team_preds, all_props_results, all_picks_export, game_date)
     print(f"{'═'*WIDTH}\n")
 
 

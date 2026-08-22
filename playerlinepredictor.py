@@ -1489,108 +1489,66 @@ def project_stat(player_name, stat_col, opp_abbr, opp_team_id,
     return final_proj, detail
 
 
-def project_prop(player_name, market_key, opp_abbr, opp_team_id,
-                 injuries, pos, is_home, team_abbr, spread=0.0, pace_factor=None):
-    """Returns (projection, details, sd, metadata)."""
-    stat_cols = MARKET_TO_STATS.get(market_key)
-    if not stat_cols: return None, None, None, None
+def _self_injury_check(player_name: str, injuries: list):
+    """Return (penalty, flag, should_skip). should_skip=True means no projection."""
+    status = next((inj["status"] for inj in injuries
+                   if inj.get("player") == player_name), None)
+    if status in ("Out", "Doubtful"):
+        return 0.0, "", True
+    if status in ("Questionable", "Day-To-Day"):
+        return 5.0, "⚠GTD", False
+    if status == "Probable":
+        return 1.0, "PROB", False
+    return 0.0, "", False
 
-    # Fix 5: skip or penalise players who are themselves on the injury report
-    self_status = next((inj["status"] for inj in injuries
-                        if inj.get("player") == player_name), None)
-    self_inj_penalty = 0.0
-    self_inj_flag    = ""
-    if self_status in ("Out", "Doubtful"):
-        return None, None, None, None  # no props should exist, but guard anyway
-    elif self_status in ("Questionable", "Day-To-Day"):
-        self_inj_penalty = 5.0
-        self_inj_flag    = "⚠GTD"
-    elif self_status == "Probable":
-        self_inj_penalty = 1.0
-        self_inj_flag    = "PROB"
 
-    pid = get_player_id(player_name)
-    if not pid: return None, None, None, None
-
-    po_logs, rs_logs, using_playoffs, po_count, po_raw_count = get_player_logs_blended(pid)
-    if po_logs.empty and rs_logs.empty: return None, None, None, None
-
-    # Projected range (P25–P75) using best available logs for the primary stat
+def _compute_prop_range(market_key: str, po_logs, rs_logs, po_count):
+    """Return (proj_low, proj_high) P25–P75 range for primary stat."""
     primary_stat = MARKET_TO_STATS.get(market_key, [None])[0]
     range_logs   = po_logs if (not po_logs.empty and po_count >= 3) else rs_logs
     proj_low, proj_high = (
         _projection_range(range_logs, primary_stat)
         if primary_stat else (None, None)
     )
-    # For combo markets (PTS+REB etc.), scale range proportionally by #stats
     if proj_low is not None and len(MARKET_TO_STATS.get(market_key, [])) > 1:
-        n_stats = len(MARKET_TO_STATS[market_key])
-        proj_low  = round(proj_low  * n_stats * 0.85, 1)  # slight discount for combos
+        n_stats   = len(MARKET_TO_STATS[market_key])
+        proj_low  = round(proj_low  * n_stats * 0.85, 1)
         proj_high = round(proj_high * n_stats * 1.00, 1)
+    return proj_low, proj_high
 
-    total   = 0.0
-    details = {}
-    for sc in stat_cols:
-        p, d = project_stat(player_name, sc, opp_abbr, opp_team_id,
-                            injuries, pos, po_logs, rs_logs,
-                            is_home, team_abbr, using_playoffs, po_count,
-                            spread=spread, pace_factor=pace_factor)
-        if p is None: return None, None, None, None
-        total   += p
-        details[sc] = d
 
-    # Compute max usage across all stat components
-    max_usage = max((d.get("usage", 1.0) for d in details.values()), default=1.0)
-
-    # Fix 8: negative correlation correction for combo markets containing PTS + AST.
-    # When a player absorbs extra usage/scoring load, playmaking opportunities drop —
-    # iso/post usage means the ball ends up in their hands more, not distributed.
-    if "PTS" in stat_cols and "AST" in stat_cols and max_usage > 1.05:
-        ast_raw = details.get("AST", {}).get("final", 0.0)
-        ast_correction = ast_raw * 0.03  # reduce AST component by 3%
-        total -= ast_correction
-        # Fix 2: shallow copy prevents mutation of shared dict across markets
-        details["AST"] = {**details["AST"], "final": round(details["AST"]["final"] - ast_correction, 1)}
-
-    # Usage Rate adjustment: high-usage players generate more of their own PTS;
-    # low-usage players are more scheme-dependent and typically over-project.
-    # Applied only to markets containing PTS (USG measures scoring possession use).
+def _apply_combo_and_usg(total: float, details: dict, stat_cols: list,
+                          market_key: str, player_name: str):
+    """Negative-correlation fix for PTS+AST combos, then usage-rate adjustment."""
+    max_usage  = max((d.get("usage", 1.0) for d in details.values()), default=1.0)
     usg_factor = 1.0
+
+    if "PTS" in stat_cols and "AST" in stat_cols and max_usage > 1.05:
+        ast_raw       = details.get("AST", {}).get("final", 0.0)
+        ast_correction = ast_raw * 0.03
+        total -= ast_correction
+        details["AST"] = {**details["AST"],
+                          "final": round(details["AST"]["final"] - ast_correction, 1)}
+
     if market_key in USG_MARKETS:
-        usg = _lookup_usg(player_name)  # v6 Fix 5: fuzzy lookup handles diacritics/suffixes
+        usg = _lookup_usg(player_name)
         if usg > 0:
-            # Deviation from league average, scaled by USG_PROJ_WEIGHT.
-            # e.g. Giannis 35% USG → (0.35-0.215)/0.215 * 0.10 = +0.063 → ×1.063
-            # e.g. bench G  12% USG → (0.12-0.215)/0.215 * 0.10 = -0.044 → ×0.956
-            raw_adj = (usg - LEAGUE_AVG_USG) / LEAGUE_AVG_USG * USG_PROJ_WEIGHT
-            usg_factor = max(0.93, min(1.0 + raw_adj, 1.07))  # clamp ±7%
+            raw_adj    = (usg - LEAGUE_AVG_USG) / LEAGUE_AVG_USG * USG_PROJ_WEIGHT
+            usg_factor = max(0.93, min(1.0 + raw_adj, 1.07))
             total *= usg_factor
 
-    sd = get_player_std(pid, po_logs, rs_logs, market_key, stat_cols, po_count)
+    return total, max_usage, usg_factor
 
-    # Fix 5: scale SD proportionally when defensive/usage factors inflate the projection.
-    # raw_total = sum(rate × min) — the projection without any multiplier adjustments.
-    # If total >> raw_total (big inflation), the true distribution is wider; scale SD up.
-    raw_total = sum(d.get("rate", 0.0) * d.get("min", 0.0) for d in details.values())
-    if raw_total > 0 and total > 0 and sd and sd > 0:
-        inflation_ratio = total / raw_total
-        sd = sd * (inflation_ratio ** 0.5)
 
-    # Calibration: apply per-(player, market) projection bias learned from bet_log.csv.
-    # adj is the shrinkage-weighted mean residual (actual − projection).
-    # Positive adj → model historically under-projects this player → nudge up.
-    calib_label    = MARKET_LABELS.get(market_key, market_key)
-    calib_pm_key   = f"{player_name}|{calib_label}"
-    calib_proj_adj = CALIB.get("player_market", {}).get(calib_pm_key, {}).get("adj", 0.0)
-    if calib_proj_adj != 0.0:
-        total += calib_proj_adj
+def _build_prop_metadata(player_name: str, po_logs, rs_logs, po_count, po_raw_count,
+                          using_playoffs: bool, is_home: bool, avg_min: float,
+                          max_usage: float, usg_factor: float,
+                          self_inj_penalty: float, self_inj_flag: str,
+                          proj_low, proj_high) -> dict:
+    """Assemble the metadata dict returned by project_prop()."""
+    po_min = _avg_minutes(po_logs)
+    rs_min = _avg_minutes(rs_logs)
 
-    po_min  = _avg_minutes(po_logs)
-    rs_min  = _avg_minutes(rs_logs)
-    avg_min = po_min if po_min > 0 else rs_min
-
-    # Playoff rotation multiplier — computed for flagging purposes.
-    # Reflects whether this player's minutes were adjusted up/down for early playoffs.
     po_min_adj_mult = 1.0
     if IS_PLAYOFF_SEASON and po_count < PLAYOFF_GAMES_THRESHOLD and rs_min > 0:
         if rs_min >= STARTER_MIN_THRESHOLD:
@@ -1600,10 +1558,7 @@ def project_prop(player_name, market_key, opp_abbr, opp_team_id,
         else:
             po_min_adj_mult = PLAYOFF_MIN_BENCH_MULT
 
-    # Proportional bench penalty
-    bench_penalty = max(0.0, (BENCH_MIN_THRESHOLD - avg_min) * 1.5) if avg_min > 0 else 0.0
-
-    # Minute-volatility penalty
+    bench_penalty    = max(0.0, (BENCH_MIN_THRESHOLD - avg_min) * 1.5) if avg_min > 0 else 0.0
     mins_vol_penalty = 0.0
     mins_vol_flag    = False
     if not po_logs.empty and len(po_logs) >= 3:
@@ -1612,15 +1567,13 @@ def project_prop(player_name, market_key, opp_abbr, opp_team_id,
             mins_vol_penalty = min(8.0, (cv - 0.20) * 25)
             mins_vol_flag    = True
 
-    # Road B2B penalty
     road_b2b         = _is_road_b2b(po_logs, is_home)
     road_b2b_penalty = 3.0 if road_b2b else 0.0
+    total_penalty    = bench_penalty + mins_vol_penalty + road_b2b_penalty + self_inj_penalty
 
-    total_conf_penalty = bench_penalty + mins_vol_penalty + road_b2b_penalty + self_inj_penalty
-
-    metadata = {
+    return {
         "avg_min":          avg_min,
-        "conf_penalty":     total_conf_penalty,
+        "conf_penalty":     total_penalty,
         "bench_penalty":    bench_penalty,
         "mins_vol_penalty": mins_vol_penalty,
         "road_b2b_penalty": road_b2b_penalty,
@@ -1630,15 +1583,72 @@ def project_prop(player_name, market_key, opp_abbr, opp_team_id,
         "road_b2b":         road_b2b,
         "self_inj_flag":    self_inj_flag,
         "po_count":         po_count,
-        "po_raw_count":     po_raw_count,   # unfiltered — for NO-PO flag only
+        "po_raw_count":     po_raw_count,
         "using_playoffs":   using_playoffs,
         "max_usage":        max_usage,
-        "usg_pct":          _lookup_usg(player_name),              # v6 Fix 5
+        "usg_pct":          _lookup_usg(player_name),
         "usg_factor":       round(usg_factor, 3),
         "po_min_adj_mult":  round(po_min_adj_mult, 3),
         "proj_low":         proj_low,
         "proj_high":        proj_high,
     }
+
+
+def project_prop(player_name, market_key, opp_abbr, opp_team_id,
+                 injuries, pos, is_home, team_abbr, spread=0.0, pace_factor=None):
+    """Returns (projection, details, sd, metadata)."""
+    stat_cols = MARKET_TO_STATS.get(market_key)
+    if not stat_cols:
+        return None, None, None, None
+
+    self_inj_penalty, self_inj_flag, skip = _self_injury_check(player_name, injuries)
+    if skip:
+        return None, None, None, None
+
+    pid = get_player_id(player_name)
+    if not pid:
+        return None, None, None, None
+
+    po_logs, rs_logs, using_playoffs, po_count, po_raw_count = get_player_logs_blended(pid)
+    if po_logs.empty and rs_logs.empty:
+        return None, None, None, None
+
+    proj_low, proj_high = _compute_prop_range(market_key, po_logs, rs_logs, po_count)
+
+    total   = 0.0
+    details = {}
+    for sc in stat_cols:
+        p, d = project_stat(player_name, sc, opp_abbr, opp_team_id,
+                            injuries, pos, po_logs, rs_logs,
+                            is_home, team_abbr, using_playoffs, po_count,
+                            spread=spread, pace_factor=pace_factor)
+        if p is None:
+            return None, None, None, None
+        total      += p
+        details[sc] = d
+
+    total, max_usage, usg_factor = _apply_combo_and_usg(
+        total, details, stat_cols, market_key, player_name)
+
+    sd        = get_player_std(pid, po_logs, rs_logs, market_key, stat_cols, po_count)
+    raw_total = sum(d.get("rate", 0.0) * d.get("min", 0.0) for d in details.values())
+    if raw_total > 0 and total > 0 and sd and sd > 0:
+        sd = sd * ((total / raw_total) ** 0.5)
+
+    calib_label    = MARKET_LABELS.get(market_key, market_key)
+    calib_proj_adj = CALIB.get("player_market", {}).get(
+        f"{player_name}|{calib_label}", {}).get("adj", 0.0)
+    if calib_proj_adj != 0.0:
+        total += calib_proj_adj
+
+    po_min  = _avg_minutes(po_logs)
+    rs_min  = _avg_minutes(rs_logs)
+    avg_min = po_min if po_min > 0 else rs_min
+
+    metadata = _build_prop_metadata(
+        player_name, po_logs, rs_logs, po_count, po_raw_count,
+        using_playoffs, is_home, avg_min, max_usage, usg_factor,
+        self_inj_penalty, self_inj_flag, proj_low, proj_high)
 
     return round(total, 1), details, sd, metadata
 
@@ -1752,42 +1762,18 @@ def get_player_position_from_injuries(player_name, injuries_by_team):
 # =============================================================================
 # GAME PROCESSOR
 # =============================================================================
-def process_game(home_name, away_name, home_abbr, away_abbr,
-                 odds_event, injuries_by_team, spread=0.0, pace_factor=None):
-    home_tid = get_team_id(home_abbr)
-    away_tid = get_team_id(away_abbr)
-    try:
-        pj = get_event_player_props(odds_event["id"])
-    except Exception as e:
-        print(f"  Error fetching props: {e}"); return []
-
-    bookmakers = pj.get("bookmakers", [])
-    if not bookmakers:
-        commence = odds_event.get("commence_time", "")
-        time_hint = f" (tip-off: {commence[:16].replace('T',' ')} UTC)" if commence else ""
-        print(f"  No bookmakers returned props — lines not posted yet{time_hint}.")
-        print(f"  Props typically go up 2–4 hours before tip-off. Try again later.")
-        return []
-
-    n_markets = sum(len(b.get("markets",[])) for b in bookmakers)
-    print(f"  {len(bookmakers)} book(s), {n_markets} market(s)")
-
-    pdf = flatten_props(pj)
-    if pdf.empty:
-        print("  Props empty after parsing."); return []
-    cdf = consensus_lines(pdf)  # Fix 6: now returns book_count column too
-    if cdf.empty:
-        print("  No consensus lines."); return []
-
-    print(f"  {len(cdf)} consensus lines, {cdf['player'].nunique()} players")
-
+def _build_player_context(cdf, home_name, away_name, home_abbr, away_abbr,
+                           home_tid, away_tid, injuries_by_team) -> dict:
+    """Resolve team + position context for every player in the consensus DataFrame."""
     ctx = {}
     for pl in cdf["player"].unique():
         pid = get_player_id(pl)
-        if not pid: continue
+        if not pid:
+            continue
         po_logs, rs_logs, _, _, _ = get_player_logs_blended(pid)
         ti = determine_team(po_logs, rs_logs, home_abbr, away_abbr)
-        if ti is None: continue
+        if ti is None:
+            continue
         ih      = ti["is_home"]
         team_nm = home_name if ih else away_name
         pos     = get_player_position_from_injuries(pl, injuries_by_team)
@@ -1799,168 +1785,211 @@ def process_game(home_name, away_name, home_abbr, away_abbr,
             "is_home":   ih,
             "pos":       pos,
         }
+    return ctx
+
+
+def _compute_direction_penalty(mkt: str, label: str, pick_dir: str, proj: float,
+                                line: float, book_count: int, meta: dict) -> tuple:
+    """Return (direction_penalty, adj_sd, book_flag) for a single prop row."""
+    if book_count == 1:
+        book_penalty, book_flag = 4.0, "1-BOOK"
+    elif book_count == 2:
+        book_penalty, book_flag = 2.0, "2-BOOK"
+    else:
+        book_penalty, book_flag = 0.0, ""
+
+    direction_penalty = float(book_penalty)
+
+    if pick_dir == "UNDER":
+        direction_penalty += UNDER_CONF_PENALTY
+        if mkt in COMBO_UNDER_MARKETS:
+            pass  # caller inflates sd; we just track penalty here
+        if proj >= STAR_PROJ_THRESHOLD:
+            direction_penalty += STAR_UNDER_PENALTY
+    if mkt == "player_points_rebounds" and pick_dir == "OVER":
+        direction_penalty += PTS_REB_OVER_PENALTY
+    if IS_PLAYOFF_SEASON and meta.get("po_raw_count", meta["po_count"]) == 0:
+        direction_penalty += PLAYOFF_NO_PO_PENALTY
+    if line <= LOW_LINE_THRESHOLD:
+        direction_penalty += LOW_LINE_CONF_PENALTY
+
+    calib_adj      = CALIB.get("market_direction", {}).get(
+        f"{label}_{pick_dir}", {}).get("conf_adj", 0.0)
+    direction_penalty -= calib_adj
+
+    return direction_penalty, book_flag
+
+
+def _build_prop_flags(ev: dict, meta: dict, details: dict, book_flag: str,
+                       pick_dir: str, proj: float, line: float,
+                       po_count_local: int, po_raw_count_local: int) -> list:
+    """Assemble warning/info flag list for a single prop result."""
+    min_red = max((d.get("min_reduced", 0.0) for d in details.values()), default=0.0)
+    proj_low  = meta.get("proj_low")
+    proj_high = meta.get("proj_high")
+
+    flags = []
+    if ev.get("_suspicious"):
+        flags.append(f"⚠SUSP-{ev['edge_pct']:.0f}%")
+    if meta["is_bench"]:
+        flags.append("⚠BENCH")
+    if po_raw_count_local == 0:
+        flags.append("NO-PO")
+    elif po_count_local == 1:
+        flags.append("LOW-PO")
+    if IS_PLAYOFF_SEASON and po_raw_count_local == 0:
+        flags.append("⚠PO-ROLE")
+    if line <= LOW_LINE_THRESHOLD:
+        flags.append("LOW-LINE")
+    if meta["mins_vol_flag"]:
+        flags.append("⚠MINS-VOL")
+    if meta["road_b2b"]:
+        flags.append("ROAD-B2B")
+    if meta["self_inj_flag"]:
+        flags.append(meta["self_inj_flag"])
+    if book_flag:
+        flags.append(book_flag)
+    if meta["max_usage"] > 1.05:
+        flags.append(f"USG+{round((meta['max_usage']-1)*100):.0f}%")
+
+    dvp_vals = [d.get("dvp", 1.0) for d in details.values() if isinstance(d, dict)]
+    if dvp_vals:
+        avg_dvp = sum(dvp_vals) / len(dvp_vals)
+        if avg_dvp >= 1.12:
+            flags.append(f"DvP+{avg_dvp:.2f}")
+        elif avg_dvp <= 0.88:
+            flags.append(f"DvP-{avg_dvp:.2f}")
+
+    usg_f = meta.get("usg_factor", 1.0)
+    if usg_f >= 1.04:
+        flags.append("HI-USG")
+    elif usg_f <= 0.96:
+        flags.append("LO-USG")
+    if min_red > 0:
+        flags.append(f"BLW-{min_red:.0f}m")
+    if pick_dir == "UNDER" and proj >= STAR_PROJ_THRESHOLD:
+        flags.append("★BLW-BUF")
+    if meta.get("po_min_adj_mult", 1.0) <= PLAYOFF_MIN_BENCH_MULT + 0.05:
+        flags.append("ROT-RISK")
+
+    trend_labels = [d.get("trend", "neutral") for d in details.values() if isinstance(d, dict)]
+    dominant_trend = (
+        "declining" if trend_labels.count("declining") > len(trend_labels) // 2 else
+        "improving" if trend_labels.count("improving") > len(trend_labels) // 2 else
+        "neutral"
+    )
+    if dominant_trend == "declining":
+        flags.append("TREND↓")
+        if pick_dir == "OVER":
+            ev["confidence"] = max(50.0, ev["confidence"] - 3.0)
+    elif dominant_trend == "improving":
+        flags.append("TREND↑")
+
+    is_strong = (
+        (pick_dir == "OVER"  and proj_low  is not None and proj_low  > line) or
+        (pick_dir == "UNDER" and proj_high is not None and proj_high < line)
+    )
+    if is_strong:
+        flags.append("★STRONG")
+
+    return flags
+
+
+def process_game(home_name, away_name, home_abbr, away_abbr,
+                 odds_event, injuries_by_team, spread=0.0, pace_factor=None):
+    home_tid = get_team_id(home_abbr)
+    away_tid = get_team_id(away_abbr)
+    try:
+        pj = get_event_player_props(odds_event["id"])
+    except Exception as e:
+        print(f"  Error fetching props: {e}")
+        return []
+
+    bookmakers = pj.get("bookmakers", [])
+    if not bookmakers:
+        commence  = odds_event.get("commence_time", "")
+        time_hint = f" (tip-off: {commence[:16].replace('T',' ')} UTC)" if commence else ""
+        print(f"  No bookmakers returned props — lines not posted yet{time_hint}.")
+        print(f"  Props typically go up 2–4 hours before tip-off. Try again later.")
+        return []
+
+    print(f"  {len(bookmakers)} book(s), {sum(len(b.get('markets',[])) for b in bookmakers)} market(s)")
+
+    pdf = flatten_props(pj)
+    if pdf.empty:
+        print("  Props empty after parsing.")
+        return []
+    cdf = consensus_lines(pdf)
+    if cdf.empty:
+        print("  No consensus lines.")
+        return []
+
+    print(f"  {len(cdf)} consensus lines, {cdf['player'].nunique()} players")
+
+    ctx = _build_player_context(cdf, home_name, away_name, home_abbr, away_abbr,
+                                 home_tid, away_tid, injuries_by_team)
 
     results = []
     for _, row in cdf.iterrows():
         pl, mkt, line = row["player"], row["market"], row["consensus_line"]
         label      = MARKET_LABELS.get(mkt, mkt)
-        book_count = int(row.get("book_count", 0))  # Fix 6
-        if pd.isna(line) or pl not in ctx: continue
+        book_count = int(row.get("book_count", 0))
+        if pd.isna(line) or pl not in ctx:
+            continue
         c = ctx[pl]
 
         proj, details, sd, meta = project_prop(
             pl, mkt, c["opp_abbr"], c["opp_tid"],
             c["injuries"], c["pos"], c["is_home"], c["team_abbr"],
             spread=spread, pace_factor=pace_factor)
-        if proj is None: continue
+        if proj is None:
+            continue
 
-        # v6 Fix 6: soft anchor toward the market line — dampens runaway projections.
-        # Real markets don't misprice by 50%+; if the model disagrees that much,
-        # it's usually the model that's wrong. 12% pull toward line reduces
-        # catastrophic overfitting to historical data quirks (tiny samples, stale H2H).
-        proj = (1.0 - MARKET_ANCHOR_WEIGHT) * proj + MARKET_ANCHOR_WEIGHT * line
+        proj       = (1.0 - MARKET_ANCHOR_WEIGHT) * proj + MARKET_ANCHOR_WEIGHT * line
+        pick_dir   = "UNDER" if proj < line else "OVER"
+        adj_sd     = sd * COMBO_UNDER_SD_MULT if (pick_dir == "UNDER" and mkt in COMBO_UNDER_MARKETS and sd) else sd
 
-        # Fix 6: thin-market confidence penalty based on book count
-        if book_count == 1:
-            book_penalty = 4.0
-            book_flag    = "1-BOOK"
-        elif book_count == 2:
-            book_penalty = 2.0
-            book_flag    = "2-BOOK"
-        else:
-            book_penalty = 0.0
-            book_flag    = ""
+        direction_penalty, book_flag = _compute_direction_penalty(
+            mkt, label, pick_dir, proj, line, book_count, meta)
 
-        # v4 Fixes 12-14: direction-aware confidence adjustments
-        pick_dir          = "UNDER" if proj < line else "OVER"
-        direction_penalty = 0.0
-        adj_sd            = sd
-
-        if pick_dir == "UNDER":
-            # Fix 12: flat UNDER penalty (reduced from 5pp — calibration handles market-specific)
-            direction_penalty += UNDER_CONF_PENALTY
-            # Fix 13: combo market SD inflation — widen uncertainty for multi-stat UNDERs
-            if mkt in COMBO_UNDER_MARKETS and sd:
-                adj_sd = sd * COMBO_UNDER_SD_MULT
-            # Fix 14: star blowup buffer — high-proj players can easily eclipse UNDER lines
-            if proj >= STAR_PROJ_THRESHOLD:
-                direction_penalty += STAR_UNDER_PENALTY
-
-        # Postmortem fix: PTS+REB OVER hits only 25% — add structural penalty
-        if mkt == "player_points_rebounds" and pick_dir == "OVER":
-            direction_penalty += PTS_REB_OVER_PENALTY
-
-        # Postmortem fix: NO-PO during playoffs = RS rates don't reflect playoff role.
-        # Coaches tighten rotations, scoring drops, bench players get DNP'd.
-        po_count_local     = meta["po_count"]
-        po_raw_count_local = meta.get("po_raw_count", po_count_local)
-        if IS_PLAYOFF_SEASON and po_raw_count_local == 0:
-            direction_penalty += PLAYOFF_NO_PO_PENALTY
-
-        # Low-line penalty: tiny lines (≤ 1.5) generate inflated edge% that dominate rankings.
-        if line <= LOW_LINE_THRESHOLD:
-            direction_penalty += LOW_LINE_CONF_PENALTY
-
-        # Calibration: market-direction hit-rate adjustment from bet_log history.
-        # conf_adj > 0 means this (market, direction) hits above baseline → ease penalty.
-        # conf_adj < 0 means it hits below baseline → tighten penalty.
-        calib_md_key = f"{label}_{pick_dir}"
-        calib_adj    = CALIB.get("market_direction", {}).get(calib_md_key, {}).get("conf_adj", 0.0)
-        direction_penalty -= calib_adj   # positive adj reduces penalty; negative adds to it
-
-        total_penalty = meta["conf_penalty"] + book_penalty + direction_penalty
+        total_penalty = meta["conf_penalty"] + direction_penalty
 
         ev = evaluate_prop(line, proj, mkt, sd=adj_sd, conf_penalty=total_penalty)
-
-        # v6 Fix 3: suspicious edge% filter — real markets don't misprice by >40%.
-        # High edge% signals model error (bad data, tiny sample) not alpha.
-        # Dock confidence heavily so these fall out of top-N rankings.
         if ev["edge_pct"] > SUSPICIOUS_EDGE_PCT:
-            ev["confidence"] = max(50.0, ev["confidence"] - 20.0)
+            ev["confidence"]  = max(50.0, ev["confidence"] - 20.0)
             ev["_suspicious"] = True
         else:
             ev["_suspicious"] = False
 
-        po_count = meta["po_count"]
-        min_red  = max((d.get("min_reduced", 0.0) for d in details.values()), default=0.0)
+        po_count_local     = meta["po_count"]
+        po_raw_count_local = meta.get("po_raw_count", po_count_local)
 
-        flags = []
-        if ev.get("_suspicious"):  flags.append(f"⚠SUSP-{ev['edge_pct']:.0f}%")   # v6 Fix 3
-        if meta["is_bench"]:       flags.append("⚠BENCH")
-        if po_raw_count_local == 0:    flags.append("NO-PO")       # truly no playoff appearances
-        elif po_count_local == 1:      flags.append("LOW-PO")     # 1 qualifying game — EWM unreliable
-        if IS_PLAYOFF_SEASON and po_raw_count_local == 0: flags.append("⚠PO-ROLE")
-        if line <= LOW_LINE_THRESHOLD: flags.append("LOW-LINE")
-        if meta["mins_vol_flag"]:  flags.append("⚠MINS-VOL")
-        if meta["road_b2b"]:       flags.append("ROAD-B2B")
-        if meta["self_inj_flag"]:  flags.append(meta["self_inj_flag"])  # Fix 5
-        if book_flag:              flags.append(book_flag)              # Fix 6
-        if meta["max_usage"] > 1.05: flags.append(f"USG+{round((meta['max_usage']-1)*100):.0f}%")
-        # DvP and USG_PCT flags — 'details' is the stat breakdown dict in scope here
-        dvp_vals = [d.get("dvp", 1.0) for d in details.values() if isinstance(d, dict)]
-        if dvp_vals:
-            avg_dvp = sum(dvp_vals) / len(dvp_vals)
-            if avg_dvp >= 1.12:   flags.append(f"DvP+{avg_dvp:.2f}")  # soft matchup
-            elif avg_dvp <= 0.88: flags.append(f"DvP-{avg_dvp:.2f}") # tough matchup
-        usg_f = meta.get("usg_factor", 1.0)
-        if usg_f >= 1.04:   flags.append("HI-USG")   # high-usage projection boost
-        elif usg_f <= 0.96: flags.append("LO-USG")   # low-usage projection penalty
-        if min_red > 0:            flags.append(f"BLW-{min_red:.0f}m")
-        # v4 Fix 14: flag star blowup buffer
-        if pick_dir == "UNDER" and proj >= STAR_PROJ_THRESHOLD:
-            flags.append("★BLW-BUF")
-        # Playoff rotation minute adjustment — ROT-RISK only; PO-MIN+ removed (v6 Fix 1c)
-        po_adj = meta.get("po_min_adj_mult", 1.0)
-        if po_adj <= PLAYOFF_MIN_BENCH_MULT + 0.05:   flags.append("ROT-RISK")   # heavy bench cut
+        flags = _build_prop_flags(ev, meta, details, book_flag, pick_dir, proj, line,
+                                   po_count_local, po_raw_count_local)
 
-        # Trend flags — derived from per-stat trend labels in details dict
-        trend_labels = [d.get("trend", "neutral") for d in details.values() if isinstance(d, dict)]
-        dominant_trend = (
-            "declining"  if trend_labels.count("declining")  > len(trend_labels) // 2 else
-            "improving"  if trend_labels.count("improving")  > len(trend_labels) // 2 else
-            "neutral"
-        )
-        if dominant_trend == "declining":
-            flags.append("TREND↓")
-            if pick_dir == "OVER":
-                ev["confidence"] = max(50.0, ev["confidence"] - 3.0)
-        elif dominant_trend == "improving":
-            flags.append("TREND↑")
-
-        # STRONG flag: P25 (OVER) or P75 (UNDER) clears the line — even pessimistic range beats it
-        proj_low  = meta.get("proj_low")
-        proj_high = meta.get("proj_high")
-        is_strong = (
-            (pick_dir == "OVER"  and proj_low  is not None and proj_low  > line) or
-            (pick_dir == "UNDER" and proj_high is not None and proj_high < line)
-        )
-        if is_strong:
-            flags.append("★STRONG")
-
-        # Confidence label (Low / Med / High) based on final confidence
         final_conf = ev["confidence"]
         conf_label = "High" if final_conf >= 66 else ("Med" if final_conf >= 56 else "Low")
 
         results.append({
-            "Player":           pl,
-            "Team":             c["team_abbr"],
-            "Market":           label,
-            "Line":             line,
-            "Projection":       proj,
-            "Edge":             ev["edge"],
-            "Edge%":            ev["edge_pct"],
-            "Confidence":       ev["confidence"],
-            "Conf_Label":       conf_label,
-            "Pick":             ev["pick"],
-            "PO_Games":         po_count_local,
-            "Is_Bench":         meta["is_bench"],
-            "Flags":            " ".join(flags),
-            "Proj_Low":         proj_low,
-            "Proj_High":        proj_high,
-            "details":          details,
-            "meta":             meta,
-            "book_count":       book_count,
-            "direction_penalty": direction_penalty,  # v4: for verbose output
+            "Player":            pl,
+            "Team":              c["team_abbr"],
+            "Market":            label,
+            "Line":              line,
+            "Projection":        proj,
+            "Edge":              ev["edge"],
+            "Edge%":             ev["edge_pct"],
+            "Confidence":        ev["confidence"],
+            "Conf_Label":        conf_label,
+            "Pick":              ev["pick"],
+            "PO_Games":          po_count_local,
+            "Is_Bench":          meta["is_bench"],
+            "Flags":             " ".join(flags),
+            "Proj_Low":          meta.get("proj_low"),
+            "Proj_High":         meta.get("proj_high"),
+            "details":           details,
+            "meta":              meta,
+            "book_count":        book_count,
+            "direction_penalty": direction_penalty,
         })
 
     return results
