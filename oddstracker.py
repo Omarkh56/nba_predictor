@@ -25,6 +25,7 @@ date, it updates the 'result' column so accuracy can be measured.
 
 import csv
 import json
+import logging
 import os
 import sys
 import time
@@ -33,6 +34,8 @@ import requests
 import pandas as pd
 import urllib3
 from datetime import date
+
+logger = logging.getLogger(__name__)
 
 warnings.filterwarnings("ignore")
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -307,8 +310,8 @@ def _append_rows(rows: list, snap_date: str):
             for _, r in existing.iterrows():
                 if str(r["date"]) == snap_date:
                     existing_keys.add((r["player"], r["market"]))
-        except Exception:
-            pass
+        except (OSError, KeyError, pd.errors.ParserError) as exc:
+            logger.warning("Could not read existing tracker rows: %s", exc)
 
     new_rows = [r for r in rows
                 if (r["player"], r["market"]) not in existing_keys]
@@ -531,8 +534,8 @@ def _write_to_calib(market_stats: dict, df: pd.DataFrame):
         try:
             with open(CALIB_FILE) as fh:
                 calib = json.load(fh)
-        except Exception:
-            pass
+        except (OSError, json.JSONDecodeError) as exc:
+            logger.warning("Could not load calibration.json: %s", exc)
 
     # Per-(market, lean_direction) stats
     lean_detail = {}

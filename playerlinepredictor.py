@@ -58,6 +58,7 @@ Run:      python3 newplayerbets
           python3 newplayerbets --verbose
 """
 
+import logging
 import sys
 import json
 import math
@@ -70,6 +71,8 @@ import pandas as pd
 import numpy as np
 import urllib3
 from datetime import date, datetime
+
+logger = logging.getLogger(__name__)
 
 from nba_api.stats.endpoints import (
     playergamelog,
@@ -467,14 +470,15 @@ def _parse_minutes(val):
             p = val.split(":")
             return int(p[0]) + int(p[1]) / 60
         return float(val)
-    except:
+    except (ValueError, TypeError, IndexError):
         return 0.0
 
 def _local_date(ct):
     try:
         utc_dt = datetime.fromisoformat(ct.replace("Z", "+00:00"))
         return utc_dt.astimezone().date()
-    except:
+    except (ValueError, AttributeError, OSError) as exc:
+        logger.debug("_local_date parse failed for %r: %s", ct, exc)
         return None
 
 def _pos_group(pos):
@@ -764,8 +768,8 @@ def _auto_fetch_spread(event_id, home_name):
                             # Odds API: home team point=-5.5 means home favored by 5.5
                             # Our convention: positive = home favored → negate the point
                             return float(-point)
-    except:
-        pass
+    except (KeyError, TypeError, ValueError, requests.RequestException) as exc:
+        logger.error("_auto_fetch_spread failed: %s", exc)
     return 0.0
 
 def flatten_props(props_json):
@@ -900,7 +904,8 @@ def safe_lgf(retries=3, **kw):
             df = leaguegamefinder.LeagueGameFinder(timeout=30, **kw).get_data_frames()[0]
             api_sleep()
             return df
-        except:
+        except Exception as exc:
+            logger.warning("safe_lgf attempt %d/%d failed: %s", att + 1, retries, exc)
             time.sleep(2 * (att + 1))
     return pd.DataFrame()
 
@@ -1358,7 +1363,8 @@ def _is_road_b2b(po_logs, is_home):
         d0 = pd.Timestamp(g0["GAME_DATE"]).date()
         d1 = pd.Timestamp(g1["GAME_DATE"]).date()
         return 0 < (d0 - d1).days <= 3
-    except:
+    except (KeyError, ValueError, TypeError) as exc:
+        logger.debug("_is_road_b2b date parse failed: %s", exc)
         return False
 
 
@@ -2052,7 +2058,8 @@ def main():
                 tip_utc   = datetime.fromisoformat(ct.replace("Z", "+00:00"))
                 tip_local = tip_utc.astimezone()
                 tip_str   = f"  │  {tip_local.strftime('%I:%M %p')}"
-            except: pass
+            except (ValueError, OSError) as exc:
+                logger.debug("tip-time format failed: %s", exc)
 
         spread_str = f"  │  Sprd {spread:+.1f}" if spread != 0.0 else ""
         print(f"\n{'━'*68}")

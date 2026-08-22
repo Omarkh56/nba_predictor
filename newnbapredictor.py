@@ -18,6 +18,7 @@ Install:  pip install nba_api pandas requests urllib3
 Run:      python3 bettingnba_v4.py
 """
 
+import logging
 import math
 import time
 import requests
@@ -25,6 +26,8 @@ import warnings
 import urllib3
 from datetime import date, timedelta, datetime
 from typing import Optional, List, Dict, Tuple
+
+logger = logging.getLogger(__name__)
 
 import pandas as pd
 from nba_api.stats.endpoints import (
@@ -356,8 +359,9 @@ def _enrich_injuries_with_ppg(injuries: dict, season: str) -> dict:
             per_mode_detailed="PerGame",
         ).get_data_frames()[0])
         ppg_lookup = {row["PLAYER_NAME"]: float(row["PTS"]) for _, row in df.iterrows()}
-    except Exception:
-        return enriched   # fall back to default values silently
+    except Exception as exc:
+        logger.warning("PPG enrichment fetch failed, using defaults: %s", exc)
+        return enriched
 
     for team_name, inj_list in enriched.items():
         for entry in inj_list:
@@ -548,7 +552,8 @@ def _fetch_h2h(t1_id: int, t2_id: int, season: str) -> dict:
             team_id_nullable=t1_id, vs_team_id_nullable=t2_id,
             season_nullable=season, player_or_team_abbreviation="T",
         ).get_data_frames()[0])
-    except Exception:
+    except Exception as exc:
+        logger.debug("H2H fetch failed for %d vs %d: %s", t1_id, t2_id, exc)
         return _H2H_EMPTY
     if df.empty:
         return _H2H_EMPTY
@@ -827,14 +832,17 @@ def _compute_prediction(m: dict, ratings: pd.DataFrame, season: str,
         return None
 
     print(f"    {m['away_abbr']} @ {m['home_abbr']} — computing…")
+    _form_default = {"w_pct":0.5, "adj_margin":0, "l10_net_rtg":0, "days_rest":3, "b2b":False, "consec_road":0}
     try:
         away_form = _fetch_last_n(away_id, season, ratings)
-    except Exception:
-        away_form = {"w_pct":0.5, "adj_margin":0, "l10_net_rtg":0, "days_rest":3, "b2b":False, "consec_road":0}
+    except Exception as exc:
+        logger.warning("Away form fetch failed for %d: %s", away_id, exc)
+        away_form = _form_default
     try:
         home_form = _fetch_last_n(home_id, season, ratings)
-    except Exception:
-        home_form = {"w_pct":0.5, "adj_margin":0, "l10_net_rtg":0, "days_rest":3, "b2b":False, "consec_road":0}
+    except Exception as exc:
+        logger.warning("Home form fetch failed for %d: %s", home_id, exc)
+        home_form = _form_default
     h2h = _fetch_h2h(home_id, away_id, season)
     time.sleep(1.0)
 
