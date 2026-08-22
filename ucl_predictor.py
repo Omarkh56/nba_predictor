@@ -40,19 +40,10 @@ import requests
 
 warnings.filterwarnings("ignore")
 
-# Fix 1: SSL monkey-patch for macOS LibreSSL — identical to the NBA scripts.
-# LibreSSL 2.8.3 on Python 3.9 raises CERTIFICATE_VERIFY_FAILED on every
-# external HTTPS call; patching requests.get with verify=False at module
-# level ensures all downstream libraries (nba_api, requests itself) pick it up.
+# TLS NOTE: verify=False was previously monkey-patched here for macOS LibreSSL
+# 2.8.3. Removed — install 'certifi' and keep it updated instead:
+#   pip install --upgrade certifi
 import urllib3
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-import requests as _req
-_original_get = _req.get
-def _patched_get(url, **kwargs):
-    kwargs.setdefault("verify", False)   # disable cert verification globally
-    kwargs.setdefault("timeout", 30)
-    return _original_get(url, **kwargs)
-_req.get = _patched_get
 
 # Optional scipy for more accurate Poisson PMF
 try:
@@ -370,7 +361,7 @@ def _api_football_get(endpoint: str, params: dict, cache_key: str,
     for attempt in range(3):
         try:
             time.sleep(API_FOOTBALL_SLEEP)   # Respect rate limit
-            resp = requests.get(url, headers=headers, params=params, timeout=20, verify=False)  # Fix 1
+            resp = requests.get(url, headers=headers, params=params, timeout=20, )
             if resp.status_code == 204:      # No content — valid empty response
                 cache_set(cache_key, None)
                 return None
@@ -412,7 +403,7 @@ def _odds_api_get(endpoint: str, params: dict, cache_key: str):
     params["apiKey"] = ODDS_API_KEY
     try:
         time.sleep(ODDS_API_SLEEP)
-        resp = requests.get(url, params=params, timeout=20, verify=False)  # Fix 1
+        resp = requests.get(url, params=params, timeout=20, )
         resp.raise_for_status()
         data = resp.json()
         cache_set(cache_key, data)
@@ -429,7 +420,7 @@ def _espn_get(endpoint: str, params: dict = None, cache_key: str = "espn_sb"):
         return cached
     try:
         url  = f"{ESPN_BASE}/{endpoint.lstrip('/')}"
-        resp = requests.get(url, params=params or {}, timeout=15, verify=False)  # Fix 1
+        resp = requests.get(url, params=params or {}, timeout=15, )
         resp.raise_for_status()
         data = resp.json()
         cache_set(cache_key, data)
@@ -455,7 +446,7 @@ def verify_api_football_key() -> bool:
         resp = requests.get(
             f"{API_FOOTBALL_BASE}/status",
             headers={"x-apisports-key": API_FOOTBALL_KEY},
-            timeout=10, verify=False,   # Fix 1: explicit verify=False
+            timeout=10,
         )
         data = resp.json().get("response", {})
         sub  = data.get("subscription", {})

@@ -88,13 +88,9 @@ import dvp as dvp_engine   # Defense vs Position module
 warnings.filterwarnings("ignore")
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-import requests as _req
-_original_get = _req.get
-def _patched_get(url, **kwargs):
-    kwargs.setdefault("verify", False)
-    kwargs.setdefault("timeout", 30)
-    return _original_get(url, **kwargs)
-_req.get = _patched_get
+# TLS NOTE: verify=False was previously monkey-patched onto all requests.get()
+# calls here. Removed — use 'pip install --upgrade certifi' if you hit SSL
+# errors on macOS with LibreSSL 2.8.3.
 
 # =============================================================================
 # CONFIG
@@ -512,7 +508,7 @@ def _adaptive_po_weight(po_count):
 # =============================================================================
 def get_espn_injuries():
     try:
-        r = requests.get(ESPN_INJURIES_URL, timeout=15, verify=False)
+        r = requests.get(ESPN_INJURIES_URL, timeout=15)
         r.raise_for_status()
         data = r.json()
     except Exception as e:
@@ -719,7 +715,7 @@ def get_dvp_factor(opp_team_id, pos_group, stat_col):
 def get_all_odds_events():
     from datetime import datetime, timezone
     r = requests.get(f"{BASE_URL}/sports/{SPORT}/events",
-                     params={"apiKey": ODDS_API_KEY}, timeout=20, verify=False)
+                     params={"apiKey": ODDS_API_KEY}, timeout=20)
     r.raise_for_status()
     events = r.json()
     now = datetime.now(timezone.utc).isoformat()
@@ -736,7 +732,7 @@ def get_event_player_props(event_id):
             params={"apiKey": ODDS_API_KEY, "regions": regions,
                     "markets": ",".join(MARKETS), "oddsFormat": "american",
                     "dateFormat": "iso"},
-            timeout=20, verify=False)
+            timeout=20)
         r.raise_for_status()
         data = r.json()
         if data.get("bookmakers"):
@@ -753,7 +749,7 @@ def _auto_fetch_spread(event_id, home_name):
             f"{BASE_URL}/sports/{SPORT}/events/{event_id}/odds",
             params={"apiKey": ODDS_API_KEY, "regions": "us",
                     "markets": "spreads", "oddsFormat": "american"},
-            timeout=15, verify=False)
+            timeout=15)
         r.raise_for_status()
         data = r.json()
         for bk in data.get("bookmakers", []):

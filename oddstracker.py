@@ -141,7 +141,7 @@ def get_all_events() -> list:
     from datetime import datetime, timezone
     r = requests.get(
         f"{BASE_URL}/sports/{SPORT}/events",
-        params={"apiKey": ODDS_API_KEY}, timeout=20, verify=False,
+        params={"apiKey": ODDS_API_KEY}, timeout=20, 
     )
     r.raise_for_status()
     events = r.json()
@@ -166,7 +166,7 @@ def get_event_props(event_id: str) -> dict:
                     "oddsFormat":  "american",
                     "dateFormat":  "iso",
                 },
-                timeout=25, verify=False,
+                timeout=25, 
             )
             r.raise_for_status()
             data = r.json()

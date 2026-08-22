@@ -61,12 +61,12 @@ _nba_http.STATS_HEADERS.update({
 })
 _nba_http.STATS_TIMEOUT = 90
 
-import requests as _req
-_original_get = _req.get
-def _patched_get(url, **kwargs):
-    kwargs.setdefault("verify", False)
-    return _original_get(url, **kwargs)
-_req.get = _patched_get
+# ─────────────────────────────────────────────────────────────────────────────
+# TLS NOTE: verify=False was previously set globally here as a workaround for
+# macOS LibreSSL 2.8.3 / Python 3.9 cert issues.  The correct fix is to ensure
+# the 'certifi' package is installed and up-to-date; requests uses it
+# automatically.  If you see SSLError on ESPN calls, run:
+#   pip install --upgrade certifi
 # ─────────────────────────────────────────────────────────────────────────────
 
 ESPN_SCOREBOARD_URL = "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard"
@@ -266,7 +266,7 @@ def get_todays_games() -> List[Dict]:
         date_str = target.strftime("%Y%m%d")
         try:
             resp = requests.get(f"{ESPN_SCOREBOARD_URL}?dates={date_str}",
-                                headers=ESPN_HEADERS, timeout=12, verify=False)
+                                headers=ESPN_HEADERS, timeout=12)
             resp.raise_for_status()
             events = resp.json().get("events", [])
         except requests.RequestException as e:
@@ -305,8 +305,7 @@ def get_todays_games() -> List[Dict]:
 
 def get_espn_injuries() -> Dict[str, List[Dict]]:
     try:
-        r = requests.get(ESPN_INJURIES_URL, headers=ESPN_HEADERS,
-                         timeout=15, verify=False)
+        r = requests.get(ESPN_INJURIES_URL, headers=ESPN_HEADERS, timeout=15)
         r.raise_for_status()
         data = r.json()
     except Exception as e:
