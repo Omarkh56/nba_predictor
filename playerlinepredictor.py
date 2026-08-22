@@ -608,6 +608,83 @@ def _adaptive_po_weight(po_count):
     return min(0.85, (po_count - 1) * 0.15)
 
 
+# Minimum consecutive missed games that counts as a real absence (not a scheduled rest).
+_INJURY_GAP_THRESHOLD = 3
+# Max return-from-injury ramp length in games.
+_INJURY_RAMP_GAMES = 8
+# Max discount applied on game 1 back (fraction of rate and minutes).
+_INJURY_MAX_DISCOUNT = 0.22
+
+
+def detect_injury_return(logs: pd.DataFrame) -> int:
+    """
+    Detect how many games ago the player returned from a real absence
+    (≥ _INJURY_GAP_THRESHOLD consecutive missed games).
+
+    logs: player game log DataFrame, most-recent-first (as returned by
+          _fetch_logs / get_player_logs_blended), must have GAME_DATE column.
+
+    Returns:
+        0 if the player shows no recent return (≥ _INJURY_RAMP_GAMES games back
+          or no gap found).
+        1 if the most recent game in logs is their FIRST game back.
+        2 if their second game back, etc.
+    None if logs are empty or undatable.
+    """
+    if logs is None or logs.empty:
+        return 0
+
+    try:
+        df = logs.copy()
+        df["GAME_DATE"] = pd.to_datetime(df["GAME_DATE"], errors="coerce")
+        df = df.sort_values("GAME_DATE", ascending=False).reset_index(drop=True)
+    except Exception:
+        return 0
+
+    # Walk forward in time (oldest first for gap detection)
+    df_asc = df.sort_values("GAME_DATE").reset_index(drop=True)
+    dates  = df_asc["GAME_DATE"].tolist()
+
+    # Find the most recent gap of ≥ threshold calendar days between consecutive games.
+    gap_idx = None   # index in df_asc of the game AFTER the gap (first game back)
+    for i in range(1, len(dates)):
+        if pd.isna(dates[i]) or pd.isna(dates[i - 1]):
+            continue
+        delta = (dates[i] - dates[i - 1]).days
+        # A season-to-season gap (off-season) should not count; cap at 30 days.
+        if _INJURY_GAP_THRESHOLD * 1.3 <= delta <= 30:
+            gap_idx = i
+
+    if gap_idx is None:
+        return 0
+
+    # How many games have been played since the return (game_idx = 1 on first game back)?
+    games_since = len(df_asc) - gap_idx   # 1 = most recent game was their first back
+    if games_since > _INJURY_RAMP_GAMES:
+        return 0   # fully ramped; no discount
+    return max(0, games_since)
+
+
+def injury_rust_discount(games_since_return: int) -> float:
+    """
+    Tapering discount factor (0.0 = no discount, up to _INJURY_MAX_DISCOUNT).
+    Uses the same shape as _adaptive_po_weight but inverted:
+      game 1 back → max discount (_INJURY_MAX_DISCOUNT)
+      game _INJURY_RAMP_GAMES → 0 discount
+    Applied to BOTH rate and minutes projections in project_stat().
+
+    This is separate from _self_injury_check's same-day GTD/Probable penalty,
+    which remains unchanged.
+    """
+    if games_since_return <= 0:
+        return 0.0
+    if games_since_return >= _INJURY_RAMP_GAMES:
+        return 0.0
+    # Linear taper from max at game 1 to 0 at game _INJURY_RAMP_GAMES
+    progress = (games_since_return - 1) / (_INJURY_RAMP_GAMES - 1)
+    return float(_INJURY_MAX_DISCOUNT * (1.0 - progress))
+
+
 # =============================================================================
 # ESPN INJURIES
 # =============================================================================
@@ -1591,6 +1668,17 @@ def project_stat(
     if rate is None or avg_min is None:
         return None, {}
 
+    # Return-from-injury ramp: detect recent real absence (≥3 missed games) and
+    # apply a tapering discount to both minutes and rate for the first ~8 games
+    # back.  Separate from _self_injury_check's same-day GTD/Probable penalty.
+    games_since_return = detect_injury_return(rs_logs)
+    rust_discount      = injury_rust_discount(games_since_return)
+    if rust_discount > 0:
+        avg_min  = avg_min  * (1.0 - rust_discount)
+        rate     = rate     * (1.0 - rust_discount * 0.5)   # rate discounted half as much
+    else:
+        rust_discount = 0.0   # ensure consistent type for detail dict
+
     mins_reduced = 0.0
     if abs(spread) > BLOWOUT_SPREAD_THRESHOLD and avg_min >= STARTER_MIN_THRESHOLD:
         favored_is_home = spread > 0
@@ -1714,6 +1802,8 @@ def project_stat(
         "player_penalty": round(player_penalty, 3),  # v8 Fix 2
         "data_adj": round(data_adj, 2),  # v8 Fix 3
         "learned_adj": round(learned_proj_adj, 2),  # from train_model.py
+        "rust_discount": round(rust_discount, 3),   # return-from-injury ramp
+        "games_since_return": games_since_return,
         "base": round(base_proj, 1),
         "final": round(final_proj, 1),
         "po_games": len(po_logs),

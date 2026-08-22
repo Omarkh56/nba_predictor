@@ -94,6 +94,21 @@ GAME_FEATURES = [
     "h2h_margin",     # historical H2H avg margin (shrinkage-smoothed)
 ]
 
+# New candidate features — included when --new-signals flag is passed.
+# Validated against GAME_FEATURES baseline before wiring in as defaults.
+GAME_FEATURES_NEW = [
+    "altitude_penalty",   # away team acclimatization deficit at DEN/UTA (0=neutral)
+    "venue_residual",     # home team's home-W% minus overall-W% (isolated building effect)
+    "star_form_diff",     # PPG-weighted, shrunk star-player EWMA deviation (home − away)
+]
+GAME_FEATURES_EXTENDED = GAME_FEATURES + GAME_FEATURES_NEW
+
+# Nuggets (1610612743) and Jazz (1610612762) — the only NBA venues above 4 000 ft.
+_ALTITUDE_HOME_TIDS: frozenset = frozenset({1610612743, 1610612762})
+# Star-form shrinkage constant: games needed before trusting a streak (same n/(n+k) used
+# in calibrate.py's player-projection bias).
+_STAR_FORM_SHRINK_K: int = 10
+
 PLAYER_STATS  = ["PTS", "REB", "AST", "FG3M", "STL", "BLK"]
 POS_GROUPS    = ["G", "F", "C"]
 
@@ -207,6 +222,114 @@ def fetch_player_positions(seasons: list, force: bool = False) -> dict:
 # SECTION 2 — GAME FEATURE ENGINEERING (walk-forward, no lookahead)
 # =============================================================================
 
+# ── New signal helpers ─────────────────────────────────────────────────────────
+
+def altitude_feature(home_tid: int, away_b2b: int, away_rest_days: float) -> float:
+    """
+    Away-team acclimatization deficit at elevation venues (DEN, UTA only).
+    Returns 0.0 for all other home venues.
+    Range [0, 1]: 1 = maximally unacclimatized (B2B into altitude); 0 = well-rested.
+
+    Acclimatization is approximated by rest-days only; a proper model would
+    also track the previous city's elevation, but that data isn't in the NBA
+    game log.  Conservative: teams that arrive 3+ days early are treated as
+    fully acclimatized (factor → 0).
+    """
+    if int(home_tid) not in _ALTITUDE_HOME_TIDS:
+        return 0.0
+    if away_b2b:
+        return 1.0
+    # Linear interpolation: 0 rest_days → 1.0, 3+ rest_days → 0.0
+    return float(max(0.0, (3.0 - float(away_rest_days)) / 3.0))
+
+
+def venue_residual_from_record(home_win_count: int, home_game_count: int,
+                                total_win_count: int, total_game_count: int) -> float:
+    """
+    Isolated venue/crowd effect: home win% minus overall win%.
+    A positive value means the team wins MORE at home than their overall quality
+    predicts; a negative value means they under-perform at home.
+    Returns 0.0 when fewer than 3 home or 3 total games have been played.
+    """
+    if home_game_count < 3 or total_game_count < 3:
+        return 0.0
+    home_wp  = home_win_count  / home_game_count
+    total_wp = total_win_count / total_game_count
+    return float(home_wp - total_wp)
+
+
+def compute_star_form_index(
+    player_logs: pd.DataFrame,
+    ewma_halflife: float = 5.0,
+    top_k: int = 2,
+    shrink_k: int = _STAR_FORM_SHRINK_K,
+) -> pd.DataFrame:
+    """
+    Walk-forward star-player form index per (team_id, game_id).
+
+    For each game G, computes: PPG-weighted mean of the top-k players' EWMA
+    deviations from their own season average, shrunk by n/(n+k) where n is
+    the number of games played before G.
+
+    Returns DataFrame with columns [team_id, game_id, star_form].
+    The value is in points-above-baseline units; positive = hot streak.
+    All features use only data from games BEFORE game G (no lookahead).
+    """
+    if player_logs.empty:
+        return pd.DataFrame(columns=["team_id", "game_id", "star_form"])
+
+    pl = player_logs.copy()
+    pl["GAME_DATE"] = pd.to_datetime(pl["GAME_DATE"])
+    pl["PTS"] = pd.to_numeric(pl["PTS"], errors="coerce").fillna(0.0)
+    pl["MIN"] = pd.to_numeric(pl["MIN"], errors="coerce").fillna(0.0)
+
+    records = []
+    for (team_id, player_id), grp in pl.groupby(["TEAM_ID", "PLAYER_ID"]):
+        g = grp.sort_values("GAME_DATE").reset_index(drop=True)
+        g = g[g["MIN"] >= 8].reset_index(drop=True)   # skip DNPs
+        if len(g) < 5:
+            continue
+
+        g["season_avg"]  = g["PTS"].shift(1).expanding(min_periods=3).mean()
+        g["ewma_pts"]    = g["PTS"].shift(1).ewm(halflife=ewma_halflife, min_periods=3).mean()
+        g["deviation"]   = g["ewma_pts"] - g["season_avg"]
+        g["games_before"] = np.arange(len(g))
+        g["shrink"]      = g["games_before"] / (g["games_before"] + shrink_k)
+        g["shrunk_dev"]  = g["deviation"] * g["shrink"]
+        # Player value proxy: expanding PPG average before this game
+        g["ppg_value"]   = g["PTS"].shift(1).expanding(min_periods=1).mean().fillna(0)
+
+        for _, row in g.iterrows():
+            if pd.isna(row["shrunk_dev"]) or row["ppg_value"] <= 0:
+                continue
+            records.append({
+                "team_id":    int(team_id),
+                "player_id":  int(player_id),
+                "game_id":    str(row["GAME_ID"]),
+                "shrunk_dev": float(row["shrunk_dev"]),
+                "ppg_value":  float(row["ppg_value"]),
+            })
+
+    if not records:
+        return pd.DataFrame(columns=["team_id", "game_id", "star_form"])
+
+    df = pd.DataFrame(records)
+
+    # For each (team, game): weight deviations by PPG value, take top-k contributors
+    out_rows = []
+    for (team_id, game_id), grp in df.groupby(["team_id", "game_id"]):
+        top = grp.nlargest(top_k, "ppg_value")
+        total_val = top["ppg_value"].sum()
+        if total_val <= 0:
+            continue
+        weighted_dev = (top["shrunk_dev"] * top["ppg_value"]).sum() / total_val
+        out_rows.append({"team_id": team_id, "game_id": game_id, "star_form": weighted_dev})
+
+    return pd.DataFrame(out_rows) if out_rows else pd.DataFrame(
+        columns=["team_id", "game_id", "star_form"]
+    )
+
+
 def _four_factors_from_row(row: pd.Series) -> dict:
     fga  = max(float(row.get("FGA", 1)), 1)
     fta  = float(row.get("FTA", 0))
@@ -225,12 +348,14 @@ def _four_factors_from_row(row: pd.Series) -> dict:
     }
 
 
-def build_game_dataset(team_logs: pd.DataFrame) -> pd.DataFrame:
+def build_game_dataset(team_logs: pd.DataFrame,
+                       player_logs: pd.DataFrame = None) -> pd.DataFrame:
     """
     Walk-forward game dataset. For each game G on date D, features are
     computed exclusively from games before D (no lookahead).
 
     Returns one row per game (home team perspective).
+    Optional player_logs enables the star_form_diff feature.
     """
     if team_logs.empty:
         return pd.DataFrame()
@@ -264,6 +389,21 @@ def build_game_dataset(team_logs: pd.DataFrame) -> pd.DataFrame:
         g["l10_pm"] = g["PLUS_MINUS"].shift(1).rolling(10, min_periods=4).mean()
         g["wpct"]   = (g["WL"] == "W").shift(1).expanding(min_periods=3).mean()
 
+        # Walk-forward venue residual: home_win% - overall_win% before this game.
+        # Positive = team wins MORE at home than their overall quality predicts.
+        g["is_win"]      = (g["WL"] == "W").astype(float)
+        g["cum_wins"]    = g["is_win"].shift(1).expanding().sum().fillna(0)
+        g["cum_games"]   = pd.Series(np.arange(len(g)), index=g.index).values  # 0,1,2,...
+        g["cum_hm_wins"] = (g["is_win"] * g["is_home"].astype(float)).shift(1).expanding().sum().fillna(0)
+        g["cum_hm_games"]= g["is_home"].astype(float).shift(1).expanding().sum().fillna(0)
+        g["venue_res"]   = g.apply(
+            lambda r: venue_residual_from_record(
+                int(r["cum_hm_wins"]), int(r["cum_hm_games"]),
+                int(r["cum_wins"]),    int(r["cum_games"]),
+            ),
+            axis=1,
+        )
+
         team_stats[int(tid)] = g.set_index("GAME_ID")
 
     # Match home and away sides of each game
@@ -295,22 +435,33 @@ def build_game_dataset(team_logs: pd.DataFrame) -> pd.DataFrame:
         h_l10 = hs.get("l10_pm", 0) if not pd.isna(hs.get("l10_pm", np.nan)) else hs["roll_PLUS_MINUS"]
         a_l10 = as_.get("l10_pm", 0) if not pd.isna(as_.get("l10_pm", np.nan)) else as_["roll_PLUS_MINUS"]
 
+        away_rest  = float(as_["rest_days"]) if not pd.isna(as_["rest_days"]) else 3.0
+        away_b2b_v = int(as_["b2b"])
+        h_venue_res = float(hs.get("venue_res", 0.0)) if not pd.isna(hs.get("venue_res", np.nan)) else 0.0
+        a_venue_res = float(as_.get("venue_res", 0.0)) if not pd.isna(as_.get("venue_res", np.nan)) else 0.0
+
         rec = {
-            # Features
-            "net_rtg_diff": hs["roll_PLUS_MINUS"] - as_["roll_PLUS_MINUS"],
-            "efg_diff":     hs["roll_efg"]        - as_["roll_efg"],
-            "tov_diff":     as_["roll_tov_r"]     - hs["roll_tov_r"],   # positive = home advantage
-            "orb_diff":     hs["roll_orb_r"]      - as_["roll_orb_r"],
-            "ftr_diff":     hs["roll_ftr"]         - as_["roll_ftr"],
-            "form_diff":    float(h_l10)           - float(a_l10),
-            "home_b2b":     int(hs["b2b"]),
-            "away_b2b":     int(as_["b2b"]),
-            "rest_diff":    float(np.clip(hs["rest_days"] - as_["rest_days"], -5, 5)),
-            "h2h_margin":   0.0,   # filled below for within-season H2H
-            "home_wpct":    float(hs["wpct"]) if not pd.isna(hs["wpct"]) else 0.5,
+            # Features — original 10
+            "net_rtg_diff":    hs["roll_PLUS_MINUS"] - as_["roll_PLUS_MINUS"],
+            "efg_diff":        hs["roll_efg"]        - as_["roll_efg"],
+            "tov_diff":        as_["roll_tov_r"]     - hs["roll_tov_r"],
+            "orb_diff":        hs["roll_orb_r"]      - as_["roll_orb_r"],
+            "ftr_diff":        hs["roll_ftr"]         - as_["roll_ftr"],
+            "form_diff":       float(h_l10)           - float(a_l10),
+            "home_b2b":        int(hs["b2b"]),
+            "away_b2b":        int(as_["b2b"]),
+            "rest_diff":       float(np.clip(hs["rest_days"] - as_["rest_days"], -5, 5)),
+            "h2h_margin":      0.0,   # filled below for within-season H2H
+            "home_wpct":       float(hs["wpct"]) if not pd.isna(hs["wpct"]) else 0.5,
+            # New signal 1: altitude
+            "altitude_penalty": altitude_feature(htid, away_b2b_v, away_rest),
+            # New signal 2: residualized venue effect
+            "venue_residual":  h_venue_res - a_venue_res,
+            # New signal 3: star form (filled after player_logs merge)
+            "star_form_diff":  0.0,
             # Targets
-            "actual_margin": float(hr["PLUS_MINUS"]),   # home_pts - away_pts
-            "home_win":      int(hr["WL"] == "W"),
+            "actual_margin":   float(hr["PLUS_MINUS"]),
+            "home_win":        int(hr["WL"] == "W"),
             # Metadata
             "game_id":   game_id,
             "game_date": hr["GAME_DATE"],
@@ -345,6 +496,37 @@ def build_game_dataset(team_logs: pd.DataFrame) -> pd.DataFrame:
         h2h_seen.setdefault(key, []).append(margin_for_key)
 
     df["h2h_margin"] = h2h_margins
+
+    # Signal 3: merge star form from player logs (walk-forward, pre-computed)
+    if player_logs is not None and not player_logs.empty:
+        sf = compute_star_form_index(player_logs)
+        if not sf.empty:
+            sf = sf.rename(columns={"star_form": "_h_star"})
+            sf["game_id"] = sf["game_id"].astype(str)
+            df["game_id"] = df["game_id"].astype(str)
+
+            # Home team star form
+            df = df.merge(
+                sf[["team_id", "game_id", "_h_star"]],
+                left_on=["home_tid", "game_id"],
+                right_on=["team_id", "game_id"],
+                how="left",
+            ).drop(columns="team_id", errors="ignore")
+
+            # Away team star form
+            sf2 = sf.rename(columns={"_h_star": "_a_star"})
+            df = df.merge(
+                sf2[["team_id", "game_id", "_a_star"]],
+                left_on=["away_tid", "game_id"],
+                right_on=["team_id", "game_id"],
+                how="left",
+            ).drop(columns="team_id", errors="ignore")
+
+            df["star_form_diff"] = (
+                df["_h_star"].fillna(0.0) - df["_a_star"].fillna(0.0)
+            )
+            df = df.drop(columns=["_h_star", "_a_star"], errors="ignore")
+
     return df
 
 
@@ -392,16 +574,21 @@ def hand_tuned_predict(df: pd.DataFrame) -> np.ndarray:
 # SECTION 4 — GAME MODEL FITTING
 # =============================================================================
 
-def fit_game_models(df_train: pd.DataFrame, df_val: pd.DataFrame) -> dict:
+def fit_game_models(df_train: pd.DataFrame, df_val: pd.DataFrame,
+                    features: list = None) -> dict:
     """
     Fit logistic regression (win prob) + ridge regression (margin).
+    features — the exact list of column names to use; defaults to GAME_FEATURES.
     Returns dict with model objects, scalers, and evaluation results.
     """
-    X_train = df_train[GAME_FEATURES].values
+    if features is None:
+        features = GAME_FEATURES
+
+    X_train  = df_train[features].values
     y_win_tr = df_train["home_win"].values
     y_mgn_tr = df_train["actual_margin"].values
 
-    X_val   = df_val[GAME_FEATURES].values
+    X_val   = df_val[features].values
     y_win_v = df_val["home_win"].values
     y_mgn_v = df_val["actual_margin"].values
 
@@ -421,7 +608,10 @@ def fit_game_models(df_train: pd.DataFrame, df_val: pd.DataFrame) -> dict:
     bs_learned  = brier_score_loss(y_win_v, learned_probs_val)
     bs_hand     = brier_score_loss(y_win_v, handtuned_probs_val)
 
-    print(f"\n  === GAME MODEL EVALUATION (val set: {len(df_val)} games) ===")
+    n_new = len(features) - len(GAME_FEATURES)
+    feat_label = (f"{len(features)} features ({len(GAME_FEATURES)} base + {n_new} new)"
+                  if n_new > 0 else f"{len(features)} features")
+    print(f"\n  === GAME MODEL EVALUATION ({feat_label}) — val set: {len(df_val)} games ===")
     print(f"  {'Model':<20} {'Log Loss':>10} {'Brier':>10}")
     print(f"  {'-'*40}")
     print(f"  {'Hand-tuned':<20} {ll_hand:>10.4f} {bs_hand:>10.4f}")
@@ -449,33 +639,148 @@ def fit_game_models(df_train: pd.DataFrame, df_val: pd.DataFrame) -> dict:
     print(f"\n  Margin model RMSE={rmse:.2f} MAE={mae:.2f}")
 
     # Feature importance (standardized coefficients)
-    coef_dict = dict(zip(GAME_FEATURES, log_model.coef_[0].tolist()))
+    coef_dict = dict(zip(features, log_model.coef_[0].tolist()))
     print("\n  Learned logistic regression coefficients (standardized):")
     for feat, coef in sorted(coef_dict.items(), key=lambda x: -abs(x[1])):
         bar = "+" * int(abs(coef) * 5) if coef > 0 else "-" * int(abs(coef) * 5)
-        print(f"    {feat:<18} {coef:>+7.4f}  {bar}")
+        print(f"    {feat:<22} {coef:>+7.4f}  {bar}")
 
     return {
         "log_model":           log_model,
         "ridge_model":         ridge_model,
         "scaler":              scaler,
-        "feature_names":       GAME_FEATURES,
+        "feature_names":       features,
         "scaler_mean":         scaler.mean_.tolist(),
         "scaler_scale":        scaler.scale_.tolist(),
         "log_intercept":       float(log_model.intercept_[0]),
         "log_coefficients":    {f: float(c) for f, c in coef_dict.items()},
         "ridge_intercept":     float(ridge_model.intercept_),
         "ridge_coefficients":  {f: float(c) for f, c
-                                 in zip(GAME_FEATURES, ridge_model.coef_.tolist())},
+                                 in zip(features, ridge_model.coef_.tolist())},
         "hand_tuned_log_loss": ll_hand,
         "learned_log_loss":    ll_learned,
         "hand_tuned_brier":    bs_hand,
         "learned_brier":       bs_learned,
+        "test_log_loss":       None,
+        "test_brier":          None,
+        "test_games":          None,
         "margin_rmse":         rmse,
         "margin_mae":          mae,
         "val_games":           len(df_val),
         "train_games":         len(df_train),
         "recommendation":      recommendation,
+    }
+
+
+# =============================================================================
+# SECTION 4b — NEW-SIGNAL ABLATION STUDY
+# =============================================================================
+
+def ablation_study(df_train: pd.DataFrame, df_val: pd.DataFrame) -> dict:
+    """
+    Compare baseline (GAME_FEATURES) against each new signal individually.
+    Pass criterion: beats baseline on BOTH log loss AND Brier (stricter than
+    one-metric wins — the same bar used for the overall swap/keep decision).
+
+    Returns:
+      baseline         — {log_loss, brier}
+      features         — per-feature {log_loss, brier, delta_ll, delta_brier,
+                          passed, reason}  ← inspectable in learned_params.json
+      winning_features — list of new feature names that passed (may be empty)
+      new_signal_rec   — "use_extended" | "keep_base"
+    """
+    y_val = df_val["home_win"].values
+
+    def _fit_eval(feats: list) -> dict:
+        available = [f for f in feats if f in df_train.columns and f in df_val.columns]
+        if len(available) != len(feats):
+            return {}
+        X_tr = df_train[available].values
+        X_vl = df_val[available].values
+        sc   = StandardScaler().fit(X_tr)
+        clf  = LogisticRegression(C=1.0, max_iter=1000, random_state=42)
+        clf.fit(sc.transform(X_tr), df_train["home_win"].values)
+        probs = clf.predict_proba(sc.transform(X_vl))[:, 1]
+        return {
+            "log_loss": float(log_loss(y_val, probs)),
+            "brier":    float(brier_score_loss(y_val, probs)),
+        }
+
+    base = _fit_eval(GAME_FEATURES)
+    if not base:
+        return {"winning_features": [], "baseline": {}, "features": {}, "new_signal_rec": "keep_base"}
+
+    base_ll = base["log_loss"]
+    base_bs = base["brier"]
+
+    feature_results = {}
+    winning_features = []
+
+    for feat_name in ["altitude_penalty", "venue_residual", "star_form_diff"]:
+        r = _fit_eval(GAME_FEATURES + [feat_name])
+        if not r:
+            feature_results[feat_name] = {
+                "log_loss": None, "brier": None,
+                "delta_ll": None, "delta_brier": None,
+                "passed": False,
+                "reason": "feature column missing from dataset",
+            }
+            continue
+
+        d_ll  = r["log_loss"] - base_ll
+        d_bs  = r["brier"]    - base_bs
+        beats_ll = r["log_loss"] < base_ll
+        beats_bs = r["brier"]    < base_bs
+        passed   = beats_ll and beats_bs
+
+        if passed:
+            reason = "beats baseline on both metrics"
+            winning_features.append(feat_name)
+        elif not beats_ll and not beats_bs:
+            reason = f"worse log loss ({d_ll:+.4f}) and worse Brier ({d_bs:+.4f})"
+        elif not beats_ll:
+            reason = f"worse log loss ({d_ll:+.4f}); Brier improves but not enough alone"
+        else:
+            reason = f"worse Brier ({d_bs:+.4f}); log loss improves but not enough alone"
+
+        feature_results[feat_name] = {
+            "log_loss":    round(r["log_loss"], 6),
+            "brier":       round(r["brier"], 6),
+            "delta_ll":    round(d_ll, 6),
+            "delta_brier": round(d_bs, 6),
+            "passed":      passed,
+            "reason":      reason,
+        }
+
+    # ── Print table ──────────────────────────────────────────────────────────
+    W = 72
+    print(f"\n  {'─'*W}")
+    print(f"  ABLATION STUDY — new signals vs baseline (val set: {len(df_val)} games)")
+    print(f"  {'─'*W}")
+    print(f"  {'Feature':<22} {'LL':>8} {'ΔLL':>8} {'Brier':>8} {'ΔBrier':>8} {'':>5}")
+    print(f"  {'─'*W}")
+    print(f"  {'Baseline (10 feats)':<22} {base_ll:>8.4f} {'—':>8} {base_bs:>8.4f} {'—':>8} {'★':>5}")
+    for feat_name, r in feature_results.items():
+        if r["log_loss"] is None:
+            print(f"  {feat_name:<22}  MISSING (column not in dataset)")
+            continue
+        mark = "✓ PASS" if r["passed"] else "✗ FAIL"
+        print(f"  {feat_name:<22} {r['log_loss']:>8.4f} {r['delta_ll']:>+8.4f} "
+              f"{r['brier']:>8.4f} {r['delta_brier']:>+8.4f} {mark:>5}")
+        if not r["passed"]:
+            print(f"  {'':>22}  → excluded: {r['reason']}")
+    print(f"  {'─'*W}")
+
+    if winning_features:
+        print(f"  Winning features (added to production model): {winning_features}")
+    else:
+        print("  No new features beat baseline on both metrics → production stays at 10 features")
+
+    return {
+        "baseline":          {"log_loss": round(base_ll, 6), "brier": round(base_bs, 6)},
+        "features":          feature_results,
+        "winning_features":  winning_features,
+        "new_signal_rec":    "use_extended" if winning_features else "keep_base",
     }
 
 
@@ -735,18 +1040,39 @@ def bootstrap_calibration(df_game: pd.DataFrame,
 # =============================================================================
 
 def save_params(game_result: dict, player_result: dict,
-                calib: dict, seasons: list, no_bootstrap: bool) -> None:
+                calib: dict, seasons: list, no_bootstrap: bool,
+                venue_residuals: dict = None,
+                ablation_result: dict = None,
+                test_result: dict = None) -> None:
+    gm_section = {
+        k: v for k, v in game_result.items()
+        if k not in ("log_model", "ridge_model", "scaler")
+    }
+    # Overlay test-set numbers if we have them
+    if test_result:
+        gm_section["test_log_loss"] = test_result.get("log_loss")
+        gm_section["test_brier"]    = test_result.get("brier")
+        gm_section["test_games"]    = test_result.get("n_games")
+        if test_result.get("note"):
+            gm_section["test_note"] = test_result["note"]
+
     params = {
-        "version":    datetime.now().strftime("%Y-%m-%d"),
-        "trained_on": [s for s in seasons if s != TRAIN_CUTOFF],
+        "version":      datetime.now().strftime("%Y-%m-%d"),
+        "trained_on":   [s for s in seasons if s != TRAIN_CUTOFF],
         "validated_on": TRAIN_CUTOFF,
-        "game_model": {
-            k: v for k, v in game_result.items()
-            if k not in ("log_model", "ridge_model", "scaler")
-        },
-        "player_models": player_result["stat_models"],
+        "game_model":   gm_section,
+        "player_models":   player_result["stat_models"],
         "player_variance": player_result["variance"],
     }
+    if venue_residuals:
+        params["venue_residuals"] = venue_residuals
+    if ablation_result:
+        params["ablation"] = {
+            "baseline":          ablation_result.get("baseline", {}),
+            "features":          ablation_result.get("features", {}),
+            "winning_features":  ablation_result.get("winning_features", []),
+            "new_signal_rec":    ablation_result.get("new_signal_rec", "keep_base"),
+        }
 
     with open(PARAMS_FILE, "w") as fh:
         json.dump(params, fh, indent=2)
@@ -829,7 +1155,7 @@ def main():
 
     # ── 2. Build game dataset ─────────────────────────────────────────────
     print(f"\n[4/5] Engineering game features ...")
-    df_game = build_game_dataset(team_logs)
+    df_game = build_game_dataset(team_logs, player_logs=player_logs)
     print(f"  Game dataset: {len(df_game)} games "
           f"({df_game['home_win'].sum()} home wins = "
           f"{df_game['home_win'].mean():.1%} HWP)")
@@ -848,8 +1174,83 @@ def main():
         df_val   = df_game.iloc[cutoff_idx:].copy()
     print(f"  Train: {len(df_train)} games | Val: {len(df_val)} games")
 
-    # ── 3. Fit game model ─────────────────────────────────────────────────
-    game_result = fit_game_models(df_train, df_val)
+    # ── 3a. Ablation study — determines which new features (if any) pass ─────
+    ablation_res = ablation_study(df_train, df_val)
+    winning_new   = ablation_res.get("winning_features", [])
+    final_features = GAME_FEATURES + winning_new
+    if winning_new:
+        print(f"\n  Production feature set: {len(final_features)} features "
+              f"({len(GAME_FEATURES)} base + {len(winning_new)} new: {winning_new})")
+    else:
+        print(f"\n  Production feature set: {len(final_features)} features (base only)")
+
+    # ── 3b. Fit production model on the final feature set ────────────────────
+    game_result = fit_game_models(df_train, df_val, features=final_features)
+
+    # ── 3c. One-time test-set evaluation on 2025-26 ──────────────────────────
+    test_result: dict = {}
+    test_season = "2025-26"
+    print(f"\n  [test] Loading {test_season} data from cache ...", end=" ", flush=True)
+    test_team_logs   = fetch_team_game_logs([test_season],   force=False)
+    test_player_logs = fetch_player_game_logs([test_season], force=False)
+
+    if test_team_logs.empty:
+        print("not found")
+        test_result = {
+            "log_loss": None, "brier": None, "n_games": 0,
+            "note": f"{test_season} data not in cache — run without --no-fetch to populate",
+        }
+    else:
+        print(f"{len(test_team_logs)} rows")
+        all_team_logs = pd.concat([team_logs, test_team_logs], ignore_index=True)
+        if not test_player_logs.empty:
+            all_player_logs = pd.concat([player_logs, test_player_logs], ignore_index=True)
+        else:
+            all_player_logs = player_logs
+        df_full = build_game_dataset(
+            all_team_logs,
+            player_logs=all_player_logs if not all_player_logs.empty else None,
+        )
+        df_test = df_full[df_full["season"] == test_season].copy()
+        if df_test.empty:
+            test_result = {
+                "log_loss": None, "brier": None, "n_games": 0,
+                "note": f"0 complete games found in {test_season}",
+            }
+        else:
+            missing_cols = [f for f in final_features if f not in df_test.columns]
+            if missing_cols:
+                test_result = {
+                    "log_loss": None, "brier": None, "n_games": len(df_test),
+                    "note": f"missing feature columns: {missing_cols}",
+                }
+            else:
+                scaler    = game_result["scaler"]
+                log_model = game_result["log_model"]
+                X_test    = df_test[final_features].values
+                probs_test = log_model.predict_proba(scaler.transform(X_test))[:, 1]
+                y_test     = df_test["home_win"].values
+                t_ll  = float(log_loss(y_test, probs_test))
+                t_bs  = float(brier_score_loss(y_test, probs_test))
+                test_result = {"log_loss": round(t_ll, 6), "brier": round(t_bs, 6),
+                               "n_games": len(df_test)}
+                print(f"  [test] {test_season}: {len(df_test)} games  "
+                      f"log_loss={t_ll:.4f}  brier={t_bs:.4f}")
+
+    # Compute season-end venue residuals per team for live-predictor loading
+    venue_residuals: dict = {}
+    for tid, grp in team_logs.groupby("TEAM_ID"):
+        sorted_g = grp.sort_values("GAME_DATE")
+        is_win  = (sorted_g["WL"] == "W").astype(float)
+        is_home = sorted_g["MATCHUP"].str.contains(r"vs\.", na=False).astype(float)
+        total_wins  = int(is_win.sum())
+        total_games = len(sorted_g)
+        home_wins   = int((is_win * is_home).sum())
+        home_games  = int(is_home.sum())
+        venue_residuals[str(int(tid))] = round(
+            venue_residual_from_record(home_wins, home_games, total_wins, total_games),
+            4,
+        )
 
     # ── 4. Build player dataset & fit player models ───────────────────────
     print(f"\n[5/5] Engineering player features ...")
@@ -868,7 +1269,9 @@ def main():
         calib = bootstrap_calibration(df_game, df_players, player_result)
 
     # ── 6. Save ────────────────────────────────────────────────────────────
-    save_params(game_result, player_result, calib, seasons, args.no_bootstrap)
+    save_params(game_result, player_result, calib, seasons, args.no_bootstrap,
+                venue_residuals=venue_residuals, ablation_result=ablation_res,
+                test_result=test_result)
 
     print("\n  Done. Next steps:")
     rec = game_result["recommendation"]

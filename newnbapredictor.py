@@ -174,10 +174,23 @@ FORM_GAMES = 10
 FORM_WEIGHT = 0.20  # how much L10 form shifts margin vs season baseline
 
 # Factor 7: HOME COURT ADVANTAGE
-# Base HCA + venue intensity factor (some arenas are louder/harder)
+# Base HCA.  The venue residual loaded from learned_params.json replaces the
+# old win%-proxy (home_win_pct - 0.57) * HCA_VENUE_SCALE when available.
 BASE_HCA = 2.8
-# Teams with extreme home W% (>65%) get a small boost; <50% get a reduction
-HCA_VENUE_SCALE = 2.0  # pts range for venue adjustment
+HCA_VENUE_SCALE = 2.0  # pts range for venue adjustment (fallback if no residuals)
+
+# Factor 11: ALTITUDE / ACCLIMATIZATION
+# Only Denver (DEN) and Utah (UTA) are meaningfully elevated NBA venues.
+# Interaction with away-team acclimatization: more rest → smaller penalty.
+ALTITUDE_PENALTY = 1.8  # max pts penalty for an unacclimatized away team (tunable)
+_ALTITUDE_ABBRS: frozenset = frozenset({"DEN", "UTA"})
+
+# Factor 12: STAR PLAYER FORM
+# PPG-weighted EWMA deviation of top player(s) from their own season average,
+# shrunk toward zero with the n/(n+k) pattern (same as calibrate.py).
+STAR_FORM_WEIGHT = 0.12   # pts per unit of shrunk deviation
+STAR_FORM_SHRINK_K = 10   # same constant as train_model.py's _STAR_FORM_SHRINK_K
+STAR_FORM_TOP_K = 2       # number of top players considered per team
 
 # Factor 8: OFF/DEF RATINGS — used within matchup analysis, not standalone
 
@@ -202,11 +215,12 @@ H2H_SHRINKAGE_K = 5
 USE_LEARNED_GAME_MODEL: bool = False
 
 _LEARNED_GAME_PARAMS: dict = {}
+_VENUE_RESIDUALS: dict = {}   # {team_id_str: float} — isolated home-court edge
 
 
 def _load_learned_params() -> None:
     """Load learned_params.json once at startup if it exists."""
-    global _LEARNED_GAME_PARAMS, RTG_SCALE
+    global _LEARNED_GAME_PARAMS, RTG_SCALE, _VENUE_RESIDUALS
     params_file = Path(__file__).parent / "learned_params.json"
     if not params_file.exists():
         return
@@ -223,6 +237,10 @@ def _load_learned_params() -> None:
                 f"  [train_model] game params loaded  "
                 f"(rec={rec}  ll_hand={ll_h:.4f}  ll_learned={ll_l:.4f})"
             )
+        vr = data.get("venue_residuals", {})
+        if vr:
+            _VENUE_RESIDUALS = vr
+            print(f"  [train_model] venue residuals loaded ({len(vr)} teams)")
     except Exception as e:
         print(f"  [train_model] failed to load learned_params.json: {e}")
 
@@ -888,6 +906,147 @@ def compute_matchup_edge(home_row, away_row, league_avgs: dict) -> Tuple[float, 
 
 
 # =============================================================================
+# FACTOR 11: ALTITUDE / ACCLIMATIZATION
+# =============================================================================
+
+def compute_altitude_adj(home_abbr: str, away_form: dict) -> Tuple[float, dict]:
+    """
+    Away-team penalty at Denver (DEN) and Utah (UTA) — the only NBA venues
+    above ~4 000 ft.  The effect is an INTERACTION with acclimatization:
+    a well-rested away team suffers less than one arriving on a back-to-back.
+
+    Penalty range: 0.0 (non-altitude venue) to ALTITUDE_PENALTY (fully unacclimatized).
+
+    Returns (adjustment, detail_dict).  adjustment is negative (hurts away team).
+    """
+    if home_abbr not in _ALTITUDE_ABBRS:
+        return 0.0, {"venue": home_abbr, "penalty": 0.0}
+
+    days_rest    = float(away_form.get("days_rest", 3))
+    b2b          = bool(away_form.get("b2b", False))
+    consec_road  = int(away_form.get("consec_road", 0))
+
+    # Acclimatization factor (0 = fully adapted, 1 = maximally disadvantaged)
+    if b2b:
+        accl = 1.0
+    else:
+        # Linear decay: 0 rest → 1.0, 3+ rest → 0.1 (teams arriving early are better adapted)
+        accl = max(0.10, (3.0 - days_rest) / 3.0)
+
+    # Road fatigue compounds altitude stress (each extra road game adds a small stack)
+    road_mult = 1.0 + max(0, consec_road - 2) * 0.05   # 2% per extra road game beyond 2
+
+    raw_penalty = ALTITUDE_PENALTY * accl * min(road_mult, 1.25)
+    adj = -round(raw_penalty, 2)   # negative = away team disadvantage
+
+    return adj, {
+        "venue":       home_abbr,
+        "accl_factor": round(accl, 2),
+        "road_mult":   round(road_mult, 2),
+        "penalty":     round(raw_penalty, 2),
+    }
+
+
+# =============================================================================
+# FACTOR 12: STAR PLAYER FORM (EWMA deviation from season baseline)
+# =============================================================================
+
+def _fetch_player_star_form(team_id: int, injuries: dict, season: str) -> float:
+    """
+    Compute PPG-weighted, shrinkage-adjusted deviation of top players from
+    their season average, using recent game logs.  Positive = hot streak.
+
+    Uses the PPG data already enriched in `injuries` to identify star players,
+    then fetches their last 10 game logs to compute EWMA deviation.
+    Cached per team_id for the duration of the prediction run.
+    """
+    cache_key = (team_id, season)
+    if cache_key in _STAR_FORM_CACHE:
+        return _STAR_FORM_CACHE[cache_key]
+
+    # Identify top-k players for this team from the injuries enrichment
+    # (injuries dict contains all known players with PPG, not just injured ones)
+    players_with_ppg = [
+        (name, info)
+        for name, info in injuries.items()
+        if info.get("team_id") == team_id and info.get("ppg", 0) > 10
+    ]
+    players_with_ppg.sort(key=lambda x: x[1].get("ppg", 0), reverse=True)
+    top_players = players_with_ppg[:STAR_FORM_TOP_K]
+
+    if not top_players:
+        _STAR_FORM_CACHE[cache_key] = 0.0
+        return 0.0
+
+    total_ppg    = sum(info.get("ppg", 0) for _, info in top_players)
+    weighted_dev = 0.0
+
+    for name, info in top_players:
+        pid  = info.get("player_id")
+        ppg  = info.get("ppg", 0)
+        if not pid:
+            continue
+        try:
+            from nba_api.stats.endpoints import playergamelog
+            df = _api_call(
+                lambda: playergamelog.PlayerGameLog(
+                    player_id=pid,
+                    season=season,
+                    season_type_all_star="Regular Season",
+                    timeout=20,
+                ).get_data_frames()[0].head(15)
+            )
+            if df.empty:
+                continue
+            pts = pd.to_numeric(df["PTS"], errors="coerce").dropna()
+            if len(pts) < 4:
+                continue
+            season_avg = float(pts.mean())
+            ewma_val   = float(pts.ewm(halflife=5).mean().iloc[0])  # most recent weighted
+            raw_dev    = ewma_val - season_avg
+            n          = len(pts)
+            shrunk_dev = raw_dev * n / (n + STAR_FORM_SHRINK_K)
+            weighted_dev += shrunk_dev * (ppg / max(total_ppg, 1))
+        except Exception:
+            continue
+
+    _STAR_FORM_CACHE[cache_key] = float(weighted_dev)
+    return float(weighted_dev)
+
+
+_STAR_FORM_CACHE: dict = {}
+
+
+def compute_star_form_adj(home_id: int, away_id: int,
+                          injuries: dict, season: str) -> Tuple[float, dict]:
+    """
+    Star player form factor: home team's star deviation minus away team's.
+    Positive = home stars are hotter relative to their baselines.
+
+    Returns (adjustment, detail_dict).
+    """
+    h_dev = _fetch_player_star_form(home_id, injuries, season)
+    a_dev = _fetch_player_star_form(away_id, injuries, season)
+    adj   = round((h_dev - a_dev) * STAR_FORM_WEIGHT, 2)
+    return adj, {"home_star_dev": round(h_dev, 2), "away_star_dev": round(a_dev, 2)}
+
+
+def _compute_hca(home_id: int, home_abbr: str, home_row) -> float:
+    """
+    Residualized home-court advantage.
+    If venue_residuals are loaded from train_model.py, use the isolated
+    building effect (home_win% - overall_win%) instead of the raw home_win%
+    proxy.  Falls back to the original win%-based formula.
+    """
+    if _VENUE_RESIDUALS:
+        h_res = _VENUE_RESIDUALS.get(str(home_id), 0.0)
+        return max(1.5, min(5.0, BASE_HCA + h_res * HCA_VENUE_SCALE * 2))
+    # Original fallback
+    home_wpct = float(home_row.get("HOME_W_PCT", 0.55))
+    return max(1.5, min(5.0, BASE_HCA + (home_wpct - 0.57) * HCA_VENUE_SCALE))
+
+
+# =============================================================================
 # FACTOR 9: PACE-TALENT INTERACTION
 # =============================================================================
 def compute_pace_variance_adj(home_row, away_row, base_margin: float, league_pace: float) -> float:
@@ -1041,9 +1200,8 @@ def _compute_prediction(
     base_margin = float(home_row["NET_RATING"]) - float(away_row["NET_RATING"])
     breakdown["net_rtg"] = round(base_margin, 2)
 
-    # Factor 7: Home court advantage (applied to base)
-    home_wpct = float(home_row.get("HOME_W_PCT", 0.55))
-    hca = max(1.5, min(5.0, BASE_HCA + (home_wpct - 0.57) * HCA_VENUE_SCALE))
+    # Factor 7: Home court advantage — residualized if venue_residuals loaded
+    hca = _compute_hca(home_id, m["home_abbr"], home_row)
     breakdown["hca"] = round(hca, 2)
     margin = base_margin + hca
 
@@ -1092,6 +1250,16 @@ def _compute_prediction(
     clutch_adj, clutch_det = compute_clutch_adj(home_row, away_row, margin)
     margin += clutch_adj
     breakdown["clutch"] = round(clutch_adj, 2)
+
+    # Factor 11: Altitude / acclimatization (DEN and UTA only)
+    alt_adj, alt_det = compute_altitude_adj(m["home_abbr"], away_form)
+    margin += alt_adj
+    breakdown["altitude"] = round(alt_adj, 2)
+
+    # Factor 12: Star player form (EWMA deviation from season baseline)
+    star_adj, star_det = compute_star_form_adj(home_id, away_id, injuries, season)
+    margin += star_adj
+    breakdown["star_form"] = round(star_adj, 2)
 
     # Final probability — priority: Kalman adaptive > static learned > hand-tuned
     expected_margin = round(margin, 2)
