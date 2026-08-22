@@ -27,7 +27,6 @@ Run:
     python3 nba_combined.py --verbose
 """
 
-import json
 import os
 import sys
 import time
@@ -37,6 +36,7 @@ from datetime import date
 import newnbapredictor   as team_model
 import playerlinepredictor as props_model
 import oddstracker
+import predictions_db as pred_db
 
 SEASON     = "2026-27"
 VERBOSE    = "--verbose" in sys.argv
@@ -563,53 +563,40 @@ def _pick_to_dict(row: pd.Series, game_key: str, pred) -> dict:
     }
 
 
-def export_game_picks_json(team_preds: list, game_date: date):
-    """Write game winner/spread picks to game_predictions_YYYY-MM-DD.json.
-
-    Format matches what checkresults.py expects for game grading:
-      home_abbr, away_abbr, winner_pick, spread (home-team line), spread_pick
-    """
+def export_game_picks_db(team_preds: list, game_date: date) -> None:
+    """Upsert game winner/spread picks into predictions.db."""
     if not team_preds:
         return
-    out = []
+    rows = []
     for r in team_preds:
-        home    = r["home_abbr"]
-        away    = r["away_abbr"]
-        fav     = r["favorite"]
-        margin  = r["expected_margin"]
-        # Home-team spread: negative when home is favored, positive when away is favored
+        margin      = r["expected_margin"]
         home_spread = r["home_spread"] if margin > 0 else r["away_spread"]
-        out.append({
-            "home_abbr":   home,
-            "away_abbr":   away,
+        fav         = r["favorite"]
+        rows.append({
+            "home_abbr":   r["home_abbr"],
+            "away_abbr":   r["away_abbr"],
             "winner_pick": fav,
             "spread":      round(float(home_spread), 1),
-            "spread_pick": fav,          # model backs the favorite to cover
+            "spread_pick": fav,
             "win_pct":     round(float(r["fav_prob"]), 3),
             "total":       round(float(r["predicted_total"]), 1),
         })
-    fname = os.path.join(_HERE, f"game_predictions_{game_date.isoformat()}.json")
-    with open(fname, "w") as f:
-        json.dump(out, f, indent=2)
-    print(f"  Exported {len(out)} game pick(s) → {os.path.basename(fname)}")
+    n = pred_db.upsert_game_predictions(rows, game_date)
+    print(f"  Saved {n} game pick(s) → predictions.db")
 
 
-def export_picks_json(all_picks: list, game_date: date):
-    """Write deduplicated picks to predictions_YYYY-MM-DD.json."""
+def export_picks_db(all_picks: list, game_date: date) -> None:
+    """Deduplicate and upsert prop picks into predictions.db."""
     if not all_picks:
         return
-    fname = os.path.join(_HERE, f"predictions_{game_date.isoformat()}.json")
-    # Deduplicate on (player, market) — keep highest confidence
-    seen   = {}
+    seen: dict = {}
     for p in all_picks:
         key = (p["player"], p["market"])
         if key not in seen or p["confidence"] > seen[key]["confidence"]:
             seen[key] = p
     final = sorted(seen.values(), key=lambda x: x["confidence"], reverse=True)
-    with open(fname, "w") as f:
-        json.dump(final, f, indent=2)
-    print(f"\n  Exported {len(final)} pick(s) → {os.path.basename(fname)}")
-    return fname
+    n = pred_db.upsert_prop_predictions(final, game_date)
+    print(f"\n  Saved {n} pick(s) → predictions.db")
 
 
 # =============================================================================
@@ -818,8 +805,8 @@ def _print_global_summary(team_preds: list, all_props_results: list,
         _print_top("TOP 10 BY CONFIDENCE  most likely to hit", top_conf)
         _print_top("TOP 10 BY EDGE%       biggest mispricing", top_edge)
 
-    export_picks_json(all_picks_export, game_date)
-    export_game_picks_json(team_preds, game_date)
+    export_picks_db(all_picks_export, game_date)
+    export_game_picks_db(team_preds, game_date)
     if all_picks_export:
         print("  Run calibrate.py after grading to keep the model improving.")
 

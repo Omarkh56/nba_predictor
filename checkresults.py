@@ -14,7 +14,6 @@ Requirements:
 """
 
 import csv
-import json
 import os
 import sys
 import time
@@ -25,6 +24,7 @@ from datetime import date, timedelta
 from nba_api.stats.endpoints import leaguegamefinder, boxscoretraditionalv2
 from nba_api.stats.static import players
 import oddstracker
+import predictions_db as pred_db
 
 warnings.filterwarnings("ignore")
 
@@ -37,47 +37,26 @@ else:
     CHECK_DATE = date.today() - timedelta(days=1)
 
 # =============================================================================
-# AUTO-LOAD from predictions_YYYY-MM-DD.json (written by nba_combined.py)
-# Falls back to the manual PREDICTIONS list below if file not found.
+# AUTO-LOAD from predictions.db (written by nba_combined.py)
+# Falls back to the manual PREDICTIONS list below if no rows exist.
 # =============================================================================
-def _load_predictions_json(target_date: date) -> list:
-    fname = os.path.join(_HERE, f"predictions_{target_date.isoformat()}.json")
-    if not os.path.isfile(fname):
-        return []
-    try:
-        with open(fname) as f:
-            data = json.load(f)
-        preds = []
-        seen  = set()
-        for entry in data:
-            key = (entry["player"], entry["market"])
-            if key in seen:
-                continue
-            seen.add(key)
-            preds.append({
-                "player":     entry["player"],
-                "market":     entry["market"],
-                "line":       float(entry["line"]),
-                "pick":       entry["pick"],
-                "projection": float(entry.get("projection", 0)),
-            })
-        print(f"  Auto-loaded {len(preds)} prediction(s) from "
-              f"predictions_{target_date.isoformat()}.json")
-        return preds
-    except Exception as e:
-        print(f"  Warning: could not read predictions JSON — {e}")
-        return []
+def _load_predictions_db(target_date: date) -> list:
+    rows = pred_db.load_prop_predictions(target_date)
+    if rows:
+        print(f"  Auto-loaded {len(rows)} prediction(s) from predictions.db "
+              f"({target_date.isoformat()})")
+    return rows
 
 
 # =============================================================================
-# MANUAL FALLBACK — only used when no JSON file exists for CHECK_DATE
+# MANUAL FALLBACK — only used when no DB rows exist for CHECK_DATE
 # =============================================================================
 PREDICTIONS = []
 
 # =============================================================================
 # Resolve which predictions to use
 # =============================================================================
-_auto = _load_predictions_json(CHECK_DATE)
+_auto = _load_predictions_db(CHECK_DATE)
 PREDICTIONS = _auto if _auto else PREDICTIONS
 
 # Path to the running bet log (auto-created if missing)
@@ -99,46 +78,22 @@ MARKET_TO_COLS = {
 }
 
 # =============================================================================
-# GAME PREDICTIONS — load from game_predictions_YYYY-MM-DD.json
+# GAME PREDICTIONS — load from predictions.db
 #
-# Expected JSON format (written by nba_combined.py or manually):
-#   [
-#     {
-#       "home_abbr":    "BOS",       <- NBA team abbreviation
-#       "away_abbr":    "MIA",
-#       "winner_pick":  "BOS",       <- which team you predict wins
-#       "spread":       -7.5,        <- home-team spread (negative = home favored)
-#       "spread_pick":  "BOS"        <- which team you predict covers the spread
-#     },
-#     ...
-#   ]
+# Schema stored by nba_combined.py:
+#   home_abbr, away_abbr, winner_pick, spread (home-team line),
+#   spread_pick, win_pct, total
 #
 # Spread convention:
 #   spread = -7.5  →  home favored by 7.5; home covers if they win by 8+
 #   spread = +4.5  →  away favored by 4.5; home covers if they lose by <5 or win
 # =============================================================================
-def _load_game_predictions_json(target_date: date) -> list:
-    fname = os.path.join(_HERE, f"game_predictions_{target_date.isoformat()}.json")
-    if not os.path.isfile(fname):
-        return []
-    try:
-        with open(fname) as f:
-            data = json.load(f)
-        preds = []
-        for entry in data:
-            preds.append({
-                "home_abbr":   str(entry.get("home_abbr", "")).upper(),
-                "away_abbr":   str(entry.get("away_abbr", "")).upper(),
-                "winner_pick": str(entry.get("winner_pick", "")).upper(),
-                "spread":      float(entry["spread"]) if "spread" in entry else None,
-                "spread_pick": str(entry.get("spread_pick", "")).upper(),
-            })
-        print(f"  Auto-loaded {len(preds)} game prediction(s) from "
-              f"game_predictions_{target_date.isoformat()}.json")
-        return preds
-    except Exception as e:
-        print(f"  Warning: could not read game predictions JSON — {e}")
-        return []
+def _load_game_predictions_db(target_date: date) -> list:
+    rows = pred_db.load_game_predictions(target_date)
+    if rows:
+        print(f"  Auto-loaded {len(rows)} game prediction(s) from predictions.db "
+              f"({target_date.isoformat()})")
+    return rows
 
 
 def build_game_results(check_date: date) -> dict:
@@ -639,7 +594,7 @@ if __name__ == "__main__":
     # ── Player prop predictions ───────────────────────────────────────────────
     if not PREDICTIONS:
         print(f"\nNo player prop predictions found for {CHECK_DATE.isoformat()}.")
-        print(f"Expected file: predictions_{CHECK_DATE.isoformat()}.json")
+        print(f"  Run nba_combined.py on game day — picks are saved to predictions.db.")
         print("Run nba_combined.py on game day to generate it automatically.")
         print("Or add picks manually to the PREDICTIONS list in this file.")
     else:
@@ -652,7 +607,7 @@ if __name__ == "__main__":
             print("  Run calibrate.py to update calibration.json with the new data.")
 
     # ── Game winner / spread predictions ─────────────────────────────────────
-    game_preds = _load_game_predictions_json(CHECK_DATE)
+    game_preds = _load_game_predictions_db(CHECK_DATE)
     if game_preds:
         game_results = build_game_results(CHECK_DATE)
         graded_games = check_game_predictions(game_preds, game_results)
@@ -660,5 +615,4 @@ if __name__ == "__main__":
         if graded_games:
             append_game_to_log(graded_games, CHECK_DATE)
     else:
-        print(f"\nNo game predictions found for {CHECK_DATE.isoformat()}.")
-        print(f"Expected file: game_predictions_{CHECK_DATE.isoformat()}.json")
+        print(f"\nNo game predictions found for {CHECK_DATE.isoformat()} in predictions.db.")

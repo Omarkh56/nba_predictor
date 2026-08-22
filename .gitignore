@@ -20,9 +20,8 @@ env/
 data_cache/
 *.cache
 
-# Generated prediction / log files (large, not source code)
-predictions_*.json
-game_predictions_*.json
+# Generated prediction / log files (runtime data, not source code)
+predictions.db
 odds_tracker.csv
 bet_log.csv
 game_log.csv
