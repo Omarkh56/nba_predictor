@@ -1,0 +1,15 @@
+# NBA Prediction Pipeline — pinned dependencies
+# Generated 2026-08-22 against Python 3.9.6
+#
+# Install: pip3 install -r requirements.txt
+# The NBA API has aggressive rate limits; requests is patched to skip TLS
+# verification only for stats.nba.com (see newnbapredictor.py for context).
+
+nba_api==1.10.2
+pandas==2.2.3
+numpy==1.26.4
+requests==2.32.3
+scikit-learn==1.6.1
+scipy==1.13.1
+urllib3==2.4.0
+pytest>=8.0
