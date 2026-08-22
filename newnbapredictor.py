@@ -267,6 +267,54 @@ USE_LEARNED_GAME_MODEL = _LEARNED_GAME_PARAMS.get("recommendation") == "use_lear
 
 
 # =============================================================================
+# ADAPTIVE KALMAN FILTER (time-varying logistic regression)
+# =============================================================================
+# Loaded from tvp_state.json (written by kalman_validate.py / kalman_daily_update.py).
+# Active only when recommendation == "use_kalman" AND the state file exists.
+# Priority: Kalman > Static learned > Hand-tuned.
+# =============================================================================
+
+import numpy as np  # noqa: E402
+
+_KALMAN_EKF = None   # type: ignore[assignment]  # GameEKF | None
+USE_KALMAN_GAME_MODEL: bool = False
+
+
+def _load_kalman_state() -> None:
+    """Load GameEKF from tvp_state.json once at startup."""
+    global _KALMAN_EKF, USE_KALMAN_GAME_MODEL
+    try:
+        from kalman_filter import load_game_ekf, load_tvp_state
+        ekf   = load_game_ekf()
+        state = load_tvp_state()
+        rec   = (state or {}).get("recommendation", "keep_static")
+        if ekf is not None:
+            _KALMAN_EKF = ekf
+            USE_KALMAN_GAME_MODEL = rec == "use_kalman"
+            print(
+                f"  [kalman] game EKF loaded  "
+                f"(n_updates={ekf.n_updates}  rec={rec}  active={USE_KALMAN_GAME_MODEL})"
+            )
+    except Exception as exc:
+        print(f"  [kalman] tvp_state.json not loaded: {exc}")
+
+
+_load_kalman_state()
+
+
+def _sigmoid_kalman(features: dict):
+    """
+    Compute win probability using the adaptive Kalman EKF.
+    features: dict keyed by GAME_FEATURES names (same as _build_learned_feature_dict).
+    Returns None if Kalman is not active.
+    """
+    if not USE_KALMAN_GAME_MODEL or _KALMAN_EKF is None:
+        return None
+    x_raw = np.array([features.get(f, 0.0) for f in _KALMAN_EKF.feature_names])
+    return _KALMAN_EKF.predict_proba(x_raw)
+
+
+# =============================================================================
 # API HELPERS
 # =============================================================================
 def _sigmoid(x: float) -> float:
@@ -1045,12 +1093,12 @@ def _compute_prediction(
     margin += clutch_adj
     breakdown["clutch"] = round(clutch_adj, 2)
 
-    # Final probability: prefer learned model when enabled, fall back to sigmoid
+    # Final probability — priority: Kalman adaptive > static learned > hand-tuned
     expected_margin = round(margin, 2)
-    _lp = _sigmoid_learned(
-        _build_learned_feature_dict(home_row, away_row, home_form, away_form, h2h)
-    )
-    home_prob = _lp if _lp is not None else _sigmoid(expected_margin)
+    _feat_dict = _build_learned_feature_dict(home_row, away_row, home_form, away_form, h2h)
+    _kp = _sigmoid_kalman(_feat_dict)
+    _lp = _sigmoid_learned(_feat_dict) if _kp is None else None
+    home_prob = _kp if _kp is not None else (_lp if _lp is not None else _sigmoid(expected_margin))
     away_prob = 1.0 - home_prob
 
     league_avg_off = league_avgs.get("OFF_RATING", 112)

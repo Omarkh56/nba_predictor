@@ -395,6 +395,38 @@ def get_learned_pos_std(pos_group: str, stat: str, fallback: float) -> float:
 
 _load_learned_player_params()  # run once at import time
 
+# =============================================================================
+# ADAPTIVE KALMAN FILTER — PLAYER STAT MODELS
+# =============================================================================
+# Loaded from tvp_state.json alongside the game EKF.  Active only when
+# recommendation includes "use_kalman" AND stat data was walked forward.
+# Replaces the static 15% learned-model blend when active.
+
+_KALMAN_PLAYER_KF = None   # type: ignore[assignment]  # PlayerKF | None
+USE_KALMAN_PLAYER_MODEL: bool = False
+
+
+def _load_kalman_player_state() -> None:
+    """Load PlayerKF from tvp_state.json once at startup."""
+    global _KALMAN_PLAYER_KF, USE_KALMAN_PLAYER_MODEL
+    try:
+        from kalman_filter import load_player_kf, load_tvp_state
+        pkf   = load_player_kf()
+        state = load_tvp_state()
+        rec   = (state or {}).get("recommendation", "keep_static")
+        if pkf is not None and pkf.stats():
+            _KALMAN_PLAYER_KF    = pkf
+            USE_KALMAN_PLAYER_MODEL = rec == "use_kalman"
+            print(
+                f"  [kalman] player KF loaded  "
+                f"(stats={pkf.stats()}  active={USE_KALMAN_PLAYER_MODEL})"
+            )
+    except Exception as exc:
+        print(f"  [kalman] player KF not loaded: {exc}")
+
+
+_load_kalman_player_state()
+
 MARKET_PROJ_ADJ = {}  # v7 Fix 1a: per-stat projection multiplier derived from calibration hit rates
 PLAYER_PROJ_ADJ = {}  # v8 Fix 3: per-player per-stat additive residual nudges from player_market calib
 NULL_POS_PLAYERS = set()  # v8 Fix 6: players whose position lookup failed (DvP=1.0 for these)
@@ -1623,29 +1655,46 @@ def project_stat(
     if data_adj != 0.0:
         final_proj = max(0.0, final_proj + data_adj)
 
-    # Blend with learned regression model if train_model.py has been run and
-    # learned_params.json exists. The learned model uses EWMA projection directly
-    # as its primary feature; we blend (80% current / 20% learned) so the
-    # existing feature engineering is preserved while benefiting from fitted weights.
-    lp = _LEARNED_PLAYER_PARAMS.get(stat_col)
+    # Blend with a regression model: prefer Kalman (adaptive) if active,
+    # otherwise fall back to static learned params from learned_params.json.
+    # Either way we blend lightly (15%) to preserve existing feature engineering.
+    ewma_proj_for_stat = rate * avg_min   # base EWMA projection (pre-multiplier)
+    _lp_is_home = 1.0 if is_home else 0.0
     learned_proj_adj = 0.0
-    if lp:
+
+    if USE_KALMAN_PLAYER_MODEL and _KALMAN_PLAYER_KF is not None and stat_col in _KALMAN_PLAYER_KF.stats():
         try:
-            ewma_proj_for_stat = rate * avg_min  # base EWMA projection (pre-multiplier)
-            _lp_intercept = lp.get("intercept", 0.0)
-            _lp_ewma_weight = lp.get("ewma_weight", 1.0)
-            _lp_home_boost = lp.get("home_boost", 0.0)
-            _lp_is_home = 1.0 if is_home else 0.0
-            learned_pred = (
-                _lp_intercept + _lp_ewma_weight * ewma_proj_for_stat + _lp_home_boost * _lp_is_home
-            )
-            if learned_pred > 0:
-                blend = 0.15  # 15% learned, 85% existing pipeline
-                blended = (1 - blend) * final_proj + blend * learned_pred * combined_mult
+            import numpy as _np
+            lp_meta = _LEARNED_PLAYER_PARAMS.get(stat_col, {})
+            rest_d  = float(lp_meta.get("rest_days_mean", 3.0))   # fallback if not available
+            x_raw   = _np.array([ewma_proj_for_stat, _lp_is_home, rest_d])
+            kf_pred = _KALMAN_PLAYER_KF.predict(stat_col, x_raw)
+            if kf_pred > 0:
+                blend           = 0.15
+                blended         = (1 - blend) * final_proj + blend * kf_pred * combined_mult
                 learned_proj_adj = blended - final_proj
-                final_proj = max(0.0, blended)
+                final_proj       = max(0.0, blended)
         except Exception:
             pass
+    else:
+        lp = _LEARNED_PLAYER_PARAMS.get(stat_col)
+        if lp:
+            try:
+                _lp_intercept   = lp.get("intercept", 0.0)
+                _lp_ewma_weight = lp.get("ewma_weight", 1.0)
+                _lp_home_boost  = lp.get("home_boost", 0.0)
+                learned_pred    = (
+                    _lp_intercept
+                    + _lp_ewma_weight * ewma_proj_for_stat
+                    + _lp_home_boost  * _lp_is_home
+                )
+                if learned_pred > 0:
+                    blend           = 0.15
+                    blended         = (1 - blend) * final_proj + blend * learned_pred * combined_mult
+                    learned_proj_adj = blended - final_proj
+                    final_proj       = max(0.0, blended)
+            except Exception:
+                pass
 
     detail = {
         "rate": round(rate, 4),
