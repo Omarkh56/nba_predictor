@@ -38,7 +38,7 @@ import newnbapredictor   as team_model
 import playerlinepredictor as props_model
 import oddstracker
 
-SEASON     = "2025-26"
+SEASON     = "2026-27"
 VERBOSE    = "--verbose" in sys.argv
 WIDTH      = 80
 _HERE      = os.path.dirname(os.path.abspath(__file__))

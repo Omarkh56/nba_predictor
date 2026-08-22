@@ -10,7 +10,12 @@ import pytest
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-from calibrate import _laplace_smooth, _shrink_toward_prior, LAPLACE_K, SHRINKAGE_N
+import pandas as pd
+from calibrate import (
+    _laplace_smooth, _shrink_toward_prior,
+    _calibrate_market_direction, _calibrate_margins, _calibrate_player_market,
+    LAPLACE_K, SHRINKAGE_N, MIN_BETS_TO_ADJ,
+)
 
 
 # ===========================================================================
@@ -84,3 +89,68 @@ class TestShrinkTowardPrior:
         # Custom shrink_n changes where the 50/50 crossover happens
         r = _shrink_toward_prior(0.80, n=5, prior=0.50, shrink_n=5)
         assert r == pytest.approx(0.65, abs=1e-6)  # 0.5*0.80 + 0.5*0.50
+
+
+# ===========================================================================
+# _calibrate_market_direction (new helper extracted from calibrate())
+# ===========================================================================
+def _make_graded(rows):
+    """Build minimal graded DataFrame as calibrate() expects."""
+    df = pd.DataFrame(rows, columns=["result", "market", "pick", "hit"])
+    df["hit"] = (df["result"] == "HIT").astype(int)
+    return df
+
+
+class TestCalibrateMarketDirection:
+    def test_empty_returns_empty(self):
+        graded = _make_graded([])
+        result = _calibrate_market_direction(graded, prior=0.50)
+        assert result == {}
+
+    def test_single_group_keys(self):
+        rows = [("HIT","PTS","OVER",1), ("HIT","PTS","OVER",1), ("MISS","PTS","OVER",0)]
+        graded = _make_graded(rows)
+        result = _calibrate_market_direction(graded, prior=0.50)
+        assert "PTS_OVER" in result
+        entry = result["PTS_OVER"]
+        assert entry["n"] == 3
+        assert entry["hits"] == 2
+        assert 0 < entry["rate"] < 1
+        assert "conf_adj" in entry
+
+    def test_insufficient_data_zeroes_conf_adj(self):
+        # n < MIN_BETS_TO_ADJ → conf_adj must be 0.0
+        rows = [("HIT","REB","OVER",1)] * (MIN_BETS_TO_ADJ - 1)
+        graded = _make_graded(rows)
+        result = _calibrate_market_direction(graded, prior=0.50)
+        assert result["REB_OVER"]["conf_adj"] == 0.0
+
+    def test_perfect_hit_rate_positive_adj(self):
+        rows = [("HIT","AST","OVER",1)] * 20
+        graded = _make_graded(rows)
+        result = _calibrate_market_direction(graded, prior=0.50)
+        assert result["AST_OVER"]["conf_adj"] > 0
+
+    def test_perfect_miss_rate_negative_adj(self):
+        rows = [("MISS","AST","OVER",0)] * 20
+        graded = _make_graded(rows)
+        result = _calibrate_market_direction(graded, prior=0.50)
+        assert result["AST_OVER"]["conf_adj"] < 0
+
+
+class TestCalibrateMargins:
+    def test_missing_margin_column_returns_empty(self):
+        graded = _make_graded([("HIT","PTS","OVER",1)] * 5)
+        result = _calibrate_margins(graded)
+        assert result == {}
+
+    def test_with_margin_column(self):
+        rows = [("HIT","PTS","OVER",1)] * 5 + [("MISS","PTS","OVER",0)] * 5
+        graded = _make_graded(rows)
+        graded["margin"] = [1.5, 2.0, 0.5, 3.0, 1.0, -0.5, -1.5, -2.0, -0.3, -0.8]
+        result = _calibrate_margins(graded)
+        assert "PTS_OVER" in result
+        entry = result["PTS_OVER"]
+        assert "mean_margin" in entry
+        assert "near_miss_rate" in entry
+        assert 0 <= entry["near_miss_rate"] <= 1

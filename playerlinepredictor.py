@@ -154,7 +154,7 @@ SINGLE_STAT_MARKETS = {
     "player_points", "player_rebounds", "player_assists", "player_threes",
 }
 
-SEASON         = "2025-26"
+SEASON         = "2026-27"
 SEASON_TYPE_RS = "Regular Season"
 SEASON_TYPE_PO = "Playoffs"
 

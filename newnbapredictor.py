@@ -1010,7 +1010,7 @@ def _compute_prediction(m: dict, ratings: pd.DataFrame, season: str,
     }
 
 
-def predict_games_data(season="2025-26", matchups=None, injuries=None,
+def predict_games_data(season="2026-27", matchups=None, injuries=None,
                         progress_cb=None) -> List[Dict]:
     if matchups is None:
         matchups = get_todays_games()
@@ -1173,7 +1173,7 @@ def _print_results(results: List[Dict], season: str):
 # =============================================================================
 # MAIN
 # =============================================================================
-def main(season="2025-26"):
+def main(season="2026-27"):
     print("Fetching today's games from ESPN…")
     matchups = get_todays_games()
     if not matchups:

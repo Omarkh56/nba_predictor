@@ -98,6 +98,134 @@ def _migrate_log_csv():
     print("  Migrated bet_log.csv → added 'margin' column to existing rows.")
 
 
+def _calibrate_market_direction(graded: "pd.DataFrame", prior: float) -> dict:
+    """Compute per-(market, pick) smoothed hit rates and confidence adjustments."""
+    market_dir = {}
+    for (market, pick), grp in graded.groupby(["market", "pick"]):
+        n    = len(grp)
+        hits = int(grp["hit"].sum())
+        smoothed   = _laplace_smooth(hits, n, prior)
+        final_rate = _shrink_toward_prior(smoothed, n, prior)
+        conf_adj   = (final_rate - prior) * 100.0 if n >= MIN_BETS_TO_ADJ else 0.0
+        market_dir[f"{market}_{pick}"] = {
+            "n":        n,
+            "hits":     hits,
+            "raw_rate": round(hits / n, 3),
+            "rate":     round(float(final_rate), 3),
+            "conf_adj": round(float(conf_adj), 1),
+        }
+    return market_dir
+
+
+def _calibrate_margins(graded: "pd.DataFrame") -> dict:
+    """Compute per-(market, pick) margin statistics if the column exists."""
+    has_margin = ("margin" in graded.columns and
+                  pd.to_numeric(graded["margin"], errors="coerce").notna().any())
+    if not has_margin:
+        return {}
+
+    mg = graded.copy()
+    mg["margin_num"] = pd.to_numeric(mg["margin"], errors="coerce")
+    mg_valid = mg.dropna(subset=["margin_num"])
+    margin_stats = {}
+    for (market, pick), grp in mg_valid.groupby(["market", "pick"]):
+        n      = len(grp)
+        mean_m = float(grp["margin_num"].mean())
+        miss_grp = grp[grp["result"] == "MISS"]
+        near_m   = (miss_grp["margin_num"].between(-1.0, -0.001).sum()
+                    if not miss_grp.empty else 0)
+        total_m  = len(miss_grp)
+        near_miss_rate = round(near_m / total_m, 3) if total_m > 0 else 0.0
+        margin_stats[f"{market}_{pick}"] = {
+            "n":              n,
+            "mean_margin":    round(mean_m, 2),
+            "near_miss_rate": near_miss_rate,
+        }
+    return margin_stats
+
+
+def _calibrate_player_market(graded: "pd.DataFrame") -> dict:
+    """Compute per-player per-market projection bias from residuals."""
+    has_proj = ("projection" in graded.columns and graded["projection"].notna().any())
+    proj_count   = graded["projection"].notna().sum() if "projection" in graded.columns else 0
+    proj_nonzero = int((pd.to_numeric(graded.get("projection", pd.Series(dtype=float)),
+                                      errors="coerce") > 0).sum())
+    print(f"  Projection column: {proj_count} non-null rows, {proj_nonzero} non-zero")
+    if has_proj:
+        pm_size = (graded.dropna(subset=["projection"])
+                         .groupby(["player", "market"]).size())
+        print(f"  Player-market groups with ≥{PLAYER_MARKET_MIN_BETS} bets: "
+              f"{int((pm_size >= PLAYER_MARKET_MIN_BETS).sum())}")
+
+    if not has_proj:
+        return {}
+
+    proj_df = graded.dropna(subset=["projection", "actual"]).copy()
+    proj_df["residual"] = (proj_df["actual"].astype(float)
+                           - proj_df["projection"].astype(float))
+    player_market = {}
+    for (player, market), grp in proj_df.groupby(["player", "market"]):
+        n        = len(grp)
+        mean_res = float(grp["residual"].mean())
+        w        = n / (n + SHRINKAGE_N)
+        adj      = w * mean_res if n >= PLAYER_MARKET_MIN_BETS else 0.0
+        player_market[f"{player}|{market}"] = {
+            "n":             n,
+            "mean_residual": round(mean_res, 2),
+            "adj":           round(float(adj), 2),
+        }
+    return player_market
+
+
+def _print_calibration_summary(market_dir: dict, margin_stats: dict,
+                                player_market: dict) -> None:
+    """Print verbose calibration tables to stdout."""
+    print()
+    print("  Market-direction calibration:")
+    print(f"  {'Key':<22} {'N':>4} {'Hits':>5} {'Raw%':>6} {'Adj%':>6}  Interpretation")
+    print(f"  {'─'*22} {'─'*4} {'─'*5} {'─'*6} {'─'*6}  {'─'*35}")
+    for key, v in sorted(market_dir.items(),
+                          key=lambda x: x[1]["conf_adj"], reverse=True):
+        raw_pct = v["raw_rate"] * 100
+        adj_pp  = v["conf_adj"]
+        sign    = "+" if adj_pp >= 0 else ""
+        note    = ("boost conf" if adj_pp > 2
+                   else "penalise conf" if adj_pp < -2
+                   else "near-neutral")
+        n_note  = " (insuff)" if v["n"] < MIN_BETS_TO_ADJ else ""
+        print(f"  {key:<22} {v['n']:>4} {v['hits']:>5} {raw_pct:>5.1f}% "
+              f"{sign}{adj_pp:>4.1f}pp  {note}{n_note}")
+
+    if margin_stats:
+        print()
+        print("  Margin analysis (positive = cushion, negative = missed by):")
+        print(f"  {'Key':<22} {'N':>4} {'AvgMargin':>10} {'NearMiss%':>10}  Note")
+        print(f"  {'─'*22} {'─'*4} {'─'*10} {'─'*10}  {'─'*25}")
+        for key, ms in sorted(margin_stats.items(),
+                               key=lambda x: x[1]["mean_margin"]):
+            nm_pct = ms["near_miss_rate"] * 100
+            note = ""
+            if ms["mean_margin"] < -1.0:
+                note = "proj running high"
+            elif ms["mean_margin"] > 1.0:
+                note = "proj running low"
+            if ms["near_miss_rate"] >= 0.30:
+                note += (" / " if note else "") + "freq near-miss"
+            print(f"  {key:<22} {ms['n']:>4} {ms['mean_margin']:>+9.2f}  "
+                  f"{nm_pct:>8.1f}%  {note}")
+
+    if player_market:
+        print()
+        print("  Player-market projection bias:")
+        print(f"  {'Key':<35} {'N':>4} {'MeanRes':>8} {'Adj':>6}")
+        print(f"  {'─'*35} {'─'*4} {'─'*8} {'─'*6}")
+        for key, v in sorted(player_market.items(),
+                              key=lambda x: abs(x[1]["adj"]), reverse=True):
+            sign = "+" if v["adj"] >= 0 else ""
+            print(f"  {key:<35} {v['n']:>4} {v['mean_residual']:>+7.2f}  "
+                  f"{sign}{v['adj']:>5.2f}")
+
+
 def calibrate(verbose=False):
     if not LOG_FILE.exists():
         print(f"bet_log.csv not found at {LOG_FILE}")
@@ -113,127 +241,33 @@ def calibrate(verbose=False):
         return
 
     graded["hit"] = (graded["result"] == "HIT").astype(int)
-    total_bets = len(graded)
-    total_hits = graded["hit"].sum()
+    total_bets     = len(graded)
+    total_hits     = graded["hit"].sum()
     empirical_rate = total_hits / total_bets
 
     print(f"  bet_log: {total_bets} graded bets  "
           f"({total_hits}W – {total_bets - total_hits}L  "
           f"{empirical_rate*100:.1f}%)")
 
-    # v7 Fix 2: self-updating prior — use empirical rate once we have enough data
     prior        = empirical_rate if total_bets >= MIN_BETS_FOR_EMPIRICAL_PRIOR else DEFAULT_PRIOR
     prior_source = "empirical"    if total_bets >= MIN_BETS_FOR_EMPIRICAL_PRIOR else "default"
     print(f"  Prior hit rate: {prior:.3f} (source: {prior_source})")
 
-    # -----------------------------------------------------------------------
-    # 1. Market-direction calibration
-    # -----------------------------------------------------------------------
-    market_dir = {}
-    md_groups = graded.groupby(["market", "pick"])
+    market_dir   = _calibrate_market_direction(graded, prior)
+    margin_stats = _calibrate_margins(graded)
+    player_market = _calibrate_player_market(graded)
 
-    for (market, pick), grp in md_groups:
-        n    = len(grp)
-        hits = int(grp["hit"].sum())
+    # Merge margin stats into market_dir entries
+    for key, ms in margin_stats.items():
+        if key in market_dir:
+            market_dir[key]["mean_margin"]    = ms["mean_margin"]
+            market_dir[key]["near_miss_rate"] = ms["near_miss_rate"]
 
-        smoothed   = _laplace_smooth(hits, n, prior)
-        final_rate = _shrink_toward_prior(smoothed, n, prior)
-
-        # Confidence adjustment in percentage points:
-        # Positive = historically hits more often → reduce direction_penalty
-        # Negative = historically hits less often → increase direction_penalty
-        conf_adj = (final_rate - prior) * 100.0
-
-        # Only apply adjustments when there is enough data to be meaningful
-        if n < MIN_BETS_TO_ADJ:
-            conf_adj = 0.0
-
-        key = f"{market}_{pick}"
-        market_dir[key] = {
-            "n":        n,
-            "hits":     hits,
-            "raw_rate": round(hits / n, 3),
-            "rate":     round(float(final_rate), 3),
-            "conf_adj": round(float(conf_adj), 1),
-        }
-
-    # -----------------------------------------------------------------------
-    # 1b. Margin analysis (requires "margin" column added by checkresults.py)
-    # -----------------------------------------------------------------------
-    has_margin = ("margin" in graded.columns and
-                  pd.to_numeric(graded["margin"], errors="coerce").notna().any())
-
-    margin_stats = {}   # key → {mean_margin, near_miss_rate, n}
-    if has_margin:
-        mg = graded.copy()
-        mg["margin_num"] = pd.to_numeric(mg["margin"], errors="coerce")
-        mg_valid = mg.dropna(subset=["margin_num"])
-
-        for (market, pick), grp in mg_valid.groupby(["market", "pick"]):
-            n = len(grp)
-            mean_m = float(grp["margin_num"].mean())
-            # Near-miss rate: misses that were within 1 unit (margin in [-1, 0))
-            miss_grp = grp[grp["result"] == "MISS"]
-            near_m   = (miss_grp["margin_num"].between(-1.0, -0.001).sum()
-                        if not miss_grp.empty else 0)
-            total_m  = len(miss_grp)
-            near_miss_rate = round(near_m / total_m, 3) if total_m > 0 else 0.0
-            key = f"{market}_{pick}"
-            margin_stats[key] = {
-                "n":             n,
-                "mean_margin":   round(mean_m, 2),
-                "near_miss_rate": near_miss_rate,
-            }
-        # Merge mean_margin into market_dir entries
-        for key, ms in margin_stats.items():
-            if key in market_dir:
-                market_dir[key]["mean_margin"]    = ms["mean_margin"]
-                market_dir[key]["near_miss_rate"] = ms["near_miss_rate"]
-
-    # -----------------------------------------------------------------------
-    # 2. Player-market projection bias
-    # -----------------------------------------------------------------------
-    player_market = {}
-    has_proj = ("projection" in graded.columns and
-                graded["projection"].notna().any())
-
-    # v7 Fix 3b: diagnostic output to debug empty player_market
-    proj_count   = graded["projection"].notna().sum() if "projection" in graded.columns else 0
-    proj_nonzero = int((pd.to_numeric(graded.get("projection", pd.Series(dtype=float)),
-                                      errors="coerce") > 0).sum())
-    print(f"  Projection column: {proj_count} non-null rows, {proj_nonzero} non-zero")
-    if has_proj:
-        pm_groups_size = (graded.dropna(subset=["projection"])
-                                 .groupby(["player", "market"]).size())
-        multi_sample = int((pm_groups_size >= PLAYER_MARKET_MIN_BETS).sum())
-        print(f"  Player-market groups with ≥{PLAYER_MARKET_MIN_BETS} bets: {multi_sample}")
-
-    if has_proj:
-        proj_df = graded.dropna(subset=["projection", "actual"]).copy()
-        proj_df["residual"] = proj_df["actual"].astype(float) - proj_df["projection"].astype(float)
-
-        pm_groups = proj_df.groupby(["player", "market"])
-        for (player, market), grp in pm_groups:
-            n          = len(grp)
-            mean_res   = float(grp["residual"].mean())
-            # Shrinkage toward 0 — trust grows with more observations
-            w          = n / (n + SHRINKAGE_N)
-            adj        = w * mean_res if n >= PLAYER_MARKET_MIN_BETS else 0.0  # v7 Fix 3c
-            key = f"{player}|{market}"
-            player_market[key] = {
-                "n":             n,
-                "mean_residual": round(mean_res, 2),
-                "adj":           round(float(adj), 2),
-            }
-
-    # -----------------------------------------------------------------------
-    # Build + write calibration.json
-    # -----------------------------------------------------------------------
     calib = {
         "generated":        date.today().isoformat(),
         "total_bets":       total_bets,
         "overall_hit_rate": round(empirical_rate, 3),
-        "prior_hit_rate":   round(prior, 3),    # v7 Fix 2: reflects actual prior used
+        "prior_hit_rate":   round(prior, 3),
         "prior_source":     prior_source,
         "market_direction": market_dir,
         "player_market":    player_market,
@@ -246,54 +280,8 @@ def calibrate(verbose=False):
     print(f"  {len(market_dir)} market-direction adjustments, "
           f"{len(player_market)} player-market biases")
 
-    # -----------------------------------------------------------------------
-    # Print summary table
-    # -----------------------------------------------------------------------
     if verbose or "--summary" in sys.argv:
-        print()
-        print("  Market-direction calibration:")
-        print(f"  {'Key':<22} {'N':>4} {'Hits':>5} {'Raw%':>6} {'Adj%':>6}  Interpretation")
-        print(f"  {'─'*22} {'─'*4} {'─'*5} {'─'*6} {'─'*6}  {'─'*35}")
-        for key, v in sorted(market_dir.items(),
-                              key=lambda x: x[1]["conf_adj"], reverse=True):
-            raw_pct = v["raw_rate"] * 100
-            adj_pp  = v["conf_adj"]
-            sign    = "+" if adj_pp >= 0 else ""
-            note    = ("boost conf" if adj_pp > 2
-                       else "penalise conf" if adj_pp < -2
-                       else "near-neutral")
-            n_note  = " (insuff)" if v["n"] < MIN_BETS_TO_ADJ else ""
-            print(f"  {key:<22} {v['n']:>4} {v['hits']:>5} {raw_pct:>5.1f}% "
-                  f"{sign}{adj_pp:>4.1f}pp  {note}{n_note}")
-
-        if margin_stats:
-            print()
-            print("  Margin analysis (positive = cushion, negative = missed by):")
-            print(f"  {'Key':<22} {'N':>4} {'AvgMargin':>10} {'NearMiss%':>10}  Note")
-            print(f"  {'─'*22} {'─'*4} {'─'*10} {'─'*10}  {'─'*25}")
-            for key, ms in sorted(margin_stats.items(),
-                                   key=lambda x: x[1]["mean_margin"]):
-                nm_pct = ms["near_miss_rate"] * 100
-                note = ""
-                if ms["mean_margin"] < -1.0:
-                    note = "proj running high"
-                elif ms["mean_margin"] > 1.0:
-                    note = "proj running low"
-                if ms["near_miss_rate"] >= 0.30:
-                    note += (" / " if note else "") + "freq near-miss"
-                print(f"  {key:<22} {ms['n']:>4} {ms['mean_margin']:>+9.2f}  "
-                      f"{nm_pct:>8.1f}%  {note}")
-
-        if player_market:
-            print()
-            print("  Player-market projection bias:")
-            print(f"  {'Key':<35} {'N':>4} {'MeanRes':>8} {'Adj':>6}")
-            print(f"  {'─'*35} {'─'*4} {'─'*8} {'─'*6}")
-            for key, v in sorted(player_market.items(),
-                                  key=lambda x: abs(x[1]["adj"]), reverse=True):
-                sign = "+" if v["adj"] >= 0 else ""
-                print(f"  {key:<35} {v['n']:>4} {v['mean_residual']:>+7.2f}  "
-                      f"{sign}{v['adj']:>5.2f}")
+        _print_calibration_summary(market_dir, margin_stats, player_market)
 
 
 if __name__ == "__main__":
