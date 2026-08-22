@@ -1,0 +1,154 @@
+{
+  "generated": "2026-05-10",
+  "total_bets": 1081,
+  "overall_hit_rate": 0.512,
+  "prior_hit_rate": 0.512,
+  "prior_source": "empirical",
+  "market_direction": {
+    "3PM_OVER": {
+      "n": 91,
+      "hits": 49,
+      "raw_rate": 0.538,
+      "rate": 0.535,
+      "conf_adj": 2.3,
+      "mean_margin": 0.18,
+      "near_miss_rate": 0.531
+    },
+    "3PM_UNDER": {
+      "n": 12,
+      "hits": 3,
+      "raw_rate": 0.25,
+      "rate": 0.396,
+      "conf_adj": -11.7,
+      "mean_margin": -0.17,
+      "near_miss_rate": 1.0
+    },
+    "AST_OVER": {
+      "n": 184,
+      "hits": 103,
+      "raw_rate": 0.56,
+      "rate": 0.557,
+      "conf_adj": 4.4,
+      "mean_margin": 0.61,
+      "near_miss_rate": 0.508
+    },
+    "AST_UNDER": {
+      "n": 64,
+      "hits": 41,
+      "raw_rate": 0.641,
+      "rate": 0.618,
+      "conf_adj": 10.5,
+      "mean_margin": 0.19,
+      "near_miss_rate": 0.45
+    },
+    "PRA_OVER": {
+      "n": 68,
+      "hits": 30,
+      "raw_rate": 0.441,
+      "rate": 0.453,
+      "conf_adj": -5.9,
+      "mean_margin": 0.98,
+      "near_miss_rate": 0.107
+    },
+    "PRA_UNDER": {
+      "n": 5,
+      "hits": 2,
+      "raw_rate": 0.4,
+      "rate": 0.487,
+      "conf_adj": -2.5,
+      "mean_margin": -2.5,
+      "near_miss_rate": 0.0
+    },
+    "PTS_OVER": {
+      "n": 106,
+      "hits": 42,
+      "raw_rate": 0.396,
+      "rate": 0.41,
+      "conf_adj": -10.3,
+      "mean_margin": 0.52,
+      "near_miss_rate": 0.31
+    },
+    "PTS_UNDER": {
+      "n": 35,
+      "hits": 16,
+      "raw_rate": 0.457,
+      "rate": 0.473,
+      "conf_adj": -4.0,
+      "mean_margin": -0.55,
+      "near_miss_rate": 0.3
+    },
+    "PTS+AST_OVER": {
+      "n": 105,
+      "hits": 52,
+      "raw_rate": 0.495,
+      "rate": 0.497,
+      "conf_adj": -1.5,
+      "mean_margin": -0.4,
+      "near_miss_rate": 0.079
+    },
+    "PTS+AST_UNDER": {
+      "n": 9,
+      "hits": 7,
+      "raw_rate": 0.778,
+      "rate": 0.61,
+      "conf_adj": 9.7,
+      "mean_margin": 2.72,
+      "near_miss_rate": 0.0
+    },
+    "PTS+REB_OVER": {
+      "n": 20,
+      "hits": 6,
+      "raw_rate": 0.3,
+      "rate": 0.389,
+      "conf_adj": -12.4,
+      "mean_margin": -2.43,
+      "near_miss_rate": 0.182
+    },
+    "PTS+REB_UNDER": {
+      "n": 7,
+      "hits": 2,
+      "raw_rate": 0.286,
+      "rate": 0.444,
+      "conf_adj": -6.9,
+      "mean_margin": -4.17,
+      "near_miss_rate": 0.0
+    },
+    "REB_OVER": {
+      "n": 245,
+      "hits": 130,
+      "raw_rate": 0.531,
+      "rate": 0.53,
+      "conf_adj": 1.7,
+      "mean_margin": 0.22,
+      "near_miss_rate": 0.282
+    },
+    "REB_UNDER": {
+      "n": 50,
+      "hits": 29,
+      "raw_rate": 0.58,
+      "rate": 0.565,
+      "conf_adj": 5.3,
+      "mean_margin": 0.59,
+      "near_miss_rate": 0.417
+    },
+    "REB+AST_OVER": {
+      "n": 58,
+      "hits": 27,
+      "raw_rate": 0.466,
+      "rate": 0.475,
+      "conf_adj": -3.8,
+      "mean_margin": 0.23,
+      "near_miss_rate": 0.32
+    },
+    "REB+AST_UNDER": {
+      "n": 22,
+      "hits": 15,
+      "raw_rate": 0.682,
+      "rate": 0.615,
+      "conf_adj": 10.3,
+      "mean_margin": 1.22,
+      "near_miss_rate": 0.0
+    }
+  },
+  "player_market": {}
+}
