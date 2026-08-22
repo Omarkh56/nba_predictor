@@ -172,10 +172,10 @@ H2H_SHRINKAGE_K = 5
 # =============================================================================
 # LEARNED MODEL LOADING (from train_model.py output)
 # =============================================================================
-# Set True only after reviewing backtest results from train_model.py.
-# The flag is intentionally conservative — keep False until you've confirmed
-# the learned model beats the baseline on both log loss AND Brier score.
-USE_LEARNED_GAME_MODEL = False
+# Auto-set by _load_learned_params() after startup: True only when
+# train_model.py's own backtest confirmed learned beats hand-tuned on
+# BOTH log loss AND Brier score (recommendation == "use_learned").
+USE_LEARNED_GAME_MODEL: bool = False
 
 _LEARNED_GAME_PARAMS: dict = {}
 
@@ -232,10 +232,11 @@ def _sigmoid_learned(features: dict) -> float:
     return 1.0 / (1.0 + math.exp(-logit))
 
 
-# Run once at import time
+# Run once at import time; then decide whether to engage the learned model.
 import json
 from pathlib import Path
 _load_learned_params()
+USE_LEARNED_GAME_MODEL = _LEARNED_GAME_PARAMS.get("recommendation") == "use_learned"
 
 
 # =============================================================================
