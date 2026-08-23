@@ -46,12 +46,22 @@ def _import_player():
     req_stub = types.ModuleType("requests")
     req_stub.get  = mock.Mock()
     req_stub.RequestException = Exception
+    exc_stub = types.ModuleType("requests.exceptions")
+    exc_stub.RequestException = Exception
+    exc_stub.Timeout = Exception
+    exc_stub.ConnectionError = Exception
+    req_stub.exceptions = exc_stub
 
     dvp_stub = types.ModuleType("dvp")
     dvp_stub.get_dvp_factor = mock.Mock(return_value=1.0)
 
+    nba_utils_stub = types.ModuleType("nba_api_utils")
+    nba_utils_stub.api_call_with_retry = mock.Mock(side_effect=lambda fn, **kw: fn())
+    nba_utils_stub.safe_dataframe_call = mock.Mock(return_value=None)
+
     with mock.patch.dict("sys.modules", {
-            **nba_stubs, "requests": req_stub, "dvp": dvp_stub
+            **nba_stubs, "requests": req_stub, "requests.exceptions": exc_stub,
+            "dvp": dvp_stub, "nba_api_utils": nba_utils_stub,
         }):
         spec = importlib.util.spec_from_file_location(
             "playerlinepredictor",

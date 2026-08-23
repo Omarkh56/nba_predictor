@@ -241,7 +241,7 @@ def _load_learned_params() -> None:
         if vr:
             _VENUE_RESIDUALS = vr
             print(f"  [train_model] venue residuals loaded ({len(vr)} teams)")
-    except Exception as e:
+    except (OSError, json.JSONDecodeError, KeyError, ValueError) as e:
         print(f"  [train_model] failed to load learned_params.json: {e}")
 
 
@@ -313,7 +313,7 @@ def _load_kalman_state() -> None:
                 f"  [kalman] game EKF loaded  "
                 f"(n_updates={ekf.n_updates}  rec={rec}  active={USE_KALMAN_GAME_MODEL})"
             )
-    except Exception as exc:
+    except (OSError, json.JSONDecodeError, KeyError) as exc:
         print(f"  [kalman] tvp_state.json not loaded: {exc}")
 
 
@@ -393,7 +393,7 @@ def get_espn_injuries() -> Dict[str, List[Dict]]:
         r = requests.get(ESPN_INJURIES_URL, headers=ESPN_HEADERS, timeout=15)
         r.raise_for_status()
         data = r.json()
-    except Exception as e:
+    except (requests.exceptions.RequestException, json.JSONDecodeError) as e:
         print(f"  ESPN injuries error: {e}")
         return {}
 
@@ -448,7 +448,7 @@ def _enrich_injuries_with_ppg(injuries: dict, season: str) -> dict:
             ).get_data_frames()[0]
         )
         ppg_lookup = {row["PLAYER_NAME"]: float(row["PTS"]) for _, row in df.iterrows()}
-    except Exception as exc:
+    except (requests.exceptions.RequestException, json.JSONDecodeError, KeyError, IndexError) as exc:
         logger.warning("PPG enrichment fetch failed, using defaults: %s", exc)
         return enriched
 
@@ -534,7 +534,7 @@ def _fetch_all_team_data(season: str) -> pd.DataFrame:
         opp_ff = opp_ff[
             ["TEAM_ID", "OPP_EFG_PCT", "OPP_TOV_PCT", "OPP_OREB_PCT", "OPP_FTA_RATE"]
         ].copy()
-    except Exception as e:
+    except (requests.exceptions.RequestException, json.JSONDecodeError, KeyError, IndexError) as e:
         print(f"    ⚠ Four Factors unavailable ({e}), using defaults")
         opp_ff = pd.DataFrame(
             {
@@ -555,7 +555,7 @@ def _fetch_all_team_data(season: str) -> pd.DataFrame:
             ).get_data_frames()[0]
         )
         opp_raw = opp_raw[["TEAM_ID", "OPP_FG3_PCT", "OPP_PTS"]].copy()
-    except Exception as e:
+    except (requests.exceptions.RequestException, json.JSONDecodeError, KeyError, IndexError) as e:
         print(f"    ⚠ Opponent raw stats unavailable ({e}), using defaults")
         opp_raw = pd.DataFrame({"TEAM_ID": adv["TEAM_ID"], "OPP_FG3_PCT": 0.36, "OPP_PTS": 0.0})
 
@@ -589,7 +589,7 @@ def _fetch_all_team_data(season: str) -> pd.DataFrame:
         clutch = clutch.rename(
             columns={"NET_RATING": "CLUTCH_NET_RTG", "W_PCT": "CLUTCH_W_PCT", "GP": "CLUTCH_GP"}
         )
-    except Exception:
+    except (requests.exceptions.RequestException, json.JSONDecodeError, KeyError, IndexError):
         print("    ⚠ Clutch stats unavailable, using defaults")
         clutch = pd.DataFrame(
             {"TEAM_ID": adv["TEAM_ID"], "CLUTCH_NET_RTG": 0.0, "CLUTCH_W_PCT": 0.5, "CLUTCH_GP": 0}
@@ -703,7 +703,7 @@ def _fetch_h2h(t1_id: int, t2_id: int, season: str) -> dict:
                 player_or_team_abbreviation="T",
             ).get_data_frames()[0]
         )
-    except Exception as exc:
+    except (requests.exceptions.RequestException, json.JSONDecodeError, IndexError) as exc:
         logger.debug("H2H fetch failed for %d vs %d: %s", t1_id, t2_id, exc)
         return _H2H_EMPTY
     if df.empty:
@@ -1008,6 +1008,8 @@ def _fetch_player_star_form(team_id: int, injuries: dict, season: str) -> float:
             shrunk_dev = raw_dev * n / (n + STAR_FORM_SHRINK_K)
             weighted_dev += shrunk_dev * (ppg / max(total_ppg, 1))
         except Exception:
+            # intentionally broad: one bad player fetch must not abort the star-form batch
+            logger.exception("Star form failed for player %s (team %s)", name, team_id)
             continue
 
     _STAR_FORM_CACHE[cache_key] = float(weighted_dev)
@@ -1183,12 +1185,12 @@ def _compute_prediction(
     }
     try:
         away_form = _fetch_last_n(away_id, season, ratings)
-    except Exception as exc:
+    except (requests.exceptions.RequestException, json.JSONDecodeError, KeyError, ValueError) as exc:
         logger.warning("Away form fetch failed for %d: %s", away_id, exc)
         away_form = _form_default
     try:
         home_form = _fetch_last_n(home_id, season, ratings)
-    except Exception as exc:
+    except (requests.exceptions.RequestException, json.JSONDecodeError, KeyError, ValueError) as exc:
         logger.warning("Home form fetch failed for %d: %s", home_id, exc)
         home_form = _form_default
     h2h = _fetch_h2h(home_id, away_id, season)

@@ -14,17 +14,23 @@ Requirements:
 """
 
 import csv
+import json
+import logging
 import os
 import sys
 import time
 import warnings
-import pandas as pd
 from datetime import date, timedelta
 
-from nba_api.stats.endpoints import leaguegamefinder, boxscoretraditionalv2
+import pandas as pd
+import requests.exceptions
+from nba_api.stats.endpoints import boxscoretraditionalv2, leaguegamefinder
 from nba_api.stats.static import players
+
 import oddstracker
 import predictions_db as pred_db
+
+logger = logging.getLogger(__name__)
 
 warnings.filterwarnings("ignore")
 
@@ -36,6 +42,7 @@ if len(sys.argv) > 1:
 else:
     CHECK_DATE = date.today() - timedelta(days=1)
 
+
 # =============================================================================
 # AUTO-LOAD from predictions.db (written by nba_combined.py)
 # Falls back to the manual PREDICTIONS list below if no rows exist.
@@ -43,8 +50,10 @@ else:
 def _load_predictions_db(target_date: date) -> list:
     rows = pred_db.load_prop_predictions(target_date)
     if rows:
-        print(f"  Auto-loaded {len(rows)} prediction(s) from predictions.db "
-              f"({target_date.isoformat()})")
+        print(
+            f"  Auto-loaded {len(rows)} prediction(s) from predictions.db "
+            f"({target_date.isoformat()})"
+        )
     return rows
 
 
@@ -60,22 +69,23 @@ _auto = _load_predictions_db(CHECK_DATE)
 PREDICTIONS = _auto if _auto else PREDICTIONS
 
 # Path to the running bet log (auto-created if missing)
-LOG_FILE      = os.path.join(_HERE, "bet_log.csv")
+LOG_FILE = os.path.join(_HERE, "bet_log.csv")
 GAME_LOG_FILE = os.path.join(_HERE, "game_log.csv")
 
 # =============================================================================
 # MARKET → BOX SCORE COLUMNS
 # =============================================================================
 MARKET_TO_COLS = {
-    "PTS":     ["PTS"],
-    "REB":     ["REB"],
-    "AST":     ["AST"],
-    "3PM":     ["FG3M"],
+    "PTS": ["PTS"],
+    "REB": ["REB"],
+    "AST": ["AST"],
+    "3PM": ["FG3M"],
     "PTS+REB": ["PTS", "REB"],
     "PTS+AST": ["PTS", "AST"],
     "REB+AST": ["REB", "AST"],
-    "PRA":     ["PTS", "REB", "AST"],
+    "PRA": ["PTS", "REB", "AST"],
 }
+
 
 # =============================================================================
 # GAME PREDICTIONS — load from predictions.db
@@ -91,8 +101,10 @@ MARKET_TO_COLS = {
 def _load_game_predictions_db(target_date: date) -> list:
     rows = pred_db.load_game_predictions(target_date)
     if rows:
-        print(f"  Auto-loaded {len(rows)} game prediction(s) from predictions.db "
-              f"({target_date.isoformat()})")
+        print(
+            f"  Auto-loaded {len(rows)} game prediction(s) from predictions.db "
+            f"({target_date.isoformat()})"
+        )
     return rows
 
 
@@ -113,7 +125,7 @@ def build_game_results(check_date: date) -> dict:
             league_id_nullable="00",
         )
         df = gf.get_data_frames()[0]
-    except Exception as e:
+    except (requests.exceptions.RequestException, json.JSONDecodeError, IndexError) as e:
         print(f"  Warning: could not reach stats.nba.com for game results — {e}")
         return {}
     if df.empty:
@@ -122,26 +134,26 @@ def build_game_results(check_date: date) -> dict:
     results = {}
     for game_id in df["GAME_ID"].unique():
         sub = df[df["GAME_ID"] == game_id]
-        home_rows = sub[sub["MATCHUP"].str.contains("vs\.", na=False)]
-        away_rows = sub[sub["MATCHUP"].str.contains("@",   na=False)]
+        home_rows = sub[sub["MATCHUP"].str.contains(r"vs\.", na=False)]
+        away_rows = sub[sub["MATCHUP"].str.contains("@", na=False)]
         if home_rows.empty or away_rows.empty:
             continue
         h = home_rows.iloc[0]
         a = away_rows.iloc[0]
-        home_abbr  = str(h["TEAM_ABBREVIATION"]).upper()
-        away_abbr  = str(a["TEAM_ABBREVIATION"]).upper()
+        home_abbr = str(h["TEAM_ABBREVIATION"]).upper()
+        away_abbr = str(a["TEAM_ABBREVIATION"]).upper()
         home_score = int(h["PTS"])
         away_score = int(a["PTS"])
-        margin     = home_score - away_score   # positive = home won by this much
-        winner     = home_abbr if home_score > away_score else away_abbr
+        margin = home_score - away_score  # positive = home won by this much
+        winner = home_abbr if home_score > away_score else away_abbr
         results[(home_abbr, away_abbr)] = {
-            "game_id":    game_id,
-            "home":       home_abbr,
-            "away":       away_abbr,
+            "game_id": game_id,
+            "home": home_abbr,
+            "away": away_abbr,
             "home_score": home_score,
             "away_score": away_score,
-            "margin":     margin,
-            "winner":     winner,
+            "margin": margin,
+            "winner": winner,
         }
     return results
 
@@ -155,21 +167,29 @@ def check_game_predictions(game_preds: list, game_results: dict) -> list:
 
         gr = game_results.get((home, away)) or game_results.get((away, home))
         if gr is None:
-            out.append({**pred, "home_score": None, "away_score": None,
-                        "winner": None, "winner_hit": "NOT FOUND",
-                        "home_margin": None, "spread_hit": "NOT FOUND"})
+            out.append(
+                {
+                    **pred,
+                    "home_score": None,
+                    "away_score": None,
+                    "winner": None,
+                    "winner_hit": "NOT FOUND",
+                    "home_margin": None,
+                    "spread_hit": "NOT FOUND",
+                }
+            )
             continue
 
         # Winner check
-        winner_hit = ("HIT ✓" if gr["winner"] == pred["winner_pick"] else "MISS ✗")
+        winner_hit = "HIT ✓" if gr["winner"] == pred["winner_pick"] else "MISS ✗"
 
         # Spread check: home_margin = home_score - away_score
         #   home covers if home_margin > -spread
         #   push         if home_margin == -spread
-        spread     = pred["spread"]
+        spread = pred["spread"]
         spread_hit = "N/A"
         if spread is not None:
-            hm = gr["margin"]           # home_score - away_score
+            hm = gr["margin"]  # home_score - away_score
             if hm == -spread:
                 spread_hit = "PUSH"
             elif pred["spread_pick"] == gr["home"]:
@@ -177,19 +197,21 @@ def check_game_predictions(game_preds: list, game_results: dict) -> list:
             elif pred["spread_pick"] == gr["away"]:
                 spread_hit = "HIT ✓" if hm < -spread else "MISS ✗"
 
-        out.append({
-            "home":        gr["home"],
-            "away":        gr["away"],
-            "home_score":  gr["home_score"],
-            "away_score":  gr["away_score"],
-            "winner":      gr["winner"],
-            "winner_pick": pred["winner_pick"],
-            "winner_hit":  winner_hit,
-            "spread":      spread,
-            "spread_pick": pred["spread_pick"],
-            "home_margin": gr["margin"],
-            "spread_hit":  spread_hit,
-        })
+        out.append(
+            {
+                "home": gr["home"],
+                "away": gr["away"],
+                "home_score": gr["home_score"],
+                "away_score": gr["away_score"],
+                "winner": gr["winner"],
+                "winner_pick": pred["winner_pick"],
+                "winner_hit": winner_hit,
+                "spread": spread,
+                "spread_pick": pred["spread_pick"],
+                "home_margin": gr["margin"],
+                "spread_hit": spread_hit,
+            }
+        )
     return out
 
 
@@ -201,31 +223,34 @@ def print_game_results(results: list, check_date: date):
     print("=" * 80)
     print(f"  GAME PREDICTIONS — {check_date.strftime('%A, %B %d %Y')}")
     print("=" * 80)
-    print(f"  {'Game':<12} {'Score':<12} {'Winner':>7} {'Pick':>7} {'W-Res':<8}  "
-          f"{'Spread':>7} {'S-Pick':>7} {'S-Res':<8}")
-    print(f"  {'─'*12} {'─'*12} {'─'*7} {'─'*7} {'─'*8}  "
-          f"{'─'*7} {'─'*7} {'─'*8}")
+    print(
+        f"  {'Game':<12} {'Score':<12} {'Winner':>7} {'Pick':>7} {'W-Res':<8}  "
+        f"{'Spread':>7} {'S-Pick':>7} {'S-Res':<8}"
+    )
+    print(f"  {'─' * 12} {'─' * 12} {'─' * 7} {'─' * 7} {'─' * 8}  {'─' * 7} {'─' * 7} {'─' * 8}")
 
-    winner_hits  = 0
+    winner_hits = 0
     winner_total = 0
-    spread_hits  = 0
+    spread_hits = 0
     spread_total = 0
 
     for r in results:
         if r["home_score"] is None:
-            game_str  = f"{r['away_abbr']}@{r['home_abbr']}"
+            game_str = f"{r['away_abbr']}@{r['home_abbr']}"
             score_str = "NOT FOUND"
             print(f"  {game_str:<12} {score_str:<12}")
             continue
 
-        game_str   = f"{r['away']}@{r['home']}"
-        score_str  = f"{r['away_score']}-{r['home_score']}"
+        game_str = f"{r['away']}@{r['home']}"
+        score_str = f"{r['away_score']}-{r['home_score']}"
         spread_str = f"{r['spread']:+.1f}" if r["spread"] is not None else "  N/A"
-        spick_str  = r["spread_pick"] if r["spread"] is not None else "  N/A"
-        sres_str   = r["spread_hit"]
+        spick_str = r["spread_pick"] if r["spread"] is not None else "  N/A"
+        sres_str = r["spread_hit"]
 
-        print(f"  {game_str:<12} {score_str:<12} {r['winner']:>7} {r['winner_pick']:>7} "
-              f"{r['winner_hit']:<8}  {spread_str:>7} {spick_str:>7} {sres_str:<8}")
+        print(
+            f"  {game_str:<12} {score_str:<12} {r['winner']:>7} {r['winner_pick']:>7} "
+            f"{r['winner_hit']:<8}  {spread_str:>7} {spick_str:>7} {sres_str:<8}"
+        )
 
         if "HIT" in r["winner_hit"] or "MISS" in r["winner_hit"]:
             winner_total += 1
@@ -237,47 +262,73 @@ def print_game_results(results: list, check_date: date):
             if "HIT" in r["spread_hit"]:
                 spread_hits += 1
 
-    print(f"\n  {'─'*60}")
+    print(f"\n  {'─' * 60}")
     if winner_total > 0:
-        print(f"  Winner picks:  {winner_hits}W – {winner_total - winner_hits}L  "
-              f"({winner_hits / winner_total * 100:.1f}%)")
+        print(
+            f"  Winner picks:  {winner_hits}W – {winner_total - winner_hits}L  "
+            f"({winner_hits / winner_total * 100:.1f}%)"
+        )
     if spread_total > 0:
-        print(f"  Spread picks:  {spread_hits}W – {spread_total - spread_hits}L  "
-              f"({spread_hits / spread_total * 100:.1f}%)")
+        print(
+            f"  Spread picks:  {spread_hits}W – {spread_total - spread_hits}L  "
+            f"({spread_hits / spread_total * 100:.1f}%)"
+        )
     print("=" * 80)
 
 
 def append_game_to_log(results: list, check_date: date):
     """Append graded game predictions to game_log.csv."""
-    fieldnames = ["date", "game", "home", "away", "home_score", "away_score",
-                  "winner", "winner_pick", "winner_hit",
-                  "spread", "spread_pick", "home_margin", "spread_hit"]
+    fieldnames = [
+        "date",
+        "game",
+        "home",
+        "away",
+        "home_score",
+        "away_score",
+        "winner",
+        "winner_pick",
+        "winner_hit",
+        "spread",
+        "spread_pick",
+        "home_margin",
+        "spread_hit",
+    ]
 
     file_exists = os.path.isfile(GAME_LOG_FILE) and os.path.getsize(GAME_LOG_FILE) > 0
     new_rows = []
 
     for r in results:
         if r["home_score"] is None:
-            continue   # game not found — skip
+            continue  # game not found — skip
 
-        winner_out = "HIT" if "HIT" in r["winner_hit"] else ("MISS" if "MISS" in r["winner_hit"] else r["winner_hit"])
-        spread_out = "HIT" if "HIT" in r["spread_hit"] else ("MISS" if "MISS" in r["spread_hit"] else r["spread_hit"])
+        winner_out = (
+            "HIT"
+            if "HIT" in r["winner_hit"]
+            else ("MISS" if "MISS" in r["winner_hit"] else r["winner_hit"])
+        )
+        spread_out = (
+            "HIT"
+            if "HIT" in r["spread_hit"]
+            else ("MISS" if "MISS" in r["spread_hit"] else r["spread_hit"])
+        )
 
-        new_rows.append({
-            "date":        check_date.isoformat(),
-            "game":        f"{r['away']}@{r['home']}",
-            "home":        r["home"],
-            "away":        r["away"],
-            "home_score":  r["home_score"],
-            "away_score":  r["away_score"],
-            "winner":      r["winner"],
-            "winner_pick": r["winner_pick"],
-            "winner_hit":  winner_out,
-            "spread":      r["spread"] if r["spread"] is not None else "",
-            "spread_pick": r["spread_pick"],
-            "home_margin": r["home_margin"],
-            "spread_hit":  spread_out,
-        })
+        new_rows.append(
+            {
+                "date": check_date.isoformat(),
+                "game": f"{r['away']}@{r['home']}",
+                "home": r["home"],
+                "away": r["away"],
+                "home_score": r["home_score"],
+                "away_score": r["away_score"],
+                "winner": r["winner"],
+                "winner_pick": r["winner_pick"],
+                "winner_hit": winner_out,
+                "spread": r["spread"] if r["spread"] is not None else "",
+                "spread_pick": r["spread_pick"],
+                "home_margin": r["home_margin"],
+                "spread_hit": spread_out,
+            }
+        )
 
     if not new_rows:
         return
@@ -319,7 +370,7 @@ def get_games_on_date(check_date):
             league_id_nullable="00",
         )
         df = gf.get_data_frames()[0]
-    except Exception as e:
+    except (requests.exceptions.RequestException, json.JSONDecodeError, IndexError) as e:
         print(f"  Warning: could not reach stats.nba.com — {e}")
         return []
     if df.empty:
@@ -355,8 +406,9 @@ def build_actual_stats(check_date):
         try:
             df = get_box_score(gid)
             all_rows.append(df)
-        except Exception as e:
-            print(f"  Warning: could not fetch game {gid}: {e}")
+        except Exception:
+            # intentionally broad: one bad box-score must not abort the rest of the batch
+            logger.exception("Box score fetch failed for game %s", gid)
 
     if not all_rows:
         return {}
@@ -368,12 +420,12 @@ def build_actual_stats(check_date):
         if pd.isna(pid):
             continue
         stats[int(pid)] = {
-            "name":  row.get("PLAYER_NAME", ""),
-            "PTS":   float(row.get("PTS", 0) or 0),
-            "REB":   float(row.get("REB", 0) or 0),
-            "AST":   float(row.get("AST", 0) or 0),
-            "FG3M":  float(row.get("FG3M", 0) or 0),
-            "MIN":   row.get("MIN", "0"),
+            "name": row.get("PLAYER_NAME", ""),
+            "PTS": float(row.get("PTS", 0) or 0),
+            "REB": float(row.get("REB", 0) or 0),
+            "AST": float(row.get("AST", 0) or 0),
+            "FG3M": float(row.get("FG3M", 0) or 0),
+            "MIN": row.get("MIN", "0"),
         }
     print(f"  Loaded stats for {len(stats)} players.\n")
     return stats
@@ -389,10 +441,10 @@ def check_predictions(predictions, actual_stats):
 
     results = []
     for pred in predictions:
-        player  = pred["player"]
-        market  = pred["market"].upper()
-        line    = float(pred["line"])
-        pick    = pred["pick"].upper()
+        player = pred["player"]
+        market = pred["market"].upper()
+        line = float(pred["line"])
+        pick = pred["pick"].upper()
 
         cols = MARKET_TO_COLS.get(market)
         if cols is None:
@@ -420,25 +472,29 @@ def check_predictions(predictions, actual_stats):
 
         if push:
             outcome = "PUSH"
-            margin  = 0.0
+            margin = 0.0
         elif pick == "OVER":
             outcome = "HIT ✓" if hit else "MISS ✗"
-            margin  = round(actual_val - line, 1)   # +cushion / −missed by
+            margin = round(actual_val - line, 1)  # +cushion / −missed by
         else:
             outcome = "HIT ✓" if hit else "MISS ✗"
-            margin  = round(line - actual_val, 1)   # +cushion / −missed by
+            margin = round(line - actual_val, 1)  # +cushion / −missed by
 
-        results.append({
-            "player":     player,
-            "market":     market,
-            "line":       line,
-            "pick":       pick,
-            "projection": pred.get("projection", ""),  # v8 Fix: persist projection through grading pipeline
-            "actual":     round(actual_val, 1),
-            "margin":     margin,
-            "result":     outcome,
-            "minutes":    player_data.get("MIN", "?"),
-        })
+        results.append(
+            {
+                "player": player,
+                "market": market,
+                "line": line,
+                "pick": pick,
+                "projection": pred.get(
+                    "projection", ""
+                ),  # v8 Fix: persist projection through grading pipeline
+                "actual": round(actual_val, 1),
+                "margin": margin,
+                "result": outcome,
+                "minutes": player_data.get("MIN", "?"),
+            }
+        )
 
     return results
 
@@ -447,17 +503,19 @@ def print_results(results):
     if not results:
         return
 
-    hits   = sum(1 for r in results if "HIT"  in r["result"])
+    hits = sum(1 for r in results if "HIT" in r["result"])
     misses = sum(1 for r in results if "MISS" in r["result"])
     pushes = sum(1 for r in results if "PUSH" in r["result"])
-    dnp    = sum(1 for r in results if r["actual"] is None)
+    dnp = sum(1 for r in results if r["actual"] is None)
     graded = hits + misses
 
     print("=" * 80)
     print(f"  RESULTS — {CHECK_DATE.strftime('%A, %B %d %Y')}")
     print("=" * 80)
-    print(f"  {'Player':<22} {'Mkt':<9} {'Line':>5} {'Pick':<6} {'Actual':>6}  {'Margin':>7}  Result")
-    print(f"  {'─'*22} {'─'*9} {'─'*5} {'─'*6} {'─'*6}  {'─'*7}  {'─'*10}")
+    print(
+        f"  {'Player':<22} {'Mkt':<9} {'Line':>5} {'Pick':<6} {'Actual':>6}  {'Margin':>7}  Result"
+    )
+    print(f"  {'─' * 22} {'─' * 9} {'─' * 5} {'─' * 6} {'─' * 6}  {'─' * 7}  {'─' * 10}")
 
     for r in results:
         actual_str = f"{r['actual']:>6.1f}" if r["actual"] is not None else "   N/A"
@@ -466,38 +524,49 @@ def print_results(results):
             margin_str = f"{m:>+7.1f}"
         else:
             margin_str = "       "
-        print(f"  {r['player']:<22} {r['market']:<9} {r['line']:>5.1f} "
-              f"{r['pick']:<6} {actual_str}  {margin_str}  {r['result']}")
+        print(
+            f"  {r['player']:<22} {r['market']:<9} {r['line']:>5.1f} "
+            f"{r['pick']:<6} {actual_str}  {margin_str}  {r['result']}"
+        )
 
-    print(f"\n  {'─'*60}")
+    print(f"\n  {'─' * 60}")
     if graded > 0:
         acc = hits / graded * 100
         print(f"  Record:   {hits}W – {misses}L" + (f" – {pushes}P" if pushes else ""))
         print(f"  Accuracy: {acc:.1f}%  ({graded} graded bets)")
 
     # Near-miss / cushion summary for graded bets with margin data
-    graded_margins = [r for r in results
-                      if r.get("margin") is not None and r["actual"] is not None
-                      and ("HIT" in r["result"] or "MISS" in r["result"])]
+    graded_margins = [
+        r
+        for r in results
+        if r.get("margin") is not None
+        and r["actual"] is not None
+        and ("HIT" in r["result"] or "MISS" in r["result"])
+    ]
     if graded_margins:
-        near_misses = [r for r in graded_margins
-                       if "MISS" in r["result"] and -1.0 <= r["margin"] < 0]
-        miss_list   = [r for r in graded_margins if "MISS" in r["result"]]
-        hit_list    = [r for r in graded_margins if "HIT"  in r["result"]]
+        near_misses = [
+            r for r in graded_margins if "MISS" in r["result"] and -1.0 <= r["margin"] < 0
+        ]
+        miss_list = [r for r in graded_margins if "MISS" in r["result"]]
+        hit_list = [r for r in graded_margins if "HIT" in r["result"]]
 
         if near_misses:
-            print(f"\n  Near-misses (within 1 unit of line):")
+            print("\n  Near-misses (within 1 unit of line):")
             for r in sorted(near_misses, key=lambda x: x["margin"], reverse=True):
                 print(f"    {r['player']:<22} {r['market']:<9}  missed by {abs(r['margin']):.1f}")
 
         if miss_list:
             closest = max(miss_list, key=lambda x: x["margin"])
-            print(f"\n  Closest miss:   {closest['player']} {closest['market']} "
-                  f"(missed by {abs(closest['margin']):.1f})")
+            print(
+                f"\n  Closest miss:   {closest['player']} {closest['market']} "
+                f"(missed by {abs(closest['margin']):.1f})"
+            )
         if hit_list:
             biggest = max(hit_list, key=lambda x: x["margin"])
-            print(f"  Biggest cushion: {biggest['player']} {biggest['market']} "
-                  f"(hit by {biggest['margin']:.1f})")
+            print(
+                f"  Biggest cushion: {biggest['player']} {biggest['market']} "
+                f"(hit by {biggest['margin']:.1f})"
+            )
 
     if dnp:
         print(f"\n  {dnp} prediction(s) could not be graded (DNP or not found)")
@@ -518,12 +587,25 @@ def append_to_log(results, check_date):
     graded = [r for r in results if r.get("result") in ("HIT ✓", "MISS ✗", "PUSH", "HIT", "MISS")]
     with_proj = sum(1 for r in graded if r.get("projection") not in ("", None, 0))
     if graded:
-        print(f"  Projection coverage: {with_proj}/{len(graded)} graded rows have projection values")
+        print(
+            f"  Projection coverage: {with_proj}/{len(graded)} graded rows have projection values"
+        )
         if with_proj == 0 and len(graded) > 0:
-            print(f"  ⚠ NO projections being written — check that check_predictions preserves the field")
+            print(
+                "  ⚠ NO projections being written — check that check_predictions preserves the field"
+            )
 
-    fieldnames = ["date", "player", "market", "line", "pick",
-                  "projection", "actual", "margin", "result"]
+    fieldnames = [
+        "date",
+        "player",
+        "market",
+        "line",
+        "pick",
+        "projection",
+        "actual",
+        "margin",
+        "result",
+    ]
 
     file_exists = os.path.isfile(LOG_FILE) and os.path.getsize(LOG_FILE) > 0
 
@@ -548,26 +630,28 @@ def append_to_log(results, check_date):
     new_rows = []
     for r in results:
         if r.get("actual") is None:
-            continue                          # DNP / not found
+            continue  # DNP / not found
         outcome = r["result"]
         if "HIT" in outcome:
             outcome = "HIT"
         elif "MISS" in outcome:
             outcome = "MISS"
         else:
-            continue                          # PUSH — not useful for hit-rate learning
+            continue  # PUSH — not useful for hit-rate learning
 
-        new_rows.append({
-            "date":       check_date.isoformat(),
-            "player":     r["player"],
-            "market":     r["market"],
-            "line":       r["line"],
-            "pick":       r["pick"],
-            "projection": r.get("projection", ""),   # populated when pred has 'projection'
-            "actual":     r["actual"],
-            "margin":     r.get("margin", ""),
-            "result":     outcome,
-        })
+        new_rows.append(
+            {
+                "date": check_date.isoformat(),
+                "player": r["player"],
+                "market": r["market"],
+                "line": r["line"],
+                "pick": r["pick"],
+                "projection": r.get("projection", ""),  # populated when pred has 'projection'
+                "actual": r["actual"],
+                "margin": r.get("margin", ""),
+                "result": outcome,
+            }
+        )
 
     if not new_rows:
         return
@@ -594,7 +678,7 @@ if __name__ == "__main__":
     # ── Player prop predictions ───────────────────────────────────────────────
     if not PREDICTIONS:
         print(f"\nNo player prop predictions found for {CHECK_DATE.isoformat()}.")
-        print(f"  Run nba_combined.py on game day — picks are saved to predictions.db.")
+        print("  Run nba_combined.py on game day — picks are saved to predictions.db.")
         print("Run nba_combined.py on game day to generate it automatically.")
         print("Or add picks manually to the PREDICTIONS list in this file.")
     else:
@@ -603,7 +687,7 @@ if __name__ == "__main__":
         print_results(results)
         if results:
             append_to_log(results, CHECK_DATE)
-            oddstracker.update_results()   # fill result column in odds_tracker.csv
+            oddstracker.update_results()  # fill result column in odds_tracker.csv
             print("  Run calibrate.py to update calibration.json with the new data.")
 
     # ── Game winner / spread predictions ─────────────────────────────────────

@@ -143,7 +143,7 @@ def fetch_team_game_logs(seasons: list, force: bool = False) -> pd.DataFrame:
             df.to_csv(cache_f, index=False)
             frames.append(df)
             print(f"  {len(df)} rows")
-        except Exception as e:
+        except (requests.exceptions.RequestException, json.JSONDecodeError, OSError, IndexError) as e:
             print(f"  FAILED: {e}")
         _sleep()
 
@@ -173,7 +173,7 @@ def fetch_player_game_logs(seasons: list, force: bool = False) -> pd.DataFrame:
             df.to_csv(cache_f, index=False)
             frames.append(df)
             print(f"  {len(df)} rows")
-        except Exception as e:
+        except (requests.exceptions.RequestException, json.JSONDecodeError, OSError, IndexError) as e:
             print(f"  FAILED: {e}")
         _sleep()
 
@@ -212,7 +212,7 @@ def fetch_player_positions(seasons: list, force: bool = False) -> dict:
         print(f"  {len(pos_map)} players")
         with open(cache_f, "w") as fh:
             json.dump({str(k): v for k, v in pos_map.items()}, fh)
-    except Exception as e:
+    except (requests.exceptions.RequestException, json.JSONDecodeError, OSError, KeyError, ValueError) as e:
         print(f"  FAILED: {e}")
     _sleep()
     return pos_map

@@ -21,8 +21,27 @@ def _import_oddstracker():
     stub_requests.get  = mock.Mock(return_value=mock.Mock(json=lambda: [], raise_for_status=lambda: None))
     stub_requests.post = mock.Mock()
     stub_requests.RequestException = Exception
+    exc_stub = types.ModuleType("requests.exceptions")
+    exc_stub.RequestException = Exception
+    exc_stub.Timeout = Exception
+    exc_stub.ConnectionError = Exception
+    stub_requests.exceptions = exc_stub
 
-    with mock.patch.dict("sys.modules", {"requests": stub_requests}):
+    stub_plp = types.ModuleType("playerlinepredictor")
+    stub_plp.ODDS_API_KEY = ""
+    stub_plp.BASE_URL     = "https://api.the-odds-api.com/v4"
+    stub_plp.SPORT        = "basketball_nba"
+    stub_plp.MARKETS      = []
+    stub_plp.MARKET_LABELS = {}
+
+    stub_nba_utils = types.ModuleType("nba_api_utils")
+    stub_nba_utils.api_call_with_retry = mock.Mock(side_effect=lambda fn, **kw: fn())
+    stub_nba_utils.safe_dataframe_call = mock.Mock(return_value=None)
+
+    with mock.patch.dict("sys.modules", {
+        "requests": stub_requests, "requests.exceptions": exc_stub,
+        "playerlinepredictor": stub_plp, "nba_api_utils": stub_nba_utils,
+    }):
         if "oddstracker" in sys.modules:
             mod = sys.modules["oddstracker"]
         else:

@@ -10,7 +10,7 @@ so re-running the same day overwrites cleanly.
 import sqlite3
 from datetime import date
 from pathlib import Path
-from typing import List, Optional
+from typing import List
 
 DB_PATH = Path(__file__).parent / "predictions.db"
 
@@ -62,8 +62,7 @@ def _connect(path: Path = DB_PATH) -> sqlite3.Connection:
     return conn
 
 
-def upsert_prop_predictions(rows: List[dict], game_date: date,
-                             path: Path = DB_PATH) -> int:
+def upsert_prop_predictions(rows: List[dict], game_date: date, path: Path = DB_PATH) -> int:
     """Insert or replace prop pick rows for game_date. Returns row count written."""
     if not rows:
         return 0
@@ -102,8 +101,7 @@ def upsert_prop_predictions(rows: List[dict], game_date: date,
     return len(rows)
 
 
-def upsert_game_predictions(rows: List[dict], game_date: date,
-                             path: Path = DB_PATH) -> int:
+def upsert_game_predictions(rows: List[dict], game_date: date, path: Path = DB_PATH) -> int:
     """Insert or replace game pick rows for game_date. Returns row count written."""
     if not rows:
         return 0
@@ -131,8 +129,7 @@ def upsert_game_predictions(rows: List[dict], game_date: date,
     return len(rows)
 
 
-def load_prop_predictions(target_date: date,
-                           path: Path = DB_PATH) -> List[dict]:
+def load_prop_predictions(target_date: date, path: Path = DB_PATH) -> List[dict]:
     """Return prop predictions for target_date (empty list if none)."""
     if not Path(path).exists():
         return []
@@ -145,18 +142,17 @@ def load_prop_predictions(target_date: date,
         )
         return [
             {
-                "player":     row[0],
-                "market":     row[1],
-                "line":       float(row[2]) if row[2] is not None else 0.0,
-                "pick":       row[3],
+                "player": row[0],
+                "market": row[1],
+                "line": float(row[2]) if row[2] is not None else 0.0,
+                "pick": row[3],
                 "projection": float(row[4]) if row[4] is not None else 0.0,
             }
             for row in cur.fetchall()
         ]
 
 
-def load_game_predictions(target_date: date,
-                           path: Path = DB_PATH) -> List[dict]:
+def load_game_predictions(target_date: date, path: Path = DB_PATH) -> List[dict]:
     """Return game predictions for target_date (empty list if none)."""
     if not Path(path).exists():
         return []
@@ -169,10 +165,10 @@ def load_game_predictions(target_date: date,
         )
         return [
             {
-                "home_abbr":   row[0],
-                "away_abbr":   row[1],
+                "home_abbr": row[0],
+                "away_abbr": row[1],
                 "winner_pick": row[2],
-                "spread":      float(row[3]) if row[3] is not None else None,
+                "spread": float(row[3]) if row[3] is not None else None,
                 "spread_pick": row[4],
             }
             for row in cur.fetchall()
@@ -184,7 +180,5 @@ def available_dates(path: Path = DB_PATH) -> List[str]:
     if not Path(path).exists():
         return []
     with _connect(path) as conn:
-        cur = conn.execute(
-            "SELECT DISTINCT date FROM prop_predictions ORDER BY date"
-        )
+        cur = conn.execute("SELECT DISTINCT date FROM prop_predictions ORDER BY date")
         return [row[0] for row in cur.fetchall()]

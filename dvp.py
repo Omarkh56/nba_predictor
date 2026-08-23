@@ -38,13 +38,18 @@ Standalone use
   python3 dvp.py --stat REB --window last_14 --pos SF
 """
 
+import json
+import logging
 import re
 import sys
 import time
 import warnings
 import numpy as np
 import pandas as pd
+import requests.exceptions
 from datetime import date, timedelta
+
+logger = logging.getLogger(__name__)
 
 warnings.filterwarnings("ignore")
 
@@ -141,7 +146,7 @@ def _parse_min(m) -> float:
             p = s.split(":")
             return float(p[0]) + float(p[1]) / 60
         return float(s)
-    except Exception:
+    except ValueError:
         return 0.0
 
 
@@ -188,7 +193,7 @@ def _fetch_own_logs(season_type: str) -> pd.DataFrame:
         ).get_data_frames()[0]
         time.sleep(1.0)
         return df
-    except Exception as e:
+    except (requests.exceptions.RequestException, json.JSONDecodeError, IndexError) as e:
         print(f"  [dvp] log fetch error: {e}")
         return pd.DataFrame()
 

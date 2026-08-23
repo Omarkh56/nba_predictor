@@ -379,7 +379,7 @@ def _load_learned_player_params() -> None:
             f"(stats={list(_LEARNED_PLAYER_PARAMS.keys())}  "
             f"version={data.get('version', '?')})"
         )
-    except Exception as e:
+    except (OSError, json.JSONDecodeError, KeyError, ValueError) as e:
         print(f"  [train_model] failed to load player params: {e}")
 
 
@@ -421,7 +421,7 @@ def _load_kalman_player_state() -> None:
                 f"  [kalman] player KF loaded  "
                 f"(stats={pkf.stats()}  active={USE_KALMAN_PLAYER_MODEL})"
             )
-    except Exception as exc:
+    except (OSError, json.JSONDecodeError, KeyError) as exc:
         print(f"  [kalman] player KF not loaded: {exc}")
 
 
@@ -542,7 +542,7 @@ def _load_calibration():
                 PLAYER_PROJ_ADJ[(player, stat_col)] = round(adj, 2)
         if PLAYER_PROJ_ADJ:
             print(f"  Player-stat nudges loaded: {len(PLAYER_PROJ_ADJ)} adjustments")
-    except Exception as e:
+    except (OSError, json.JSONDecodeError, KeyError, ValueError) as e:
         print(f"  Warning: could not load calibration.json — {e}")
         CALIB = {}
 
@@ -638,7 +638,7 @@ def detect_injury_return(logs: pd.DataFrame) -> int:
         df = logs.copy()
         df["GAME_DATE"] = pd.to_datetime(df["GAME_DATE"], errors="coerce")
         df = df.sort_values("GAME_DATE", ascending=False).reset_index(drop=True)
-    except Exception:
+    except (KeyError, ValueError, TypeError):
         return 0
 
     # Walk forward in time (oldest first for gap detection)
@@ -693,7 +693,7 @@ def get_espn_injuries():
         r = requests.get(ESPN_INJURIES_URL, timeout=15)
         r.raise_for_status()
         data = r.json()
-    except Exception as e:
+    except (requests.exceptions.RequestException, json.JSONDecodeError) as e:
         print(f"  ESPN injuries error: {e}")
         return {}
 
@@ -757,7 +757,7 @@ def get_all_player_usage():
             if name:
                 PLAYER_USG_CACHE[name] = float(usg or 0)
         print(f"  Loaded USG_PCT for {len(PLAYER_USG_CACHE)} player(s).")
-    except Exception as e:
+    except (requests.exceptions.RequestException, json.JSONDecodeError, KeyError, ValueError) as e:
         print(f"  USG_PCT fetch error: {e}")
     return PLAYER_USG_CACHE
 
@@ -791,7 +791,7 @@ def _fetch_team_roster(team_id):
                     PLAYER_POS_CACHE[name] = pg
         TEAM_ROSTER_CACHE[team_id] = result
         return result
-    except Exception as e:
+    except (requests.exceptions.RequestException, json.JSONDecodeError, KeyError) as e:
         print(f"  Roster fetch error (team {team_id}): {e}")
         TEAM_ROSTER_CACHE[team_id] = {}
         return {}
@@ -1184,7 +1184,7 @@ def get_team_season_stats():
         result = df.set_index("TEAM_ID")
         TEAM_STATS_CACHE["stats"] = result
         return result
-    except Exception as e:
+    except (requests.exceptions.RequestException, json.JSONDecodeError, KeyError, ValueError) as e:
         print(f"  Team stats error: {e}")
         TEAM_STATS_CACHE["stats"] = pd.DataFrame()
         return pd.DataFrame()
@@ -1310,7 +1310,7 @@ def _get_injured_player_recent_stat(injured_name: str, inj_field: str, n_games: 
         return None
     try:
         po_logs, rs_logs, _, _, _ = get_player_logs_blended(pid)
-    except Exception:
+    except (requests.exceptions.RequestException, json.JSONDecodeError, KeyError, ValueError):
         return None
     logs = po_logs if not po_logs.empty else rs_logs
     if logs.empty:
@@ -1762,7 +1762,7 @@ def project_stat(
                 blended         = (1 - blend) * final_proj + blend * kf_pred * combined_mult
                 learned_proj_adj = blended - final_proj
                 final_proj       = max(0.0, blended)
-        except Exception:
+        except (ValueError, TypeError, KeyError):
             pass
     else:
         lp = _LEARNED_PLAYER_PARAMS.get(stat_col)
@@ -1781,7 +1781,7 @@ def project_stat(
                     blended         = (1 - blend) * final_proj + blend * learned_pred * combined_mult
                     learned_proj_adj = blended - final_proj
                     final_proj       = max(0.0, blended)
-            except Exception:
+            except (ValueError, TypeError, KeyError):
                 pass
 
     detail = {
@@ -2302,7 +2302,7 @@ def process_game(
     away_tid = get_team_id(away_abbr)
     try:
         pj = get_event_player_props(odds_event["id"])
-    except Exception as e:
+    except (requests.exceptions.RequestException, json.JSONDecodeError, KeyError) as e:
         print(f"  Error fetching props: {e}")
         return []
 
@@ -2435,7 +2435,7 @@ def main():
     print("\n  Fetching events...")
     try:
         all_events = get_all_odds_events()
-    except Exception as e:
+    except (requests.exceptions.RequestException, json.JSONDecodeError) as e:
         print(f"  Error: {e}")
         return
     if not all_events:

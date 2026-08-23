@@ -7,9 +7,12 @@ with slight variations.  This module provides a single canonical
 implementation imported by all of them.
 """
 
+import json
 import logging
 import time
 from typing import Callable, Optional, TypeVar
+
+import requests
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +50,7 @@ def api_call_with_retry(
             if post_success_sleep > 0:
                 time.sleep(post_success_sleep)
             return result
-        except Exception as exc:
+        except (requests.exceptions.RequestException, json.JSONDecodeError) as exc:
             last_exc = exc
             wait = base_delay * (2**attempt)
             logger.warning(

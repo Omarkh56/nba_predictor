@@ -27,16 +27,21 @@ Run:
     python3 nba_combined.py --verbose
 """
 
+import json
+import logging
 import os
 import sys
 from datetime import date
 
 import pandas as pd
+import requests.exceptions
 
 import newnbapredictor as team_model
 import oddstracker
 import playerlinepredictor as props_model
 import predictions_db as pred_db
+
+logger = logging.getLogger(__name__)
 
 SEASON = "2026-27"
 VERBOSE = "--verbose" in sys.argv
@@ -86,14 +91,14 @@ def _load_today_lean(snap_date: date) -> dict:
             df = pd.read_csv(tracker_path, usecols=["date", "player", "market"])
             if (df["date"] == snap_date.isoformat()).any():
                 needs_fetch = False
-        except Exception:
+        except (OSError, ValueError, KeyError):
             pass
 
     if needs_fetch:
         print("\n  No odds snapshot for today — fetching book lean data…")
         try:
             oddstracker.snapshot(snap_date)
-        except Exception as e:
+        except (requests.exceptions.RequestException, json.JSONDecodeError, OSError) as e:
             print(f"  ⚠  Could not fetch odds snapshot: {e}")
             return lean_map
 
@@ -115,7 +120,7 @@ def _load_today_lean(snap_date: date) -> dict:
             print(
                 f"  Book lean loaded: {len(lean_map)} player-market lines for {snap_date.isoformat()}"
             )
-    except Exception as e:
+    except (OSError, ValueError, KeyError) as e:
         print(f"  ⚠  Could not load odds_tracker.csv: {e}")
 
     return lean_map
@@ -718,7 +723,7 @@ def _run_team_model(matchups: list, team_injuries: dict) -> tuple:
     team_preds = []
     try:
         team_preds = team_model.predict_games_data(SEASON, matchups, team_injuries)
-    except Exception as e:
+    except (requests.exceptions.RequestException, json.JSONDecodeError, KeyError, ValueError) as e:
         print(f"  ⚠  Team model error: {e} — continuing with props only.")
     return team_preds, {(p["away_abbr"], p["home_abbr"]): p for p in team_preds}
 
@@ -728,7 +733,7 @@ def _setup_odds_and_spreads(matchups: list, team_map: dict) -> list:
     print("\n  Fetching Odds API events…")
     try:
         all_events = props_model.get_all_odds_events()
-    except Exception as e:
+    except (requests.exceptions.RequestException, json.JSONDecodeError) as e:
         print(f"  ⚠  Odds API error: {e}")
         all_events = []
     if not all_events:
@@ -816,8 +821,9 @@ def _process_single_game(
                         all_picks_export.append(_pick_to_dict(row, gk, pred))
             else:
                 print("  No props returned for this game.")
-        except Exception as e:
-            print(f"  Props error: {e}")
+        except Exception:
+            # intentionally broad: one bad game must not abort the rest of the batch
+            logger.exception("Props processing failed for game %s", gk)
     else:
         print("  No Odds API event found — props unavailable for this game.")
 
