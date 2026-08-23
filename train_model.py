@@ -1067,12 +1067,24 @@ def save_params(game_result: dict, player_result: dict,
     if venue_residuals:
         params["venue_residuals"] = venue_residuals
     if ablation_result:
-        params["ablation"] = {
-            "baseline":          ablation_result.get("baseline", {}),
-            "features":          ablation_result.get("features", {}),
-            "winning_features":  ablation_result.get("winning_features", []),
-            "new_signal_rec":    ablation_result.get("new_signal_rec", "keep_base"),
-        }
+        base      = ablation_result.get("baseline", {})
+        feat_dict = ablation_result.get("features", {})
+        # Stored as a list so each entry is self-contained and inspectable.
+        ablation_list = [
+            {
+                "feature":                   feat_name,
+                "baseline_val_log_loss":     base.get("log_loss"),
+                "with_feature_val_log_loss": r.get("log_loss"),
+                "baseline_val_brier":        base.get("brier"),
+                "with_feature_val_brier":    r.get("brier"),
+                "passed":                    r.get("passed", False),
+                "reason":                    r.get("reason", ""),
+            }
+            for feat_name, r in feat_dict.items()
+        ]
+        params["game_model"]["ablation"]      = ablation_list
+        params["game_model"]["new_signal_rec"] = ablation_result.get("new_signal_rec", "keep_base")
+        params["game_model"]["winning_features"] = ablation_result.get("winning_features", [])
 
     with open(PARAMS_FILE, "w") as fh:
         json.dump(params, fh, indent=2)
