@@ -54,6 +54,7 @@ _nba_http.STATS_HEADERS.update({
 _nba_http.STATS_TIMEOUT = 90
 
 import requests as _req
+import requests          # needed for requests.exceptions in except clauses
 _orig_get = _req.get
 def _patched_get(url, **kwargs):
     kwargs.setdefault("verify", False)
@@ -65,12 +66,14 @@ from nba_api.stats.endpoints import leaguegamefinder, leaguegamelog
 
 _HERE       = Path(__file__).parent
 CACHE_DIR   = _HERE / "data_cache"
-PARAMS_FILE = _HERE / "learned_params.json"
-CALIB_FILE  = _HERE / "calibration.json"
+PARAMS_FILE    = _HERE / "learned_params.json"
+CALIB_FILE     = _HERE / "calibration.json"
+ABLATION_FILE  = _HERE / "ablation_results.json"
 CACHE_DIR.mkdir(exist_ok=True)
 
 DEFAULT_SEASONS = ["2020-21", "2021-22", "2022-23", "2023-24", "2024-25"]
-TRAIN_CUTOFF    = "2024-25"   # this season is validation/test only
+VAL_SEASON  = "2023-24"   # drives swap/monitor/keep recommendation
+TEST_SEASON = "2024-25"   # touched exactly once, after model is already selected
 
 # Current hand-tuned constants (mirrored from newnbapredictor.py)
 RTG_SCALE            = 9.5
@@ -212,7 +215,8 @@ def fetch_player_positions(seasons: list, force: bool = False) -> dict:
         print(f"  {len(pos_map)} players")
         with open(cache_f, "w") as fh:
             json.dump({str(k): v for k, v in pos_map.items()}, fh)
-    except (requests.exceptions.RequestException, json.JSONDecodeError, OSError, KeyError, ValueError) as e:
+    except (requests.exceptions.RequestException, json.JSONDecodeError,
+            OSError, KeyError, ValueError, TypeError) as e:
         print(f"  FAILED: {e}")
     _sleep()
     return pos_map
@@ -575,10 +579,13 @@ def hand_tuned_predict(df: pd.DataFrame) -> np.ndarray:
 # =============================================================================
 
 def fit_game_models(df_train: pd.DataFrame, df_val: pd.DataFrame,
+                    df_test: pd.DataFrame = None,
                     features: list = None) -> dict:
     """
     Fit logistic regression (win prob) + ridge regression (margin).
-    features — the exact list of column names to use; defaults to GAME_FEATURES.
+    features  — the exact list of column names to use; defaults to GAME_FEATURES.
+    df_test   — independent holdout (TEST_SEASON); scored AFTER recommendation is
+                made so it never influences model selection.
     Returns dict with model objects, scalers, and evaluation results.
     """
     if features is None:
@@ -645,30 +652,58 @@ def fit_game_models(df_train: pd.DataFrame, df_val: pd.DataFrame,
         bar = "+" * int(abs(coef) * 5) if coef > 0 else "-" * int(abs(coef) * 5)
         print(f"    {feat:<22} {coef:>+7.4f}  {bar}")
 
+    # ── Test-set evaluation (scored AFTER recommendation — never influences it) ─
+    test_log_loss = None
+    test_brier    = None
+    test_games    = None
+    ht_test_ll    = None
+    ht_test_bs    = None
+    if df_test is not None and not df_test.empty:
+        missing = [f for f in features if f not in df_test.columns]
+        if missing:
+            print(f"\n  [test] skipped — missing columns: {missing}")
+        else:
+            Xte = scaler.transform(df_test[features].values)
+            yte = df_test["home_win"].values
+            probs_te   = log_model.predict_proba(Xte)[:, 1]
+            ht_probs_te = hand_tuned_predict(df_test)
+            test_log_loss = round(float(log_loss(yte, probs_te)), 6)
+            test_brier    = round(float(brier_score_loss(yte, probs_te)), 6)
+            ht_test_ll    = round(float(log_loss(yte, ht_probs_te)), 6)
+            ht_test_bs    = round(float(brier_score_loss(yte, ht_probs_te)), 6)
+            test_games    = len(df_test)
+            print(f"\n  === TEST SET ({TEST_SEASON}) — {test_games} games ===")
+            print(f"  {'Model':<20} {'Log Loss':>10} {'Brier':>10}")
+            print(f"  {'-'*40}")
+            print(f"  {'Hand-tuned':<20} {ht_test_ll:>10.4f} {ht_test_bs:>10.4f}")
+            print(f"  {'Learned (LogReg)':<20} {test_log_loss:>10.4f} {test_brier:>10.4f}")
+
     return {
-        "log_model":           log_model,
-        "ridge_model":         ridge_model,
-        "scaler":              scaler,
-        "feature_names":       features,
-        "scaler_mean":         scaler.mean_.tolist(),
-        "scaler_scale":        scaler.scale_.tolist(),
-        "log_intercept":       float(log_model.intercept_[0]),
-        "log_coefficients":    {f: float(c) for f, c in coef_dict.items()},
-        "ridge_intercept":     float(ridge_model.intercept_),
-        "ridge_coefficients":  {f: float(c) for f, c
-                                 in zip(features, ridge_model.coef_.tolist())},
-        "hand_tuned_log_loss": ll_hand,
-        "learned_log_loss":    ll_learned,
-        "hand_tuned_brier":    bs_hand,
-        "learned_brier":       bs_learned,
-        "test_log_loss":       None,
-        "test_brier":          None,
-        "test_games":          None,
-        "margin_rmse":         rmse,
-        "margin_mae":          mae,
-        "val_games":           len(df_val),
-        "train_games":         len(df_train),
-        "recommendation":      recommendation,
+        "log_model":              log_model,
+        "ridge_model":            ridge_model,
+        "scaler":                 scaler,
+        "feature_names":          features,
+        "scaler_mean":            scaler.mean_.tolist(),
+        "scaler_scale":           scaler.scale_.tolist(),
+        "log_intercept":          float(log_model.intercept_[0]),
+        "log_coefficients":       {f: float(c) for f, c in coef_dict.items()},
+        "ridge_intercept":        float(ridge_model.intercept_),
+        "ridge_coefficients":     {f: float(c) for f, c
+                                    in zip(features, ridge_model.coef_.tolist())},
+        "hand_tuned_log_loss":    ll_hand,
+        "learned_log_loss":       ll_learned,
+        "hand_tuned_brier":       bs_hand,
+        "learned_brier":          bs_learned,
+        "ht_test_log_loss":       ht_test_ll,
+        "ht_test_brier":          ht_test_bs,
+        "test_log_loss":          test_log_loss,
+        "test_brier":             test_brier,
+        "test_games":             test_games,
+        "margin_rmse":            rmse,
+        "margin_mae":             mae,
+        "val_games":              len(df_val),
+        "train_games":            len(df_train),
+        "recommendation":         recommendation,
     }
 
 
@@ -782,6 +817,99 @@ def ablation_study(df_train: pd.DataFrame, df_val: pd.DataFrame) -> dict:
         "winning_features":  winning_features,
         "new_signal_rec":    "use_extended" if winning_features else "keep_base",
     }
+
+
+# =============================================================================
+# SECTION 4c — GAME FEATURE ABLATION (leave-one-out, --ablation flag only)
+# =============================================================================
+
+def run_ablation(df_train: pd.DataFrame, df_val: pd.DataFrame,
+                 feature_names: list) -> list:
+    """
+    Leave-one-out ablation over feature_names.
+
+    Baseline = logistic regression trained on all feature_names.
+    For each feature: refit without it, compare val log_loss and Brier vs baseline.
+    Positive delta = removing the feature made the model WORSE → feature was helping.
+    Negative delta = removing improved the model → feature was hurting.
+
+    Sorted by |delta log_loss|, largest impact first.
+    Writes ablation_results.json and returns a list of result dicts.
+    """
+    y_val = df_val["home_win"].values
+
+    def _fit_eval(feats: list):
+        avail = [f for f in feats if f in df_train.columns and f in df_val.columns]
+        if len(avail) != len(feats):
+            return None
+        sc  = StandardScaler().fit(df_train[avail].values)
+        clf = LogisticRegression(C=1.0, max_iter=1000, random_state=42)
+        clf.fit(sc.transform(df_train[avail].values), df_train["home_win"].values)
+        probs = clf.predict_proba(sc.transform(df_val[avail].values))[:, 1]
+        return {
+            "log_loss": float(log_loss(y_val, probs)),
+            "brier":    float(brier_score_loss(y_val, probs)),
+        }
+
+    baseline = _fit_eval(feature_names)
+    if baseline is None:
+        print("  [ablation] one or more feature columns missing — cannot run")
+        return []
+
+    base_ll = baseline["log_loss"]
+    base_bs = baseline["brier"]
+
+    rows = []
+    for feat in feature_names:
+        reduced = [f for f in feature_names if f != feat]
+        result  = _fit_eval(reduced)
+        if result is None:
+            continue
+        delta_ll = result["log_loss"] - base_ll
+        delta_bs = result["brier"]    - base_bs
+        rows.append({
+            "feature":           feat,
+            "full_val_log_loss": round(base_ll, 6),
+            "drop_val_log_loss": round(result["log_loss"], 6),
+            "delta_log_loss":    round(delta_ll, 6),
+            "full_val_brier":    round(base_bs, 6),
+            "drop_val_brier":    round(result["brier"], 6),
+            "delta_brier":       round(delta_bs, 6),
+            "was_helping":       delta_ll > 0 or delta_bs > 0,
+        })
+
+    rows.sort(key=lambda r: -abs(r["delta_log_loss"]))
+
+    W = 82
+    print(f"\n  {'─'*W}")
+    print(f"  GAME FEATURES ABLATION (leave-one-out) — val set: {len(df_val)} games")
+    print(f"  Baseline ({len(feature_names)} features):  "
+          f"log_loss={base_ll:.4f}  brier={base_bs:.4f}")
+    print(f"  ΔLogLoss > 0  → removing hurt  (feature was contributing)")
+    print(f"  ΔLogLoss < 0  → removing helped (feature was noise/harmful)")
+    print(f"  {'─'*W}")
+    print(f"  {'Feature':<22} {'ΔLogLoss':>10} {'ΔBrier':>8}  Assessment")
+    print(f"  {'─'*W}")
+    for r in rows:
+        note = "was helping" if r["was_helping"] else "was noise/harmful"
+        sign = "↑" if r["was_helping"] else "↓"
+        print(f"  {r['feature']:<22} {r['delta_log_loss']:>+10.4f} "
+              f"{r['delta_brier']:>+8.4f}  {sign} {note}")
+    print(f"  {'─'*W}")
+    print(f"  (No features were dropped — review ablation_results.json before "
+          f"removing anything from GAME_FEATURES)")
+
+    payload = {
+        "val_season":    VAL_SEASON,
+        "feature_names": feature_names,
+        "baseline":      {"log_loss": round(base_ll, 6), "brier": round(base_bs, 6)},
+        "features":      rows,
+    }
+    with open(ABLATION_FILE, "w") as fh:
+        json.dump(payload, fh, indent=2)
+    print(f"  ✓ Saved {ABLATION_FILE.name}")
+
+    return rows
 
 
 # =============================================================================
@@ -1042,24 +1170,17 @@ def bootstrap_calibration(df_game: pd.DataFrame,
 def save_params(game_result: dict, player_result: dict,
                 calib: dict, seasons: list, no_bootstrap: bool,
                 venue_residuals: dict = None,
-                ablation_result: dict = None,
-                test_result: dict = None) -> None:
+                ablation_result: dict = None) -> None:
     gm_section = {
         k: v for k, v in game_result.items()
         if k not in ("log_model", "ridge_model", "scaler")
     }
-    # Overlay test-set numbers if we have them
-    if test_result:
-        gm_section["test_log_loss"] = test_result.get("log_loss")
-        gm_section["test_brier"]    = test_result.get("brier")
-        gm_section["test_games"]    = test_result.get("n_games")
-        if test_result.get("note"):
-            gm_section["test_note"] = test_result["note"]
 
     params = {
         "version":      datetime.now().strftime("%Y-%m-%d"),
-        "trained_on":   [s for s in seasons if s != TRAIN_CUTOFF],
-        "validated_on": TRAIN_CUTOFF,
+        "trained_on":   [s for s in seasons if s not in {VAL_SEASON, TEST_SEASON}],
+        "validated_on": VAL_SEASON,
+        "tested_on":    TEST_SEASON,
         "game_model":   gm_section,
         "player_models":   player_result["stat_models"],
         "player_variance": player_result["variance"],
@@ -1118,8 +1239,11 @@ def main():
                    help="Load existing learned_params.json and just print metrics")
     p.add_argument("--no-bootstrap", action="store_true",
                    help="Skip calibration.json bootstrap")
+    p.add_argument("--ablation",     action="store_true",
+                   help="Run leave-one-out ablation over GAME_FEATURES and write "
+                        "ablation_results.json (adds ~10 extra model fits)")
     p.add_argument("--seasons", nargs="+", default=DEFAULT_SEASONS,
-                   help="Seasons to use (e.g. 2022-23 2023-24 2024-25)")
+                   help="Seasons to use (e.g. 2021-22 2022-23 2023-24 2024-25)")
     args = p.parse_args()
 
     if args.eval_only:
@@ -1131,12 +1255,20 @@ def main():
         gm = params.get("game_model", {})
         print(f"\nlearned_params.json ({params.get('version', 'unknown')})")
         print(f"  trained on:  {params.get('trained_on', [])}")
-        print(f"  val season:  {params.get('validated_on', '?')}")
+        print(f"  val season:  {params.get('validated_on', '?')}  "
+              f"({gm.get('val_games', '?')} games)")
+        print(f"  test season: {params.get('tested_on', '?')}  "
+              f"({gm.get('test_games', '?')} games)")
         print(f"  game model:  {gm.get('recommendation', '?')}")
-        print(f"    log_loss   hand={gm.get('hand_tuned_log_loss','?'):.4f} "
+        print(f"    val   log_loss  hand={gm.get('hand_tuned_log_loss','?'):.4f}  "
               f"learned={gm.get('learned_log_loss','?'):.4f}")
-        print(f"    brier      hand={gm.get('hand_tuned_brier','?'):.4f} "
+        print(f"    val   brier     hand={gm.get('hand_tuned_brier','?'):.4f}  "
               f"learned={gm.get('learned_brier','?'):.4f}")
+        if gm.get("test_log_loss") is not None:
+            print(f"    test  log_loss  hand={gm.get('ht_test_log_loss','?'):.4f}  "
+                  f"learned={gm.get('test_log_loss','?'):.4f}")
+            print(f"    test  brier     hand={gm.get('ht_test_brier','?'):.4f}  "
+                  f"learned={gm.get('test_brier','?'):.4f}")
         return
 
     seasons     = args.seasons
@@ -1176,15 +1308,39 @@ def main():
         print("  ⚠ Very few games — check fetch or cache.")
         sys.exit(1)
 
-    # Walk-forward split: all seasons except last = train; last = val
-    df_train = df_game[df_game["season"] != TRAIN_CUTOFF].copy()
-    df_val   = df_game[df_game["season"] == TRAIN_CUTOFF].copy()
-    if df_val.empty:
-        # If the cutoff season wasn't fetched, use last 20% as validation
-        cutoff_idx = int(len(df_game) * 0.80)
-        df_train = df_game.iloc[:cutoff_idx].copy()
-        df_val   = df_game.iloc[cutoff_idx:].copy()
-    print(f"  Train: {len(df_train)} games | Val: {len(df_val)} games")
+    # ── Three-way walk-forward split ──────────────────────────────────────────
+    # df_train   — everything excluding both holdout seasons
+    # df_val     — VAL_SEASON (drives recommendation / ablation)
+    # df_test    — TEST_SEASON (scored exactly once, after recommendation is made)
+    train_mask = ~df_game["season"].isin({VAL_SEASON, TEST_SEASON})
+    df_train = df_game[train_mask].copy()
+    df_val   = df_game[df_game["season"] == VAL_SEASON].copy()
+    df_test  = df_game[df_game["season"] == TEST_SEASON].copy()
+
+    if df_val.empty or df_train.empty:
+        # Guard: refuse to silently degrade to single-split if seasons are missing.
+        # The user said they'd rather add a season to DEFAULT_SEASONS.
+        missing = []
+        if df_val.empty:
+            missing.append(f"VAL_SEASON={VAL_SEASON}")
+        if df_train.empty:
+            missing.append("training data")
+        print(f"\n  ERROR: Three-way split impossible — {', '.join(missing)} not in "
+              f"fetched seasons.\n"
+              f"  Fetched seasons: {sorted(df_game['season'].unique().tolist())}\n"
+              f"  Add the missing season to DEFAULT_SEASONS or --seasons and re-run.\n"
+              f"  (Refusing to silently fall back to single-split.)")
+        sys.exit(1)
+
+    n_train_seasons = df_train["season"].nunique()
+    if n_train_seasons < 2:
+        print(f"\n  WARNING: Only {n_train_seasons} training season(s) available after "
+              f"removing VAL_SEASON={VAL_SEASON} and TEST_SEASON={TEST_SEASON}.\n"
+              f"  Consider adding an older season to DEFAULT_SEASONS for a more robust fit.")
+
+    print(f"  Train: {len(df_train)} games ({n_train_seasons} seasons) | "
+          f"Val ({VAL_SEASON}): {len(df_val)} games | "
+          f"Test ({TEST_SEASON}): {len(df_test)} games")
 
     # ── 3a. Ablation study — determines which new features (if any) pass ─────
     ablation_res = ablation_study(df_train, df_val)
@@ -1196,58 +1352,16 @@ def main():
     else:
         print(f"\n  Production feature set: {len(final_features)} features (base only)")
 
-    # ── 3b. Fit production model on the final feature set ────────────────────
-    game_result = fit_game_models(df_train, df_val, features=final_features)
+    # ── 3b. Fit production model; df_test is scored inside but never used for
+    #        model selection (recommendation is already printed before df_test
+    #        numbers appear — see fit_game_models for the ordering guarantee).
+    game_result = fit_game_models(df_train, df_val, df_test=df_test,
+                                  features=final_features)
 
-    # ── 3c. One-time test-set evaluation on 2025-26 ──────────────────────────
-    test_result: dict = {}
-    test_season = "2025-26"
-    print(f"\n  [test] Loading {test_season} data from cache ...", end=" ", flush=True)
-    test_team_logs   = fetch_team_game_logs([test_season],   force=False)
-    test_player_logs = fetch_player_game_logs([test_season], force=False)
-
-    if test_team_logs.empty:
-        print("not found")
-        test_result = {
-            "log_loss": None, "brier": None, "n_games": 0,
-            "note": f"{test_season} data not in cache — run without --no-fetch to populate",
-        }
-    else:
-        print(f"{len(test_team_logs)} rows")
-        all_team_logs = pd.concat([team_logs, test_team_logs], ignore_index=True)
-        if not test_player_logs.empty:
-            all_player_logs = pd.concat([player_logs, test_player_logs], ignore_index=True)
-        else:
-            all_player_logs = player_logs
-        df_full = build_game_dataset(
-            all_team_logs,
-            player_logs=all_player_logs if not all_player_logs.empty else None,
-        )
-        df_test = df_full[df_full["season"] == test_season].copy()
-        if df_test.empty:
-            test_result = {
-                "log_loss": None, "brier": None, "n_games": 0,
-                "note": f"0 complete games found in {test_season}",
-            }
-        else:
-            missing_cols = [f for f in final_features if f not in df_test.columns]
-            if missing_cols:
-                test_result = {
-                    "log_loss": None, "brier": None, "n_games": len(df_test),
-                    "note": f"missing feature columns: {missing_cols}",
-                }
-            else:
-                scaler    = game_result["scaler"]
-                log_model = game_result["log_model"]
-                X_test    = df_test[final_features].values
-                probs_test = log_model.predict_proba(scaler.transform(X_test))[:, 1]
-                y_test     = df_test["home_win"].values
-                t_ll  = float(log_loss(y_test, probs_test))
-                t_bs  = float(brier_score_loss(y_test, probs_test))
-                test_result = {"log_loss": round(t_ll, 6), "brier": round(t_bs, 6),
-                               "n_games": len(df_test)}
-                print(f"  [test] {test_season}: {len(df_test)} games  "
-                      f"log_loss={t_ll:.4f}  brier={t_bs:.4f}")
+    # ── 3c. Optional leave-one-out ablation over GAME_FEATURES ───────────────
+    if args.ablation:
+        print("\n  Running game-feature ablation study ...")
+        run_ablation(df_train, df_val, final_features)
 
     # Compute season-end venue residuals per team for live-predictor loading
     venue_residuals: dict = {}
@@ -1282,8 +1396,7 @@ def main():
 
     # ── 6. Save ────────────────────────────────────────────────────────────
     save_params(game_result, player_result, calib, seasons, args.no_bootstrap,
-                venue_residuals=venue_residuals, ablation_result=ablation_res,
-                test_result=test_result)
+                venue_residuals=venue_residuals, ablation_result=ablation_res)
 
     print("\n  Done. Next steps:")
     rec = game_result["recommendation"]
