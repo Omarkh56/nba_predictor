@@ -352,23 +352,12 @@ def _four_factors_from_row(row: pd.Series) -> dict:
     }
 
 
-def build_game_dataset(team_logs: pd.DataFrame,
-                       player_logs: pd.DataFrame = None) -> pd.DataFrame:
-    """
-    Walk-forward game dataset. For each game G on date D, features are
-    computed exclusively from games before D (no lookahead).
-
-    Returns one row per game (home team perspective).
-    Optional player_logs enables the star_form_diff feature.
-    """
-    if team_logs.empty:
-        return pd.DataFrame()
-
+def _prep_team_logs(team_logs: pd.DataFrame) -> pd.DataFrame:
+    """Add derived per-game columns (date type, home flag, four-factor stats)."""
     team_logs = team_logs.copy()
     team_logs["GAME_DATE"] = pd.to_datetime(team_logs["GAME_DATE"])
     team_logs["is_home"]   = team_logs["MATCHUP"].str.contains(r"vs\.", na=False)
 
-    # Compute per-game four-factor stats
     for col, fn in [
         ("efg",  lambda r: (float(r["FGM"]) + 0.5*float(r["FG3M"])) / max(float(r["FGA"]),1)),
         ("tov_r",lambda r: float(r["TOV"]) / max(float(r["FGA"]) + 0.44*float(r["FTA"]) + float(r["TOV"]),1)),
@@ -376,9 +365,11 @@ def build_game_dataset(team_logs: pd.DataFrame,
         ("ftr",  lambda r: float(r["FTA"]) / max(float(r["FGA"]),1)),
     ]:
         team_logs[col] = team_logs.apply(fn, axis=1)
+    return team_logs
 
-    # Build rolling pre-game stats per team
-    roll_stat_cols = ["PLUS_MINUS", "efg", "tov_r", "orb_r", "ftr"]
+
+def _compute_team_rolling_stats(team_logs: pd.DataFrame, roll_stat_cols: list) -> dict:
+    """Build per-team walk-forward rolling stats, keyed by TEAM_ID, indexed by GAME_ID."""
     team_stats = {}
     for tid, grp in team_logs.groupby("TEAM_ID"):
         g = grp.sort_values("GAME_DATE").reset_index(drop=True)
@@ -409,8 +400,11 @@ def build_game_dataset(team_logs: pd.DataFrame,
         )
 
         team_stats[int(tid)] = g.set_index("GAME_ID")
+    return team_stats
 
-    # Match home and away sides of each game
+
+def _build_game_records(team_logs: pd.DataFrame, team_stats: dict, roll_stat_cols: list) -> pd.DataFrame:
+    """Match home/away sides of each game and assemble the feature+target row."""
     records = []
     for game_id, pair in team_logs.groupby("GAME_ID"):
         home = pair[pair["is_home"]]
@@ -475,11 +469,11 @@ def build_game_dataset(team_logs: pd.DataFrame,
         }
         records.append(rec)
 
-    df = pd.DataFrame(records)
-    if df.empty:
-        return df
+    return pd.DataFrame(records)
 
-    # Fill in within-season H2H margin (shrinkage toward 0, only prior games)
+
+def _add_h2h_margin(df: pd.DataFrame) -> pd.DataFrame:
+    """Fill in within-season H2H margin (shrinkage toward 0, only prior games)."""
     df = df.sort_values("game_date").reset_index(drop=True)
     h2h_seen: dict = {}
     h2h_margins = []
@@ -500,37 +494,67 @@ def build_game_dataset(team_logs: pd.DataFrame,
         h2h_seen.setdefault(key, []).append(margin_for_key)
 
     df["h2h_margin"] = h2h_margins
+    return df
 
-    # Signal 3: merge star form from player logs (walk-forward, pre-computed)
-    if player_logs is not None and not player_logs.empty:
-        sf = compute_star_form_index(player_logs)
-        if not sf.empty:
-            sf = sf.rename(columns={"star_form": "_h_star"})
-            sf["game_id"] = sf["game_id"].astype(str)
-            df["game_id"] = df["game_id"].astype(str)
 
-            # Home team star form
-            df = df.merge(
-                sf[["team_id", "game_id", "_h_star"]],
-                left_on=["home_tid", "game_id"],
-                right_on=["team_id", "game_id"],
-                how="left",
-            ).drop(columns="team_id", errors="ignore")
+def _merge_star_form(df: pd.DataFrame, player_logs) -> pd.DataFrame:
+    """Signal 3: merge star form from player logs (walk-forward, pre-computed)."""
+    if player_logs is None or player_logs.empty:
+        return df
 
-            # Away team star form
-            sf2 = sf.rename(columns={"_h_star": "_a_star"})
-            df = df.merge(
-                sf2[["team_id", "game_id", "_a_star"]],
-                left_on=["away_tid", "game_id"],
-                right_on=["team_id", "game_id"],
-                how="left",
-            ).drop(columns="team_id", errors="ignore")
+    sf = compute_star_form_index(player_logs)
+    if sf.empty:
+        return df
 
-            df["star_form_diff"] = (
-                df["_h_star"].fillna(0.0) - df["_a_star"].fillna(0.0)
-            )
-            df = df.drop(columns=["_h_star", "_a_star"], errors="ignore")
+    sf = sf.rename(columns={"star_form": "_h_star"})
+    sf["game_id"] = sf["game_id"].astype(str)
+    df["game_id"] = df["game_id"].astype(str)
 
+    # Home team star form
+    df = df.merge(
+        sf[["team_id", "game_id", "_h_star"]],
+        left_on=["home_tid", "game_id"],
+        right_on=["team_id", "game_id"],
+        how="left",
+    ).drop(columns="team_id", errors="ignore")
+
+    # Away team star form
+    sf2 = sf.rename(columns={"_h_star": "_a_star"})
+    df = df.merge(
+        sf2[["team_id", "game_id", "_a_star"]],
+        left_on=["away_tid", "game_id"],
+        right_on=["team_id", "game_id"],
+        how="left",
+    ).drop(columns="team_id", errors="ignore")
+
+    df["star_form_diff"] = (
+        df["_h_star"].fillna(0.0) - df["_a_star"].fillna(0.0)
+    )
+    df = df.drop(columns=["_h_star", "_a_star"], errors="ignore")
+    return df
+
+
+def build_game_dataset(team_logs: pd.DataFrame,
+                       player_logs: pd.DataFrame = None) -> pd.DataFrame:
+    """
+    Walk-forward game dataset. For each game G on date D, features are
+    computed exclusively from games before D (no lookahead).
+
+    Returns one row per game (home team perspective).
+    Optional player_logs enables the star_form_diff feature.
+    """
+    if team_logs.empty:
+        return pd.DataFrame()
+
+    team_logs = _prep_team_logs(team_logs)
+    roll_stat_cols = ["PLUS_MINUS", "efg", "tov_r", "orb_r", "ftr"]
+    team_stats = _compute_team_rolling_stats(team_logs, roll_stat_cols)
+    df = _build_game_records(team_logs, team_stats, roll_stat_cols)
+    if df.empty:
+        return df
+
+    df = _add_h2h_margin(df)
+    df = _merge_star_form(df, player_logs)
     return df
 
 
@@ -1229,7 +1253,7 @@ def save_params(game_result: dict, player_result: dict,
 # SECTION 9 — MAIN
 # =============================================================================
 
-def main():
+def _parse_args():
     p = argparse.ArgumentParser(description="NBA model training pipeline")
     p.add_argument("--no-fetch",     action="store_true",
                    help="Use cached CSVs only, do not call NBA API")
@@ -1244,43 +1268,36 @@ def main():
                         "ablation_results.json (adds ~10 extra model fits)")
     p.add_argument("--seasons", nargs="+", default=DEFAULT_SEASONS,
                    help="Seasons to use (e.g. 2021-22 2022-23 2023-24 2024-25)")
-    args = p.parse_args()
+    return p.parse_args()
 
-    if args.eval_only:
-        if not PARAMS_FILE.exists():
-            print("learned_params.json not found — run without --eval-only first.")
-            sys.exit(1)
-        with open(PARAMS_FILE) as fh:
-            params = json.load(fh)
-        gm = params.get("game_model", {})
-        print(f"\nlearned_params.json ({params.get('version', 'unknown')})")
-        print(f"  trained on:  {params.get('trained_on', [])}")
-        print(f"  val season:  {params.get('validated_on', '?')}  "
-              f"({gm.get('val_games', '?')} games)")
-        print(f"  test season: {params.get('tested_on', '?')}  "
-              f"({gm.get('test_games', '?')} games)")
-        print(f"  game model:  {gm.get('recommendation', '?')}")
-        print(f"    val   log_loss  hand={gm.get('hand_tuned_log_loss','?'):.4f}  "
-              f"learned={gm.get('learned_log_loss','?'):.4f}")
-        print(f"    val   brier     hand={gm.get('hand_tuned_brier','?'):.4f}  "
-              f"learned={gm.get('learned_brier','?'):.4f}")
-        if gm.get("test_log_loss") is not None:
-            print(f"    test  log_loss  hand={gm.get('ht_test_log_loss','?'):.4f}  "
-                  f"learned={gm.get('test_log_loss','?'):.4f}")
-            print(f"    test  brier     hand={gm.get('ht_test_brier','?'):.4f}  "
-                  f"learned={gm.get('test_brier','?'):.4f}")
-        return
 
-    seasons     = args.seasons
-    force_fetch = args.force_fetch and not args.no_fetch
+def _run_eval_only():
+    if not PARAMS_FILE.exists():
+        print("learned_params.json not found — run without --eval-only first.")
+        sys.exit(1)
+    with open(PARAMS_FILE) as fh:
+        params = json.load(fh)
+    gm = params.get("game_model", {})
+    print(f"\nlearned_params.json ({params.get('version', 'unknown')})")
+    print(f"  trained on:  {params.get('trained_on', [])}")
+    print(f"  val season:  {params.get('validated_on', '?')}  "
+          f"({gm.get('val_games', '?')} games)")
+    print(f"  test season: {params.get('tested_on', '?')}  "
+          f"({gm.get('test_games', '?')} games)")
+    print(f"  game model:  {gm.get('recommendation', '?')}")
+    print(f"    val   log_loss  hand={gm.get('hand_tuned_log_loss','?'):.4f}  "
+          f"learned={gm.get('learned_log_loss','?'):.4f}")
+    print(f"    val   brier     hand={gm.get('hand_tuned_brier','?'):.4f}  "
+          f"learned={gm.get('learned_brier','?'):.4f}")
+    if gm.get("test_log_loss") is not None:
+        print(f"    test  log_loss  hand={gm.get('ht_test_log_loss','?'):.4f}  "
+              f"learned={gm.get('test_log_loss','?'):.4f}")
+        print(f"    test  brier     hand={gm.get('ht_test_brier','?'):.4f}  "
+              f"learned={gm.get('test_brier','?'):.4f}")
 
-    print("=" * 60)
-    print("NBA Model Training Pipeline")
-    print(f"Seasons: {seasons}")
-    print("=" * 60)
 
-    # ── 1. Fetch data ──────────────────────────────────────────────────────
-    if not args.no_fetch:
+def _fetch_pipeline_data(seasons, no_fetch, force_fetch):
+    if not no_fetch:
         print("\n[1/5] Fetching team game logs ...")
         team_logs = fetch_team_game_logs(seasons, force=force_fetch)
         print("\n[2/5] Fetching player game logs ...")
@@ -1292,26 +1309,15 @@ def main():
         team_logs   = fetch_team_game_logs(seasons, force=False)
         player_logs = fetch_player_game_logs(seasons, force=False)
         pos_map     = fetch_player_positions(seasons, force=False)
+    return team_logs, player_logs, pos_map
 
-    if team_logs.empty:
-        print("No team log data — aborting.")
-        sys.exit(1)
 
-    # ── 2. Build game dataset ─────────────────────────────────────────────
-    print(f"\n[4/5] Engineering game features ...")
-    df_game = build_game_dataset(team_logs, player_logs=player_logs)
-    print(f"  Game dataset: {len(df_game)} games "
-          f"({df_game['home_win'].sum()} home wins = "
-          f"{df_game['home_win'].mean():.1%} HWP)")
-
-    if len(df_game) < 500:
-        print("  ⚠ Very few games — check fetch or cache.")
-        sys.exit(1)
-
-    # ── Three-way walk-forward split ──────────────────────────────────────────
-    # df_train   — everything excluding both holdout seasons
-    # df_val     — VAL_SEASON (drives recommendation / ablation)
-    # df_test    — TEST_SEASON (scored exactly once, after recommendation is made)
+def _build_three_way_split(df_game):
+    """Three-way walk-forward split:
+    df_train — everything excluding both holdout seasons
+    df_val   — VAL_SEASON (drives recommendation / ablation)
+    df_test  — TEST_SEASON (scored exactly once, after recommendation is made)
+    """
     train_mask = ~df_game["season"].isin({VAL_SEASON, TEST_SEASON})
     df_train = df_game[train_mask].copy()
     df_val   = df_game[df_game["season"] == VAL_SEASON].copy()
@@ -1342,28 +1348,11 @@ def main():
           f"Val ({VAL_SEASON}): {len(df_val)} games | "
           f"Test ({TEST_SEASON}): {len(df_test)} games")
 
-    # ── 3a. Ablation study — determines which new features (if any) pass ─────
-    ablation_res = ablation_study(df_train, df_val)
-    winning_new   = ablation_res.get("winning_features", [])
-    final_features = GAME_FEATURES + winning_new
-    if winning_new:
-        print(f"\n  Production feature set: {len(final_features)} features "
-              f"({len(GAME_FEATURES)} base + {len(winning_new)} new: {winning_new})")
-    else:
-        print(f"\n  Production feature set: {len(final_features)} features (base only)")
+    return df_train, df_val, df_test
 
-    # ── 3b. Fit production model; df_test is scored inside but never used for
-    #        model selection (recommendation is already printed before df_test
-    #        numbers appear — see fit_game_models for the ordering guarantee).
-    game_result = fit_game_models(df_train, df_val, df_test=df_test,
-                                  features=final_features)
 
-    # ── 3c. Optional leave-one-out ablation over GAME_FEATURES ───────────────
-    if args.ablation:
-        print("\n  Running game-feature ablation study ...")
-        run_ablation(df_train, df_val, final_features)
-
-    # Compute season-end venue residuals per team for live-predictor loading
+def _compute_venue_residuals(team_logs):
+    """Season-end venue residuals per team, for live-predictor loading."""
     venue_residuals: dict = {}
     for tid, grp in team_logs.groupby("TEAM_ID"):
         sorted_g = grp.sort_values("GAME_DATE")
@@ -1377,8 +1366,10 @@ def main():
             venue_residual_from_record(home_wins, home_games, total_wins, total_games),
             4,
         )
+    return venue_residuals
 
-    # ── 4. Build player dataset & fit player models ───────────────────────
+
+def _fit_player_stage(player_logs, pos_map):
     print(f"\n[5/5] Engineering player features ...")
     df_players = build_player_dataset(player_logs, pos_map)
     print(f"  Player dataset: {len(df_players)} player-game rows")
@@ -1388,18 +1379,11 @@ def main():
     else:
         print("  ⚠ Too few player rows — skipping player model fit")
         player_result = {"stat_models": {}, "variance": {}}
+    return df_players, player_result
 
-    # ── 5. Bootstrap calibration ──────────────────────────────────────────
-    calib = {}
-    if not args.no_bootstrap:
-        calib = bootstrap_calibration(df_game, df_players, player_result)
 
-    # ── 6. Save ────────────────────────────────────────────────────────────
-    save_params(game_result, player_result, calib, seasons, args.no_bootstrap,
-                venue_residuals=venue_residuals, ablation_result=ablation_res)
-
+def _print_next_steps(rec):
     print("\n  Done. Next steps:")
-    rec = game_result["recommendation"]
     if rec == "swap":
         print("  → Learned model outperforms baseline on both metrics.")
         print("    Set USE_LEARNED_GAME_MODEL = True in newnbapredictor.py")
@@ -1409,6 +1393,74 @@ def main():
     else:
         print("  → Hand-tuned baseline still wins. No swap needed yet.")
         print("    Re-run at midseason or after significant lineup changes.")
+
+
+def main():
+    args = _parse_args()
+
+    if args.eval_only:
+        _run_eval_only()
+        return
+
+    seasons     = args.seasons
+    force_fetch = args.force_fetch and not args.no_fetch
+
+    print("=" * 60)
+    print("NBA Model Training Pipeline")
+    print(f"Seasons: {seasons}")
+    print("=" * 60)
+
+    team_logs, player_logs, pos_map = _fetch_pipeline_data(
+        seasons, args.no_fetch, force_fetch)
+
+    if team_logs.empty:
+        print("No team log data — aborting.")
+        sys.exit(1)
+
+    print(f"\n[4/5] Engineering game features ...")
+    df_game = build_game_dataset(team_logs, player_logs=player_logs)
+    print(f"  Game dataset: {len(df_game)} games "
+          f"({df_game['home_win'].sum()} home wins = "
+          f"{df_game['home_win'].mean():.1%} HWP)")
+
+    if len(df_game) < 500:
+        print("  ⚠ Very few games — check fetch or cache.")
+        sys.exit(1)
+
+    df_train, df_val, df_test = _build_three_way_split(df_game)
+
+    # ── Ablation study — determines which new features (if any) pass ─────
+    ablation_res = ablation_study(df_train, df_val)
+    winning_new   = ablation_res.get("winning_features", [])
+    final_features = GAME_FEATURES + winning_new
+    if winning_new:
+        print(f"\n  Production feature set: {len(final_features)} features "
+              f"({len(GAME_FEATURES)} base + {len(winning_new)} new: {winning_new})")
+    else:
+        print(f"\n  Production feature set: {len(final_features)} features (base only)")
+
+    # Fit production model; df_test is scored inside but never used for model
+    # selection (recommendation is already printed before df_test numbers
+    # appear — see fit_game_models for the ordering guarantee).
+    game_result = fit_game_models(df_train, df_val, df_test=df_test,
+                                  features=final_features)
+
+    if args.ablation:
+        print("\n  Running game-feature ablation study ...")
+        run_ablation(df_train, df_val, final_features)
+
+    venue_residuals = _compute_venue_residuals(team_logs)
+
+    df_players, player_result = _fit_player_stage(player_logs, pos_map)
+
+    calib = {}
+    if not args.no_bootstrap:
+        calib = bootstrap_calibration(df_game, df_players, player_result)
+
+    save_params(game_result, player_result, calib, seasons, args.no_bootstrap,
+                venue_residuals=venue_residuals, ablation_result=ablation_res)
+
+    _print_next_steps(game_result["recommendation"])
 
 
 if __name__ == "__main__":

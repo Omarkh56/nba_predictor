@@ -98,7 +98,13 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 # =============================================================================
 # CONFIG
 # =============================================================================
-ODDS_API_KEY = os.environ.get("ODDS_API_KEY", "4e7c237908d67ae79a6e3a50352e2a18")  # v7 Fix 4a
+ODDS_API_KEY = os.environ.get("ODDS_API_KEY")
+if not ODDS_API_KEY:
+    print(
+        "  WARNING: ODDS_API_KEY is not set — odds/props requests will fail. "
+        "Set it with `export ODDS_API_KEY=\"your-key\"` before running.",
+        file=sys.stderr,
+    )
 SPORT = "basketball_nba"
 BASE_URL = "https://api.the-odds-api.com/v4"
 
@@ -2418,13 +2424,84 @@ def process_game(
 # =============================================================================
 # MAIN
 # =============================================================================
-def main():
-    # Fix 10: --verbose flag prints per-factor breakdown for top-5-by-edge bets
-    verbose = "--verbose" in sys.argv
+def _edge_floored(df_in):
+    """Filter to picks clearing the per-direction edge% floor.
 
-    # Load calibration data produced by calibrate.py (no-op if file absent)
-    _load_calibration()
+    UNDERs must clear UNDER_EDGE_PCT_FLOOR (20%) — low-edge UNDERs were 0-3
+    in Apr 15 backtesting (Garland 17.9%, Curry 17.7%, Kawhi 10.1% all missed).
+    """
+    if df_in.empty:
+        return df_in
+    keep = df_in.apply(
+        lambda r: (
+            r["Edge%"] >= UNDER_EDGE_PCT_FLOOR
+            if r["Pick"] == "UNDER"
+            else r["Edge%"] >= OVER_EDGE_PCT_FLOOR
+        ),
+        axis=1,
+    )
+    return df_in[keep].reset_index(drop=True)
 
+
+def _print_top(title, top_df, show_verbose=False, verbose_limit=5):
+    if top_df.empty:
+        return
+    print(f"\n  {title}")
+    print(
+        f"  {'Player':<22} {'Mkt':<9} {'Line':>5} {'Proj':>5} "
+        f"{'Edge':>5} {'E%':>5} {'Conf':>5}  Pick    Flags"
+    )
+    print(
+        f"  {'─' * 22} {'─' * 9} {'─' * 5} {'─' * 5} {'─' * 5} {'─' * 5} {'─' * 5}  {'─' * 6}  {'─' * 16}"
+    )
+    for rank, (_, r) in enumerate(top_df.iterrows()):
+        print(
+            f"  {r['Player']:<22} {r['Market']:<9} {r['Line']:>5.1f} "
+            f"{r['Projection']:>5.1f} {r['Edge']:>+5.1f} "
+            f"{r['Edge%']:>4.1f}% {r['Confidence']:>4.1f}%  "
+            f"{r['Pick']:<6}  {r['Flags']}"
+        )
+
+        # Fix 10: verbose breakdown for top-5-by-edge bets only
+        if show_verbose and rank < verbose_limit:
+            dets = r.get("details", {})
+            meta = r.get("meta", {})
+            for sc, d in dets.items():
+                line_parts = (
+                    f"    └─ {sc}: rate={d.get('rate', 0):.4f}/min"
+                    f" × {d.get('min', 0):.1f}min"
+                    f" × H2H={d.get('series_h2h', 1):.3f}"
+                    f" × DEF={d.get('def_team', d.get('def', 1)):.3f}"
+                    f" × DvP={d.get('dvp', 1):.3f}"
+                    f" × HA={d.get('ha', 1):.3f}"
+                    f" × USG={d.get('usage', 1):.3f}"
+                    f" → {d.get('final', 0):.1f}"
+                )
+                if d.get("min_reduced", 0) > 0:
+                    line_parts += f"  [blowout -{d['min_reduced']:.1f}min]"
+                print(line_parts)
+            # Confidence penalties breakdown
+            pen_parts = []
+            if meta.get("bench_penalty", 0) > 0:
+                pen_parts.append(f"bench={meta['bench_penalty']:.1f}")
+            if meta.get("mins_vol_penalty", 0) > 0:
+                pen_parts.append(f"vol={meta['mins_vol_penalty']:.1f}")
+            if meta.get("road_b2b_penalty", 0) > 0:
+                pen_parts.append(f"b2b={meta['road_b2b_penalty']:.1f}")
+            if meta.get("self_inj_penalty", 0) > 0:
+                pen_parts.append(f"inj={meta['self_inj_penalty']:.1f}")
+            bk = r.get("book_count", 0)
+            book_pen = 4.0 if bk == 1 else (2.0 if bk == 2 else 0.0)
+            if book_pen > 0:
+                pen_parts.append(f"book={book_pen:.1f}")
+            dp = r.get("direction_penalty", 0.0)
+            if dp > 0:
+                pen_parts.append(f"under_dir={dp:.1f}")  # v4
+            if pen_parts:
+                print(f"    └─ penalties: {', '.join(pen_parts)}")
+
+
+def _print_banner(verbose):
     print("\n" + "=" * 68)
     print("  NBA PLAYER PROPS — PLAYOFF EDITION v4")
     print("  Adaptive blend · series DEF · UNDER penalty · blowup buffer · edge floor")
@@ -2432,15 +2509,22 @@ def main():
         print("  [VERBOSE MODE ON]")
     print("=" * 68)
 
+
+def _fetch_slate():
+    """Fetch upcoming odds events and narrow to the soonest game day.
+
+    Returns (games_on_soonest_day, display_tag), or (None, None) if fetching
+    failed or nothing was found — the caller should return early in that case.
+    """
     print("\n  Fetching events...")
     try:
         all_events = get_all_odds_events()
     except (requests.exceptions.RequestException, json.JSONDecodeError) as e:
         print(f"  Error: {e}")
-        return
+        return None, None
     if not all_events:
         print("  No upcoming NBA events.")
-        return
+        return None, None
 
     dates = []
     for ev in all_events:
@@ -2451,14 +2535,16 @@ def main():
                 dates.append(d)
     if not dates:
         print("  No dates found.")
-        return
+        return None, None
 
     soonest = min(dates)
     gday = [ev for ev in all_events if _local_date(ev.get("commence_time", "")) == soonest]
     tag = "Today" if soonest == date.today() else soonest.strftime("%A, %B %d")
-    print(f"  {len(gday)} game(s) on {tag}\n")
+    return gday, tag
 
-    # Fix 9: auto-populate GAME_SPREADS from Odds API spreads market
+
+def _prefetch_spreads(gday):
+    """Fix 9: auto-populate GAME_SPREADS from Odds API spreads market."""
     print("  Fetching spreads...")
     for ev in gday:
         hn = ev.get("home_team", "")
@@ -2477,6 +2563,12 @@ def main():
                     else f"    {game_key}: spread {sprd:+.1f} (away favored)"
                 )
 
+
+def _load_injuries_and_context(gday):
+    """Fetch injuries plus the supplementary team/player data needed per-game.
+
+    Returns the injuries dict (also used later for per-player status flags).
+    """
     print("  Fetching injuries...")
     injuries = get_espn_injuries()
     inj_count = sum(len(v) for v in injuries.values())
@@ -2493,161 +2585,116 @@ def main():
     get_league_logs()
     get_all_player_usage()  # USG_PCT for all players (one API call, cached)
     prefetch_rosters_for_games(gday)  # team roster positions for DvP (2 calls/team)
+    return injuries
+
+
+def _print_flag_warnings(df):
+    no_po = df[df["PO_Games"] == 0]
+    bench = df[df["Is_Bench"]]
+    b2b = df[df["Flags"].str.contains("ROAD-B2B", na=False)]
+    vol = df[df["Flags"].str.contains("MINS-VOL", na=False)]
+    thin = df[df["Flags"].str.contains("BOOK", na=False)]
+    gtd = df[df["Flags"].str.contains("GTD|PROB", na=False)]
+    if not no_po.empty:
+        print(f"\n  ⚠  {no_po['Player'].nunique()} player(s) with no playoff data — RS only")
+    if not bench.empty:
+        print(f"  ⚠  {bench['Player'].nunique()} bench player(s) — sliding confidence penalty")
+    if not vol.empty:
+        print(
+            f"  ⚠  {vol['Player'].nunique()} player(s) with high minute volatility (⚠MINS-VOL)"
+        )
+    if not b2b.empty:
+        print(f"  ⚠  {b2b['Player'].nunique()} player(s) on road back-to-back (ROAD-B2B, -3pp)")
+    if not thin.empty:
+        print(f"  ⚠  {thin['Player'].nunique()} player(s) with thin market coverage (1/2-BOOK)")
+    if not gtd.empty:
+        print(f"  ⚠  {gtd['Player'].nunique()} player(s) on own injury report (⚠GTD/PROB)")
+
+
+def _process_and_display_game(ev, injuries, verbose):
+    hn = ev.get("home_team", "")
+    an = ev.get("away_team", "")
+    ha = TEAM_NAME_TO_ABBR.get(hn, hn[:3].upper())
+    aa = TEAM_NAME_TO_ABBR.get(an, an[:3].upper())
+
+    game_key = f"{aa}@{ha}"
+    spread = GAME_SPREADS.get(game_key, 0.0)
+
+    ct = ev.get("commence_time", "")
+    tip_str = ""
+    if ct:
+        try:
+            tip_utc = datetime.fromisoformat(ct.replace("Z", "+00:00"))
+            tip_local = tip_utc.astimezone()
+            tip_str = f"  │  {tip_local.strftime('%I:%M %p')}"
+        except (ValueError, OSError) as exc:
+            logger.debug("tip-time format failed: %s", exc)
+
+    spread_str = f"  │  Sprd {spread:+.1f}" if spread != 0.0 else ""
+    print(f"\n{'━' * 68}")
+    print(f"  {aa} @ {ha}{tip_str}{spread_str}")
+    print(f"{'━' * 68}")
+
+    results = process_game(hn, an, ha, aa, ev, injuries, spread=spread)
+    if not results:
+        print("  No props available.")
+        return
+
+    df = pd.DataFrame(results)
+
+    # v4 Fix 15: apply per-direction edge% floors before building top-10 lists.
+    df_top = _edge_floored(df)
+
+    top_edge = (
+        df_top.sort_values("Edge%", ascending=False)
+        .drop_duplicates(subset=["Player"], keep="first")
+        .head(TOP_BETS_PER_GAME)
+        .reset_index(drop=True)
+    )
+
+    top_conf = (
+        df_top.sort_values("Confidence", ascending=False)
+        .drop_duplicates(subset=["Player"], keep="first")
+        .head(TOP_BETS_PER_GAME)
+        .reset_index(drop=True)
+    )
+
+    _print_top(
+        f"TOP {TOP_BETS_PER_GAME} BY EDGE%  (biggest mispricing)",
+        top_edge,
+        show_verbose=verbose,
+        verbose_limit=5,
+    )
+    _print_top(
+        f"TOP {TOP_BETS_PER_GAME} BY CONFIDENCE  (most likely to hit)",
+        top_conf,
+        show_verbose=False,
+    )
+
+    _print_flag_warnings(df)
+
+    print(f"\n  {len(df)} prop(s) analyzed")
+
+
+def main():
+    # Fix 10: --verbose flag prints per-factor breakdown for top-5-by-edge bets
+    verbose = "--verbose" in sys.argv
+
+    # Load calibration data produced by calibrate.py (no-op if file absent)
+    _load_calibration()
+
+    _print_banner(verbose)
+
+    gday, tag = _fetch_slate()
+    if gday is None:
+        return
+    print(f"  {len(gday)} game(s) on {tag}\n")
+
+    _prefetch_spreads(gday)
+    injuries = _load_injuries_and_context(gday)
 
     for ev in gday:
-        hn = ev.get("home_team", "")
-        an = ev.get("away_team", "")
-        ha = TEAM_NAME_TO_ABBR.get(hn, hn[:3].upper())
-        aa = TEAM_NAME_TO_ABBR.get(an, an[:3].upper())
-
-        game_key = f"{aa}@{ha}"
-        spread = GAME_SPREADS.get(game_key, 0.0)
-
-        ct = ev.get("commence_time", "")
-        tip_str = ""
-        if ct:
-            try:
-                tip_utc = datetime.fromisoformat(ct.replace("Z", "+00:00"))
-                tip_local = tip_utc.astimezone()
-                tip_str = f"  │  {tip_local.strftime('%I:%M %p')}"
-            except (ValueError, OSError) as exc:
-                logger.debug("tip-time format failed: %s", exc)
-
-        spread_str = f"  │  Sprd {spread:+.1f}" if spread != 0.0 else ""
-        print(f"\n{'━' * 68}")
-        print(f"  {aa} @ {ha}{tip_str}{spread_str}")
-        print(f"{'━' * 68}")
-
-        results = process_game(hn, an, ha, aa, ev, injuries, spread=spread)
-        if not results:
-            print("  No props available.")
-            continue
-
-        df = pd.DataFrame(results)
-
-        # v4 Fix 15: apply per-direction edge% floors before building top-10 lists.
-        # UNDERs must clear UNDER_EDGE_PCT_FLOOR (20%) — low-edge UNDERs were 0-3
-        # in Apr 15 backtesting (Garland 17.9%, Curry 17.7%, Kawhi 10.1% all missed).
-        def _edge_floored(df_in):
-            if df_in.empty:
-                return df_in
-            keep = df_in.apply(
-                lambda r: (
-                    r["Edge%"] >= UNDER_EDGE_PCT_FLOOR
-                    if r["Pick"] == "UNDER"
-                    else r["Edge%"] >= OVER_EDGE_PCT_FLOOR
-                ),
-                axis=1,
-            )
-            return df_in[keep].reset_index(drop=True)
-
-        df_top = _edge_floored(df)
-
-        top_edge = (
-            df_top.sort_values("Edge%", ascending=False)
-            .drop_duplicates(subset=["Player"], keep="first")
-            .head(TOP_BETS_PER_GAME)
-            .reset_index(drop=True)
-        )
-
-        top_conf = (
-            df_top.sort_values("Confidence", ascending=False)
-            .drop_duplicates(subset=["Player"], keep="first")
-            .head(TOP_BETS_PER_GAME)
-            .reset_index(drop=True)
-        )
-
-        def _print_top(title, top_df, show_verbose=False, verbose_limit=5):
-            if top_df.empty:
-                return
-            print(f"\n  {title}")
-            print(
-                f"  {'Player':<22} {'Mkt':<9} {'Line':>5} {'Proj':>5} "
-                f"{'Edge':>5} {'E%':>5} {'Conf':>5}  Pick    Flags"
-            )
-            print(
-                f"  {'─' * 22} {'─' * 9} {'─' * 5} {'─' * 5} {'─' * 5} {'─' * 5} {'─' * 5}  {'─' * 6}  {'─' * 16}"
-            )
-            for rank, (_, r) in enumerate(top_df.iterrows()):
-                print(
-                    f"  {r['Player']:<22} {r['Market']:<9} {r['Line']:>5.1f} "
-                    f"{r['Projection']:>5.1f} {r['Edge']:>+5.1f} "
-                    f"{r['Edge%']:>4.1f}% {r['Confidence']:>4.1f}%  "
-                    f"{r['Pick']:<6}  {r['Flags']}"
-                )
-
-                # Fix 10: verbose breakdown for top-5-by-edge bets only
-                if show_verbose and rank < verbose_limit:
-                    dets = r.get("details", {})
-                    meta = r.get("meta", {})
-                    for sc, d in dets.items():
-                        line_parts = (
-                            f"    └─ {sc}: rate={d.get('rate', 0):.4f}/min"
-                            f" × {d.get('min', 0):.1f}min"
-                            f" × H2H={d.get('series_h2h', 1):.3f}"
-                            f" × DEF={d.get('def_team', d.get('def', 1)):.3f}"
-                            f" × DvP={d.get('dvp', 1):.3f}"
-                            f" × HA={d.get('ha', 1):.3f}"
-                            f" × USG={d.get('usage', 1):.3f}"
-                            f" → {d.get('final', 0):.1f}"
-                        )
-                        if d.get("min_reduced", 0) > 0:
-                            line_parts += f"  [blowout -{d['min_reduced']:.1f}min]"
-                        print(line_parts)
-                    # Confidence penalties breakdown
-                    pen_parts = []
-                    if meta.get("bench_penalty", 0) > 0:
-                        pen_parts.append(f"bench={meta['bench_penalty']:.1f}")
-                    if meta.get("mins_vol_penalty", 0) > 0:
-                        pen_parts.append(f"vol={meta['mins_vol_penalty']:.1f}")
-                    if meta.get("road_b2b_penalty", 0) > 0:
-                        pen_parts.append(f"b2b={meta['road_b2b_penalty']:.1f}")
-                    if meta.get("self_inj_penalty", 0) > 0:
-                        pen_parts.append(f"inj={meta['self_inj_penalty']:.1f}")
-                    bk = r.get("book_count", 0)
-                    book_pen = 4.0 if bk == 1 else (2.0 if bk == 2 else 0.0)
-                    if book_pen > 0:
-                        pen_parts.append(f"book={book_pen:.1f}")
-                    dp = r.get("direction_penalty", 0.0)
-                    if dp > 0:
-                        pen_parts.append(f"under_dir={dp:.1f}")  # v4
-                    if pen_parts:
-                        print(f"    └─ penalties: {', '.join(pen_parts)}")
-
-        _print_top(
-            f"TOP {TOP_BETS_PER_GAME} BY EDGE%  (biggest mispricing)",
-            top_edge,
-            show_verbose=verbose,
-            verbose_limit=5,
-        )
-        _print_top(
-            f"TOP {TOP_BETS_PER_GAME} BY CONFIDENCE  (most likely to hit)",
-            top_conf,
-            show_verbose=False,
-        )
-
-        no_po = df[df["PO_Games"] == 0]
-        bench = df[df["Is_Bench"]]
-        b2b = df[df["Flags"].str.contains("ROAD-B2B", na=False)]
-        vol = df[df["Flags"].str.contains("MINS-VOL", na=False)]
-        thin = df[df["Flags"].str.contains("BOOK", na=False)]
-        gtd = df[df["Flags"].str.contains("GTD|PROB", na=False)]
-        if not no_po.empty:
-            print(f"\n  ⚠  {no_po['Player'].nunique()} player(s) with no playoff data — RS only")
-        if not bench.empty:
-            print(f"  ⚠  {bench['Player'].nunique()} bench player(s) — sliding confidence penalty")
-        if not vol.empty:
-            print(
-                f"  ⚠  {vol['Player'].nunique()} player(s) with high minute volatility (⚠MINS-VOL)"
-            )
-        if not b2b.empty:
-            print(f"  ⚠  {b2b['Player'].nunique()} player(s) on road back-to-back (ROAD-B2B, -3pp)")
-        if not thin.empty:
-            print(f"  ⚠  {thin['Player'].nunique()} player(s) with thin market coverage (1/2-BOOK)")
-        if not gtd.empty:
-            print(f"  ⚠  {gtd['Player'].nunique()} player(s) on own injury report (⚠GTD/PROB)")
-
-        print(f"\n  {len(df)} prop(s) analyzed")
+        _process_and_display_game(ev, injuries, verbose)
 
     print(f"\n{'=' * 68}")
     print("  Not financial advice.")
