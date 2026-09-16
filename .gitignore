@@ -42,6 +42,6 @@ tvp_state.json
 *.swp
 *.swo
 
-# Secrets / environment
+# Secrets / environment (.env.example is committed; .env is not)
 .env
 *.env.local

@@ -68,11 +68,16 @@ import unicodedata
 import warnings
 from datetime import date, datetime
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 import numpy as np
 import pandas as pd
 import requests
 import urllib3
 
+from env_config import require_env
 from nba_api_utils import safe_dataframe_call
 
 logger = logging.getLogger(__name__)
@@ -98,13 +103,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 # =============================================================================
 # CONFIG
 # =============================================================================
-ODDS_API_KEY = os.environ.get("ODDS_API_KEY")
-if not ODDS_API_KEY:
-    print(
-        "  WARNING: ODDS_API_KEY is not set — odds/props requests will fail. "
-        "Set it with `export ODDS_API_KEY=\"your-key\"` before running.",
-        file=sys.stderr,
-    )
+ODDS_API_KEY = require_env("ODDS_API_KEY")
 SPORT = "basketball_nba"
 BASE_URL = "https://api.the-odds-api.com/v4"
 

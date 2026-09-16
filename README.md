@@ -32,11 +32,22 @@ If you see TLS errors on macOS (LibreSSL), run:
 pip install --upgrade certifi
 ```
 
-### 2. Set environment variables
+### 2. Configure API keys
+
+Copy the example env file and fill in your keys (do not commit `.env`):
 
 ```bash
-export ODDS_API_KEY="your-odds-api-key"
+cp .env.example .env
 ```
+
+Edit `.env`:
+
+```
+ODDS_API_KEY=your_key_here          # https://the-odds-api.com/
+API_FOOTBALL_KEY=your_key_here      # https://www.api-football.com/
+```
+
+Scripts load `.env` automatically via `python-dotenv`. You can still `export ODDS_API_KEY=...` in the shell if you prefer; existing environment variables are not overwritten.
 
 ### 3. Run the full pipeline
 
@@ -128,6 +139,6 @@ CI runs automatically on every push via `.github/workflows/ci.yml`.
 
 - **Hand-tuned weights are the default.** `learned_params.json` is only active when `USE_LEARNED_GAME_MODEL = True` in `newnbapredictor.py`. The learned model requires a full backtest run via `train_model.py` first.
 - **2026-27 season.** Season constants are hardcoded; update `SEASON` in `nba_combined.py` and `playerlinepredictor.py` when the season rolls over.
-- **Odds API key required.** Without `ODDS_API_KEY`, props lines and book lean will not fetch.
+- **Odds API key required.** Copy `.env.example` to `.env` and set `ODDS_API_KEY`. Without it, scripts exit immediately instead of calling the Odds API.
 - **LibreSSL on macOS Python 3.9** may produce TLS warnings. `pip install --upgrade certifi` resolves this.
 - **No live score integration.** The model is pre-game only; it does not update based on in-game events.

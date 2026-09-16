@@ -22,6 +22,10 @@ import time
 import warnings
 from datetime import date, timedelta
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 import pandas as pd
 import requests.exceptions
 from nba_api.stats.endpoints import boxscoretraditionalv2, leaguegamefinder

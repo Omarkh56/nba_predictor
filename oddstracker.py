@@ -32,6 +32,10 @@ import time
 import warnings
 from datetime import date
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 import pandas as pd
 import requests
 import urllib3
