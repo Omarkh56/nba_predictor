@@ -42,6 +42,10 @@ tvp_state.json
 *.swp
 *.swo
 
+# Test coverage / tool-local config (not source, not shared)
+.coverage
+.claude/
+
 # Secrets / environment (.env.example is committed; .env is not)
 .env
 *.env.local

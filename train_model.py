@@ -1268,6 +1268,11 @@ def _parse_args():
                         "ablation_results.json (adds ~10 extra model fits)")
     p.add_argument("--seasons", nargs="+", default=DEFAULT_SEASONS,
                    help="Seasons to use (e.g. 2021-22 2022-23 2023-24 2024-25)")
+    p.add_argument("--model-name",   default=None,
+                   help="Short identifier for this run in eval_log.jsonl "
+                        "(e.g. 'logreg_v2').  Defaults to logreg_YYYYMMDD.")
+    p.add_argument("--no-log",       action="store_true",
+                   help="Skip appending this run to eval_log.jsonl")
     return p.parse_args()
 
 
@@ -1459,6 +1464,74 @@ def main():
 
     save_params(game_result, player_result, calib, seasons, args.no_bootstrap,
                 venue_residuals=venue_residuals, ablation_result=ablation_res)
+
+    # ── Evaluation framework — score val + test, log to eval_log.jsonl ───
+    try:
+        from evaluate import evaluate, print_report
+        from datetime import datetime as _dt
+
+        model_tag = args.model_name or f"logreg_{_dt.now().strftime('%Y%m%d')}"
+
+        # Reconstruct model probabilities for val and test sets
+        from sklearn.preprocessing import StandardScaler as _SS
+        from sklearn.linear_model import LogisticRegression as _LR
+
+        # Refit scaler + model on train only (same as fit_game_models did)
+        _avail = [f for f in final_features
+                  if f in df_train.columns and f in df_val.columns]
+        _sc  = _SS().fit(df_train[_avail].values)
+        _clf = _LR(C=1.0, max_iter=1000, random_state=42)
+        _clf.fit(_sc.transform(df_train[_avail].values),
+                 df_train["home_win"].values)
+
+        # Val set evaluation
+        if not df_val.empty and "game_date" in df_val.columns:
+            _Xv   = _sc.transform(df_val[_avail].values)
+            _pv   = _clf.predict_proba(_Xv)[:, 1]
+            _bv   = hand_tuned_predict(df_val)
+            _yv   = df_val["home_win"].values
+            _dv   = df_val["game_date"].values
+            print(f"\n  Evaluating {model_tag} on val ({VAL_SEASON}) ...")
+            eval_val = evaluate(
+                y_true         = _yv,
+                probs          = _pv,
+                dates          = _dv,
+                model_name     = model_tag,
+                season         = VAL_SEASON,
+                split          = "val",
+                baseline_probs = _bv,
+                n_boot         = 2_000,
+                save           = not args.no_log,
+            )
+            print_report(eval_val)
+
+        # Test set evaluation — only if test data is available
+        if df_test is not None and not df_test.empty and "game_date" in df_test.columns:
+            _avail_te = [f for f in final_features if f in df_test.columns]
+            if len(_avail_te) == len(final_features):
+                _Xte  = _sc.transform(df_test[_avail_te].values)
+                _pte  = _clf.predict_proba(_Xte)[:, 1]
+                _bte  = hand_tuned_predict(df_test)
+                _yte  = df_test["home_win"].values
+                _dte  = df_test["game_date"].values
+                print(f"\n  Evaluating {model_tag} on test ({TEST_SEASON}) ...")
+                eval_test = evaluate(
+                    y_true         = _yte,
+                    probs          = _pte,
+                    dates          = _dte,
+                    model_name     = model_tag,
+                    season         = TEST_SEASON,
+                    split          = "test",
+                    baseline_probs = _bte,
+                    n_boot         = 2_000,
+                    save           = not args.no_log,
+                )
+                print_report(eval_test)
+    except ImportError:
+        print("\n  [evaluate] evaluate.py not found — skipping framework report.")
+    except Exception:
+        import logging as _lg
+        _lg.exception("evaluate() failed — skipping")
 
     _print_next_steps(game_result["recommendation"])
 

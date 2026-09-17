@@ -77,12 +77,11 @@ _nba_http.STATS_TIMEOUT = 90
 
 ESPN_SCOREBOARD_URL = "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard"
 ESPN_INJURIES_URL = "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/injuries"
+# ESPN's CDN (Akamai) returns 403 for browser-like User-Agent strings from
+# non-browser clients. The default python-requests UA works; leave headers empty
+# (or send only Accept) so scoreboard/injuries stay reachable.
 ESPN_HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    ),
-    "Referer": "https://www.nba.com/",
+    "Accept": "application/json",
 }
 
 ESPN_ABBR_TO_NAME = {
@@ -343,7 +342,7 @@ def _sigmoid(x: float) -> float:
 # ESPN — GAMES & INJURIES
 # =============================================================================
 def get_todays_games() -> List[Dict]:
-    for days_ahead in range(-1, 8):
+    for days_ahead in range(-1, 45):  # include preseason / early-season slate
         target = date.today() + timedelta(days=days_ahead)
         date_str = target.strftime("%Y%m%d")
         try:
@@ -353,8 +352,8 @@ def get_todays_games() -> List[Dict]:
             resp.raise_for_status()
             events = resp.json().get("events", [])
         except requests.RequestException as e:
-            print(f"  ESPN error: {e}")
-            return []
+            print(f"  ESPN error ({date_str}): {e}")
+            continue
         if not events:
             continue
         matchups = []
@@ -964,13 +963,16 @@ def _fetch_player_star_form(team_id: int, injuries: dict, season: str) -> float:
     if cache_key in _STAR_FORM_CACHE:
         return _STAR_FORM_CACHE[cache_key]
 
-    # Identify top-k players for this team from the injuries enrichment
-    # (injuries dict contains all known players with PPG, not just injured ones)
-    players_with_ppg = [
-        (name, info)
-        for name, info in injuries.items()
-        if info.get("team_id") == team_id and info.get("ppg", 0) > 10
-    ]
+    # Identify top-k players for this team from a player-keyed map:
+    #   {player_name: {"team_id", "ppg", "player_id", ...}}
+    # ESPN injuries are team-keyed lists instead, so skip star-form (neutral)
+    # when that shape is what we received.
+    players_with_ppg = []
+    for name, info in (injuries or {}).items():
+        if isinstance(info, list) or not isinstance(info, dict):
+            continue
+        if info.get("team_id") == team_id and info.get("ppg", 0) > 10:
+            players_with_ppg.append((name, info))
     players_with_ppg.sort(key=lambda x: x[1].get("ppg", 0), reverse=True)
     top_players = players_with_ppg[:STAR_FORM_TOP_K]
 
@@ -1324,6 +1326,42 @@ def _compute_prediction(
     }
 
 
+
+def _prior_nba_season(season: str) -> str:
+    """Return the previous NBA season string (e.g. '2026-27' -> '2025-26')."""
+    start = int(season.split("-")[0])
+    prev = start - 1
+    return f"{prev}-{str(prev + 1)[-2:]}"
+
+
+def _season_with_team_stats(season: str) -> str:
+    """
+    Use `season` when nba_api has team rows; otherwise fall back to prior seasons.
+    Needed in preseason / early season when the new year has a schedule but no stats yet.
+    """
+    candidate = season
+    for _ in range(3):
+        try:
+            df = _api_call(
+                lambda s=candidate: leaguedashteamstats.LeagueDashTeamStats(
+                    season=s,
+                    measure_type_detailed_defense="Advanced",
+                ).get_data_frames()[0]
+            )
+        except (requests.exceptions.RequestException, json.JSONDecodeError, KeyError, IndexError) as e:
+            print(f"  Stats probe failed for {candidate}: {e}")
+            df = None
+        if df is not None and len(df) > 0:
+            if candidate != season:
+                print(
+                    f"  No team stats for {season} yet — using {candidate} for ratings/form"
+                )
+            return candidate
+        candidate = _prior_nba_season(candidate)
+    print(f"  ⚠ Could not find a season with team stats near {season}; using {season}")
+    return season
+
+
 def predict_games_data(
     season="2026-27", matchups=None, injuries=None, progress_cb=None
 ) -> List[Dict]:
@@ -1335,8 +1373,13 @@ def predict_games_data(
         injuries = {}
 
     msg = progress_cb or (lambda s: print(f"\n{s}"))
+    stats_season = _season_with_team_stats(season)
     msg("Fetching team data (6 API calls)…")
-    ratings = _fetch_all_team_data(season)
+    ratings = _fetch_all_team_data(stats_season)
+    if ratings is None or len(ratings) == 0:
+        print(f"  No team ratings available for {stats_season}.")
+        return []
+    season = stats_season  # form / H2H / injury PPG must use the same season
 
     # Enrich injury data with real PPG from nba_api so injury penalties
     # correctly reflect star vs. bench player value (ESPN has no stats)

@@ -1,0 +1,154 @@
+{
+  "val_season": "2023-24",
+  "feature_names": [
+    "net_rtg_diff",
+    "efg_diff",
+    "tov_diff",
+    "orb_diff",
+    "ftr_diff",
+    "form_diff",
+    "home_b2b",
+    "away_b2b",
+    "rest_diff",
+    "h2h_margin",
+    "altitude_penalty",
+    "venue_residual",
+    "star_form_diff"
+  ],
+  "baseline": {
+    "log_loss": 0.63174,
+    "brier": 0.220608
+  },
+  "features": [
+    {
+      "feature": "form_diff",
+      "full_val_log_loss": 0.63174,
+      "drop_val_log_loss": 0.657773,
+      "delta_log_loss": 0.026034,
+      "full_val_brier": 0.220608,
+      "drop_val_brier": 0.23298,
+      "delta_brier": 0.012372,
+      "was_helping": true
+    },
+    {
+      "feature": "star_form_diff",
+      "full_val_log_loss": 0.63174,
+      "drop_val_log_loss": 0.633471,
+      "delta_log_loss": 0.001731,
+      "full_val_brier": 0.220608,
+      "drop_val_brier": 0.221533,
+      "delta_brier": 0.000926,
+      "was_helping": true
+    },
+    {
+      "feature": "net_rtg_diff",
+      "full_val_log_loss": 0.63174,
+      "drop_val_log_loss": 0.63054,
+      "delta_log_loss": -0.0012,
+      "full_val_brier": 0.220608,
+      "drop_val_brier": 0.219877,
+      "delta_brier": -0.000731,
+      "was_helping": false
+    },
+    {
+      "feature": "away_b2b",
+      "full_val_log_loss": 0.63174,
+      "drop_val_log_loss": 0.632685,
+      "delta_log_loss": 0.000945,
+      "full_val_brier": 0.220608,
+      "drop_val_brier": 0.221043,
+      "delta_brier": 0.000435,
+      "was_helping": true
+    },
+    {
+      "feature": "home_b2b",
+      "full_val_log_loss": 0.63174,
+      "drop_val_log_loss": 0.632462,
+      "delta_log_loss": 0.000722,
+      "full_val_brier": 0.220608,
+      "drop_val_brier": 0.220969,
+      "delta_brier": 0.000361,
+      "was_helping": true
+    },
+    {
+      "feature": "orb_diff",
+      "full_val_log_loss": 0.63174,
+      "drop_val_log_loss": 0.632381,
+      "delta_log_loss": 0.000642,
+      "full_val_brier": 0.220608,
+      "drop_val_brier": 0.220902,
+      "delta_brier": 0.000294,
+      "was_helping": true
+    },
+    {
+      "feature": "ftr_diff",
+      "full_val_log_loss": 0.63174,
+      "drop_val_log_loss": 0.631298,
+      "delta_log_loss": -0.000442,
+      "full_val_brier": 0.220608,
+      "drop_val_brier": 0.220389,
+      "delta_brier": -0.000219,
+      "was_helping": false
+    },
+    {
+      "feature": "altitude_penalty",
+      "full_val_log_loss": 0.63174,
+      "drop_val_log_loss": 0.632161,
+      "delta_log_loss": 0.000421,
+      "full_val_brier": 0.220608,
+      "drop_val_brier": 0.220807,
+      "delta_brier": 0.000199,
+      "was_helping": true
+    },
+    {
+      "feature": "rest_diff",
+      "full_val_log_loss": 0.63174,
+      "drop_val_log_loss": 0.631453,
+      "delta_log_loss": -0.000287,
+      "full_val_brier": 0.220608,
+      "drop_val_brier": 0.220465,
+      "delta_brier": -0.000143,
+      "was_helping": false
+    },
+    {
+      "feature": "venue_residual",
+      "full_val_log_loss": 0.63174,
+      "drop_val_log_loss": 0.631999,
+      "delta_log_loss": 0.000259,
+      "full_val_brier": 0.220608,
+      "drop_val_brier": 0.22074,
+      "delta_brier": 0.000132,
+      "was_helping": true
+    },
+    {
+      "feature": "tov_diff",
+      "full_val_log_loss": 0.63174,
+      "drop_val_log_loss": 0.631862,
+      "delta_log_loss": 0.000122,
+      "full_val_brier": 0.220608,
+      "drop_val_brier": 0.220658,
+      "delta_brier": 5.1e-05,
+      "was_helping": true
+    },
+    {
+      "feature": "efg_diff",
+      "full_val_log_loss": 0.63174,
+      "drop_val_log_loss": 0.631629,
+      "delta_log_loss": -0.000111,
+      "full_val_brier": 0.220608,
+      "drop_val_brier": 0.220571,
+      "delta_brier": -3.7e-05,
+      "was_helping": false
+    },
+    {
+      "feature": "h2h_margin",
+      "full_val_log_loss": 0.63174,
+      "drop_val_log_loss": 0.631702,
+      "delta_log_loss": -3.7e-05,
+      "full_val_brier": 0.220608,
+      "drop_val_brier": 0.220599,
+      "delta_brier": -9e-06,
+      "was_helping": false
+    }
+  ]
+}
