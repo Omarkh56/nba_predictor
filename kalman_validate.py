@@ -36,7 +36,6 @@ warnings.filterwarnings("ignore")
 # The NBA-API patch in train_model applies at import time — that is fine.
 try:
     from train_model import (
-        GAME_FEATURES,
         build_game_dataset,
         fetch_team_game_logs,
         hand_tuned_predict,
@@ -75,13 +74,14 @@ def _static_predict(df) -> np.ndarray:
         )
     with open(PARAMS_FILE) as fh:
         params = json.load(fh)
-    gm    = params["game_model"]
-    mean  = np.array(gm["scaler_mean"])
-    scale = np.array(gm["scaler_scale"])
-    coefs = np.array([gm["log_coefficients"][f] for f in GAME_FEATURES])
-    icept = gm["log_intercept"]
+    gm         = params["game_model"]
+    feat_names = gm["feature_names"]
+    mean       = np.array(gm["scaler_mean"])
+    scale      = np.array(gm["scaler_scale"])
+    coefs      = np.array([gm["log_coefficients"][f] for f in feat_names])
+    icept      = gm["log_intercept"]
 
-    X      = df[GAME_FEATURES].values
+    X      = df[feat_names].values
     Xs     = (X - mean) / scale
     logits = icept + Xs @ coefs
     return 1.0 / (1.0 + np.exp(-logits))
@@ -97,7 +97,7 @@ def _walk_forward_ekf(df, q_scalar: float) -> tuple:
     probs = []
     for _, row in df.iterrows():
         ekf.predict_step()
-        x_raw = np.array([float(row[f]) for f in GAME_FEATURES])
+        x_raw = np.array([float(row[f]) for f in ekf.feature_names])
         p     = ekf.update(x_raw, int(row["home_win"]))
         probs.append(p)
     return np.array(probs), ekf
