@@ -67,6 +67,10 @@ MARKET_CAP = {
     "3PM": 2,
 }
 
+# Flag added to a row's Flags column when no same-day odds_tracker.csv snapshot
+# exists for its (player, market) — ranking fell back to edge_pct for that row.
+NO_MARKET_FLAG = "NO-MKT-CHECK"
+
 # Dynamic calibration rank weights — built from calibration.json at startup.
 # Maps "MARKET_PICK" → float weight (e.g. "REB_OVER" → 1.24, "PTS_OVER" → 0.74).
 # Empty until _build_calib_rank_weights() is called.
@@ -112,10 +116,12 @@ def _load_today_lean(snap_date: date) -> dict:
         today = df[df["date"] == snap_date.isoformat()]
         for _, row in today.iterrows():
             key = (str(row["player"]).strip().lower(), str(row["market"]).strip())
+            devig_over = float(row.get("devig_over", 0.5))
             lean_map[key] = {
                 "book_lean": row.get("book_lean", "NEUTRAL"),
                 "lean_strength": float(row.get("lean_strength", 0.0)),
-                "devig_over": float(row.get("devig_over", 0.5)),
+                "devig_over": devig_over,
+                "devig_under": float(row.get("devig_under", 1.0 - devig_over)),
                 "vig_pct": float(row.get("vig_pct", 0.0)),
                 "avg_over_odds": float(row.get("avg_over_odds", -110)),
                 "avg_under_odds": float(row.get("avg_under_odds", -110)),
@@ -151,17 +157,69 @@ def _build_calib_rank_weights(calib: dict) -> dict:
     return weights
 
 
+def _market_edge_pct(player: str, market: str, pick: str, confidence: float):
+    """True edge vs. the de-vigged market, in percentage points:
+    model_probability − devig_market_probability (for the picked side).
+
+    Returns None when no same-day odds_tracker.csv snapshot exists for this
+    (player, market) — the caller should fall back to edge_pct.
+    """
+    lean = _get_lean(player, market)
+    if not lean:
+        return None
+    devig_over = lean.get("devig_over", 0.5)
+    devig_pick = lean.get("devig_under", 1.0 - devig_over) if pick == "UNDER" else devig_over
+    model_prob = confidence / 100.0
+    return (model_prob - devig_pick) * 100.0
+
+
+def _enrich_with_market_edge(df: pd.DataFrame) -> pd.DataFrame:
+    """Attach a MktEdgePct column (None where unavailable) and mark rows with
+    no same-day odds_tracker match as NO-MKT-CHECK in Flags. Idempotent —
+    safe to call on a frame that's already been enriched.
+    """
+    if df.empty:
+        df = df.copy()
+        df["MktEdgePct"] = pd.Series(dtype="float64")
+        return df
+    df = df.copy()
+    mkt_edges, flags_out = [], []
+    for _, r in df.iterrows():
+        me = _market_edge_pct(str(r["Player"]), str(r["Market"]), str(r["Pick"]), float(r["Confidence"]))
+        mkt_edges.append(me)
+        f = str(r.get("Flags", "")).strip()
+        if me is None and NO_MARKET_FLAG not in f:
+            f = (f + " " + NO_MARKET_FLAG).strip()
+        flags_out.append(f)
+    df["MktEdgePct"] = mkt_edges
+    df["Flags"] = flags_out
+    return df
+
+
 def _rank_score(
-    edge_pct: float, confidence: float, market: str, pick: str = "OVER", line: float = 99.0
+    edge_pct: float,
+    confidence: float,
+    market: str,
+    pick: str = "OVER",
+    line: float = 99.0,
+    mkt_edge_pct: float = None,
 ) -> float:
     """Ranking score used for all top-N tables (not displayed to user).
-    Low-line bets (≤ 1.5) get edge% capped at 30%.
+
+    When a same-day odds_tracker.csv snapshot exists for this (player, market),
+    ranking is driven by mkt_edge_pct — model_probability − devig_market_probability
+    (the true edge vs. the market) — instead of edge_pct (deviation from the
+    posted line). Falls back to edge_pct only when mkt_edge_pct is None (no
+    market snapshot). edge_pct itself is unchanged and remains display-only.
+
+    Low-line bets (≤ 1.5) get the ranking edge capped at 30 (points/pp).
     Dynamic calibration weight boosts historically-good markets and
     suppresses historically-bad ones."""
     static_w = MARKET_RANK_WEIGHTS.get(market, 1.0)
     dynamic_w = _CALIB_RANK_WEIGHTS.get(f"{market}_{pick}", 1.0)
     w = static_w * dynamic_w
-    effective_edge = min(edge_pct, 30.0) if line <= 1.5 else edge_pct
+    ranking_edge = mkt_edge_pct if mkt_edge_pct is not None else edge_pct
+    effective_edge = min(ranking_edge, 30.0) if line <= 1.5 else ranking_edge
     return effective_edge * w
 
 
@@ -289,6 +347,15 @@ def _pick_detail_line(r) -> str:
     if lo is not None and hi is not None:
         parts.append(f"Range {lo:.0f}–{hi:.0f}")
 
+    # True edge vs. the de-vigged market (what actually drives the "RANKED"
+    # table's sort when present — see that table's title; this line is shown
+    # on every table this row appears in, so it states the value, not a claim
+    # about which table's order it drove). Absence is signaled by the
+    # NO-MKT-CHECK flag below instead.
+    mkt_edge = r.get("MktEdgePct")
+    if pd.notna(mkt_edge):
+        parts.append(f"Mkt-edge {mkt_edge:+.1f}pp vs. devig market")
+
     # Book lean
     lean = _get_lean(str(r.get("Player", "")), str(r.get("Market", "")))
     if lean and lean.get("book_lean", "NEUTRAL") != "NEUTRAL":
@@ -307,6 +374,7 @@ def _pick_detail_line(r) -> str:
         "USG+",
         "NO-PO",
         "LOW-PO",
+        NO_MARKET_FLAG,
     )
     key_flags = [
         f for f in str(r.get("Flags", "")).split() if any(f.startswith(p) for p in show_prefixes)
@@ -476,10 +544,13 @@ def print_props_tables(results: list) -> pd.DataFrame:
 
     df = pd.DataFrame(results)
     dfF = _edge_floored(df)
+    dfF = _enrich_with_market_edge(dfF)
     N = props_model.TOP_BETS_PER_GAME
 
     dfF["_rscore"] = dfF.apply(
-        lambda r: _rank_score(r["Edge%"], r["Confidence"], r["Market"], r["Pick"], r["Line"]),
+        lambda r: _rank_score(
+            r["Edge%"], r["Confidence"], r["Market"], r["Pick"], r["Line"], r["MktEdgePct"]
+        ),
         axis=1,
     )
 
@@ -506,7 +577,7 @@ def print_props_tables(results: list) -> pd.DataFrame:
             _print_pick_row(r, rank=rank + 1, show_rank=False, show_verbose=verbose)
         print(_PROP_SEP)
 
-    _tbl(f"TOP {N} BY EDGE%       biggest mispricing", top_edge, verbose=VERBOSE)
+    _tbl(f"TOP {N} — RANKED  mkt-edge vs. devig market, else Edge%", top_edge, verbose=VERBOSE)
     _tbl(f"TOP {N} BY CONFIDENCE  most likely to hit", top_conf)
 
     no_po = df[df["PO_Games"] == 0]
@@ -804,9 +875,11 @@ def _process_single_game(
                 props_df = print_props_tables(results)
                 if not props_df.empty:
                     dfF = _edge_floored(props_df)
+                    dfF = _enrich_with_market_edge(dfF)
                     dfF["_rscore"] = dfF.apply(
                         lambda r: _rank_score(
-                            r["Edge%"], r["Confidence"], r["Market"], r["Pick"], r["Line"]
+                            r["Edge%"], r["Confidence"], r["Market"], r["Pick"], r["Line"],
+                            r["MktEdgePct"],
                         ),
                         axis=1,
                     )
@@ -875,8 +948,11 @@ def _print_global_summary(
     if all_props_results:
         all_df = pd.DataFrame(all_props_results)
         floored = _edge_floored(all_df)
+        floored = _enrich_with_market_edge(floored)
         floored["_rscore"] = floored.apply(
-            lambda r: _rank_score(r["Edge%"], r["Confidence"], r["Market"], r["Pick"], r["Line"]),
+            lambda r: _rank_score(
+                r["Edge%"], r["Confidence"], r["Market"], r["Pick"], r["Line"], r["MktEdgePct"]
+            ),
             axis=1,
         )
         top_conf = _apply_market_cap(
@@ -911,7 +987,7 @@ def _print_global_summary(
             print("  ★ = High ≥66%   * = below breakeven 53%")
 
         _print_top("TOP 10 BY CONFIDENCE  most likely to hit", top_conf)
-        _print_top("TOP 10 BY EDGE%       biggest mispricing", top_edge)
+        _print_top("TOP 10 — RANKED  mkt-edge vs. devig market, else Edge%", top_edge)
 
     export_picks_db(all_picks_export, game_date)
     export_game_picks_db(team_preds, game_date)
