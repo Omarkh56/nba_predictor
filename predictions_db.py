@@ -35,6 +35,8 @@ CREATE TABLE IF NOT EXISTS prop_predictions (
     game_pace   REAL,
     fav_win_pct REAL,
     p_market    REAL,
+    decimal_odds REAL,
+    stake_pct   REAL,
     PRIMARY KEY (date, player, market)
 )
 """
@@ -44,6 +46,8 @@ CREATE TABLE IF NOT EXISTS prop_predictions (
 # a given column existed needs an explicit ALTER TABLE. Add new columns here.
 _MIGRATIONS = [
     ("prop_predictions", "p_market", "REAL"),
+    ("prop_predictions", "decimal_odds", "REAL"),
+    ("prop_predictions", "stake_pct", "REAL"),
 ]
 
 _CREATE_GAME = """
@@ -84,8 +88,9 @@ def upsert_prop_predictions(rows: List[dict], game_date: date, path: Path = DB_P
             """INSERT OR REPLACE INTO prop_predictions
                (date, game, player, market, line, pick, projection, confidence,
                 edge_pct, flags, po_count, avg_min, book_count, usg_pct,
-                game_spread, game_total, game_pace, fav_win_pct, p_market)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                game_spread, game_total, game_pace, fav_win_pct, p_market,
+                decimal_odds, stake_pct)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             [
                 (
                     date_str,
@@ -107,6 +112,8 @@ def upsert_prop_predictions(rows: List[dict], game_date: date, path: Path = DB_P
                     r.get("game_pace"),
                     r.get("fav_win_pct"),
                     r.get("p_market"),
+                    r.get("decimal_odds"),
+                    r.get("stake_pct"),
                 )
                 for r in rows
             ],
@@ -149,7 +156,8 @@ def load_prop_predictions(target_date: date, path: Path = DB_PATH) -> List[dict]
     date_str = target_date.isoformat()
     with _connect(path) as conn:
         cur = conn.execute(
-            "SELECT player, market, line, pick, projection, flags, p_market, confidence "
+            "SELECT player, market, line, pick, projection, flags, p_market, confidence, "
+            "decimal_odds, stake_pct "
             "FROM prop_predictions WHERE date = ? ORDER BY confidence DESC",
             (date_str,),
         )
@@ -163,6 +171,8 @@ def load_prop_predictions(target_date: date, path: Path = DB_PATH) -> List[dict]
                 "flags": row[5] or "",
                 "p_market": float(row[6]) if row[6] is not None else None,
                 "confidence": float(row[7]) if row[7] is not None else None,
+                "decimal_odds": float(row[8]) if row[8] is not None else None,
+                "stake_pct": float(row[9]) if row[9] is not None else None,
             }
             for row in cur.fetchall()
         ]
@@ -195,6 +205,28 @@ def load_all_prop_model_confidence(path: Path = DB_PATH) -> dict:
         return {
             (row[0], row[1].strip(), row[2].strip(), (row[3] or "").strip().upper()):
                 (float(row[4]) / 100.0 if row[4] is not None else None)
+            for row in cur.fetchall()
+        }
+
+
+def load_all_prop_stakes(path: Path = DB_PATH) -> dict:
+    """Return {(date, player, market, pick): (decimal_odds, stake_pct)} for
+    every stored prop prediction. Used to carry the actual stake
+    recommendation through into bet_log.csv at grading time — will backfill
+    nothing for rows predicted before this was added (predictions.db never
+    stored a stake before now), same asymmetry as p_market's coverage."""
+    if not Path(path).exists():
+        return {}
+    with _connect(path) as conn:
+        cur = conn.execute(
+            "SELECT date, player, market, pick, decimal_odds, stake_pct FROM prop_predictions"
+        )
+        return {
+            (row[0], row[1].strip(), row[2].strip(), (row[3] or "").strip().upper()):
+                (
+                    float(row[4]) if row[4] is not None else None,
+                    float(row[5]) if row[5] is not None else None,
+                )
             for row in cur.fetchall()
         }
 

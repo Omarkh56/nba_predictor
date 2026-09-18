@@ -33,6 +33,7 @@ from nba_api.stats.static import players
 
 import oddstracker
 import predictions_db as pred_db
+from roi_analysis import american_to_decimal
 
 logger = logging.getLogger(__name__)
 
@@ -507,6 +508,8 @@ def check_predictions(predictions, actual_stats):
                     else pred.get("p_model")
                 ),
                 "p_market": pred.get("p_market"),  # de-vigged market prob at prediction time
+                "decimal_odds": pred.get("decimal_odds"),
+                "stake_pct": pred.get("stake_pct"),  # fractional-Kelly recommendation at pick time
             }
         )
 
@@ -734,6 +737,96 @@ def _migrate_market_calib_columns():
     )
 
 
+def _load_historical_market_odds() -> dict:
+    """Return {(date, player, market): (american_over, american_under)} from
+    odds_tracker.csv's full history — used to backfill decimal_odds into
+    bet_log.csv for the fractional-Kelly retroactive verification (see
+    verify_kelly_sizing.py), same source/coverage as p_market's backfill."""
+    tracker_path = oddstracker.TRACKER_FILE
+    if not (os.path.isfile(tracker_path) and os.path.getsize(tracker_path) > 0):
+        return {}
+    try:
+        odds = pd.read_csv(tracker_path)
+    except (OSError, ValueError):
+        return {}
+    if odds.empty or "avg_over_odds" not in odds.columns:
+        return {}
+    odds = odds.drop_duplicates(subset=["date", "player", "market"], keep="first")
+    lookup = {}
+    for _, row in odds.iterrows():
+        key = (str(row["date"]).strip(), str(row["player"]).strip(), str(row["market"]).strip())
+        over = row.get("avg_over_odds")
+        under = row.get("avg_under_odds")
+        lookup[key] = (
+            float(over) if pd.notna(over) else None,
+            float(under) if pd.notna(under) else None,
+        )
+    return lookup
+
+
+def _migrate_stake_columns():
+    """One-time migration: add 'decimal_odds', 'stake_pct', 'realized_profit'
+    columns to bet_log.csv if missing.
+
+    decimal_odds backfills from odds_tracker.csv (same source/coverage as
+    p_market — see _migrate_market_calib_columns()'s docstring). stake_pct
+    and realized_profit start empty for every historical row: stake_pct is
+    brand new (predictions.db never stored one before this was added — see
+    predictions_db.load_all_prop_stakes()) and realized_profit needs an
+    actual recommended stake to compute, not a fabricated retroactive one.
+    Use verify_kelly_sizing.py to check the formula against history instead.
+
+    Old schema (12 cols): ...,flags,p_model,p_market
+    New schema (15 cols): ...,p_market,decimal_odds,stake_pct,realized_profit
+    """
+    if not (os.path.isfile(LOG_FILE) and os.path.getsize(LOG_FILE) > 0):
+        return
+    with open(LOG_FILE) as fh:
+        lines = fh.readlines()
+    if not lines:
+        return
+    header_fields = [c.strip() for c in lines[0].strip().split(",")]
+    if "stake_pct" in header_fields:
+        return  # already migrated
+
+    try:
+        idx = {name: header_fields.index(name) for name in ("date", "player", "market", "pick")}
+    except ValueError:
+        return  # unexpected schema — leave untouched
+
+    odds_lookup = _load_historical_market_odds()
+    matched = 0
+    migrated = [",".join(header_fields + ["decimal_odds", "stake_pct", "realized_profit"]) + "\n"]
+    for line in lines[1:]:
+        fields = line.rstrip("\n").split(",")
+        d = fields[idx["date"]].strip()
+        p = fields[idx["player"]].strip()
+        m = fields[idx["market"]].strip()
+        pick = fields[idx["pick"]].strip().upper()
+
+        decimal_odds_str = ""
+        prices = odds_lookup.get((d, p, m))
+        if prices is not None:
+            american = prices[1] if pick == "UNDER" else prices[0]
+            if american is not None:
+                try:
+                    decimal_odds_str = f"{american_to_decimal(american):.4f}"
+                    matched += 1
+                except (ValueError, TypeError):
+                    pass
+
+        migrated.append(",".join(fields + [decimal_odds_str, "", ""]) + "\n")
+
+    with open(LOG_FILE, "w") as fh:
+        fh.writelines(migrated)
+    n = len(lines) - 1
+    print(
+        f"  Migrated bet_log.csv → added 'decimal_odds'/'stake_pct'/'realized_profit' columns "
+        f"(decimal_odds: {matched}/{n} backfilled from odds_tracker.csv; "
+        f"stake_pct/realized_profit start empty — no historical stakes were ever computed)."
+    )
+
+
 def append_to_log(results, check_date):
     """Append graded bets to bet_log.csv for downstream calibration.
 
@@ -766,6 +859,9 @@ def append_to_log(results, check_date):
         "flags",
         "p_model",
         "p_market",
+        "decimal_odds",
+        "stake_pct",
+        "realized_profit",
     ]
 
     file_exists = os.path.isfile(LOG_FILE) and os.path.getsize(LOG_FILE) > 0
@@ -796,6 +892,10 @@ def append_to_log(results, check_date):
     if file_exists:
         _migrate_market_calib_columns()
 
+    # Migrate old schema (no decimal_odds/stake_pct/realized_profit columns)
+    if file_exists:
+        _migrate_stake_columns()
+
     new_rows = []
     for r in results:
         if r.get("actual") is None:
@@ -807,6 +907,19 @@ def append_to_log(results, check_date):
             outcome = "MISS"
         else:
             continue  # PUSH — not useful for hit-rate learning
+
+        stake_pct = r.get("stake_pct")
+        decimal_odds = r.get("decimal_odds")
+        realized_profit = ""
+        if stake_pct is not None and decimal_odds is not None and stake_pct > 0:
+            # Actual stake and realized profit -- what turns the sizing into
+            # something evaluable later (Sharpe, drawdown, portfolio-Kelly),
+            # not just a recommendation that was never logged.
+            realized_profit = (
+                round(stake_pct * (decimal_odds - 1.0), 6)
+                if outcome == "HIT"
+                else round(-stake_pct, 6)
+            )
 
         new_rows.append(
             {
@@ -824,6 +937,9 @@ def append_to_log(results, check_date):
                 # (p_model/p_market are frequently None — no odds snapshot, etc.)
                 "p_model": r.get("p_model") if r.get("p_model") is not None else "",
                 "p_market": r.get("p_market") if r.get("p_market") is not None else "",
+                "decimal_odds": decimal_odds if decimal_odds is not None else "",
+                "stake_pct": stake_pct if stake_pct is not None else "",
+                "realized_profit": realized_profit,
             }
         )
 

@@ -44,6 +44,7 @@ import newnbapredictor as team_model
 import oddstracker
 import playerlinepredictor as props_model
 import predictions_db as pred_db
+from roi_analysis import american_to_decimal
 
 logger = logging.getLogger(__name__)
 
@@ -166,6 +167,21 @@ def _p_market(player: str, market: str, pick: str):
         return None
     devig_over = lean.get("devig_over", 0.5)
     return lean.get("devig_under", 1.0 - devig_over) if pick == "UNDER" else devig_over
+
+
+def _decimal_odds(player: str, market: str, pick: str):
+    """Decimal price for the picked side, converted from odds_tracker.csv's
+    average American price. Returns None when there's no same-day snapshot
+    or the price is unusable (american_to_decimal raises on junk book data,
+    e.g. |odds| < 100)."""
+    lean = _get_lean(player, market)
+    if not lean:
+        return None
+    american = lean.get("avg_under_odds") if pick == "UNDER" else lean.get("avg_over_odds")
+    try:
+        return american_to_decimal(american)
+    except (ValueError, TypeError):
+        return None
 
 
 def _market_edge_pct(player: str, market: str, pick: str, confidence: float):
@@ -688,7 +704,16 @@ def print_best_bets(pred: dict, props_df: pd.DataFrame):
 def _pick_to_dict(row: pd.Series, game_key: str, pred) -> dict:
     """Convert a props DataFrame row + game context to a JSON-exportable dict."""
     meta = row.get("meta") or {}
-    p_mkt = _p_market(str(row["Player"]), str(row["Market"]), str(row["Pick"]))
+    player, market, pick = str(row["Player"]), str(row["Market"]), str(row["Pick"])
+    p_mkt = _p_market(player, market, pick)
+    d = _decimal_odds(player, market, pick)
+    p_model = float(row["Confidence"]) / 100.0
+    total_penalty = float(row.get("total_penalty", row.get("direction_penalty", 0.0)))
+    # Sized off p_model, not market_calibration.py's blended p_final: that
+    # module's own holdout_check() currently fails to generalize out-of-
+    # sample on the live market sample (~150 rows) -- using it to size real
+    # stakes would be premature. Revisit once that check passes.
+    stake_pct = props_model.compute_stake_pct(p_model, d, total_penalty)
     return {
         "game": game_key,
         "player": row["Player"],
@@ -700,6 +725,8 @@ def _pick_to_dict(row: pd.Series, game_key: str, pred) -> dict:
         "edge_pct": float(row["Edge%"]),
         "flags": row["Flags"],
         "p_market": p_mkt,  # de-vigged market probability at prediction time, or None
+        "decimal_odds": d,
+        "stake_pct": stake_pct,  # fractional-Kelly stake recommendation, 0.0 if no odds/negative EV
         "po_count": int(row.get("PO_Games", 0)),
         "avg_min": float(meta.get("avg_min", 0)),
         "book_count": int(row.get("book_count", 0)),
