@@ -25,6 +25,7 @@ predictions.db
 predictions.db-shm
 predictions.db-wal
 odds_tracker.csv
+game_odds_tracker.csv
 bet_log.csv
 game_log.csv
 ucl_predictions_*.csv

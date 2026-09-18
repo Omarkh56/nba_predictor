@@ -48,6 +48,14 @@ _MIGRATIONS = [
     ("prop_predictions", "p_market", "REAL"),
     ("prop_predictions", "decimal_odds", "REAL"),
     ("prop_predictions", "stake_pct", "REAL"),
+    ("game_predictions", "home_prob", "REAL"),
+    ("game_predictions", "p_market", "REAL"),
+    ("game_predictions", "decimal_odds", "REAL"),
+    ("game_predictions", "market_edge", "REAL"),
+    ("game_predictions", "ev", "REAL"),
+    ("game_predictions", "odds_event_id", "TEXT"),
+    ("game_predictions", "odds_snapshot_at", "TEXT"),
+    ("game_predictions", "odds_books_count", "INTEGER"),
 ]
 
 _CREATE_GAME = """
@@ -130,8 +138,9 @@ def upsert_game_predictions(rows: List[dict], game_date: date, path: Path = DB_P
         conn.executemany(
             """INSERT OR REPLACE INTO game_predictions
                (date, home_abbr, away_abbr, winner_pick, spread, spread_pick,
-                win_pct, total)
-               VALUES (?,?,?,?,?,?,?,?)""",
+                win_pct, total, home_prob, p_market, decimal_odds, market_edge,
+                ev, odds_event_id, odds_snapshot_at, odds_books_count)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             [
                 (
                     date_str,
@@ -142,6 +151,14 @@ def upsert_game_predictions(rows: List[dict], game_date: date, path: Path = DB_P
                     r.get("spread_pick"),
                     r.get("win_pct"),
                     r.get("total"),
+                    r.get("home_prob"),
+                    r.get("p_market"),
+                    r.get("decimal_odds"),
+                    r.get("market_edge"),
+                    r.get("ev"),
+                    r.get("odds_event_id"),
+                    r.get("odds_snapshot_at"),
+                    r.get("odds_books_count"),
                 )
                 for r in rows
             ],
@@ -238,7 +255,9 @@ def load_game_predictions(target_date: date, path: Path = DB_PATH) -> List[dict]
     date_str = target_date.isoformat()
     with _connect(path) as conn:
         cur = conn.execute(
-            "SELECT home_abbr, away_abbr, winner_pick, spread, spread_pick "
+            "SELECT home_abbr, away_abbr, winner_pick, spread, spread_pick, "
+            "home_prob, p_market, decimal_odds, market_edge, ev, odds_event_id, "
+            "odds_snapshot_at, odds_books_count "
             "FROM game_predictions WHERE date = ?",
             (date_str,),
         )
@@ -249,6 +268,14 @@ def load_game_predictions(target_date: date, path: Path = DB_PATH) -> List[dict]
                 "winner_pick": row[2],
                 "spread": float(row[3]) if row[3] is not None else None,
                 "spread_pick": row[4],
+                "home_prob": float(row[5]) if row[5] is not None else None,
+                "p_market": float(row[6]) if row[6] is not None else None,
+                "decimal_odds": float(row[7]) if row[7] is not None else None,
+                "market_edge": float(row[8]) if row[8] is not None else None,
+                "ev": float(row[9]) if row[9] is not None else None,
+                "odds_event_id": row[10],
+                "odds_snapshot_at": row[11],
+                "odds_books_count": row[12],
             }
             for row in cur.fetchall()
         ]

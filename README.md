@@ -88,7 +88,17 @@ Combines 10 factors into an expected margin, then converts to win probability vi
 9. Head-to-head history (shrinkage-weighted)
 10. Clutch performance (close-game adjustment)
 
-If `learned_params.json` exists and `USE_LEARNED_GAME_MODEL = True`, a logistic regression model trained by `train_model.py` replaces the hand-tuned sigmoid.
+The saved training recommendation controls selection automatically. A `swap` recommendation means the learned model beat the baseline on both validation log loss and Brier score; `use_learned` is also accepted for compatibility. `monitor`, `keep_hand_tuned`, and missing or unknown recommendations keep the hand-tuned sigmoid. Learned predictions require a matching input version, all saved features, and valid scaler/coefficient values; otherwise the predictor logs the reason and falls back to the hand-tuned sigmoid. An approved Kalman model takes priority over the static learned model.
+
+`game_features.py` calculates the same inputs for training and live predictions from regular-season game logs. It uses only earlier dates, resets history each season, and supplies the altitude, venue, and star-form inputs. Live prediction downloads each required season's logs once per run. After changing input definitions, rerun training; older weights and Kalman states remain inactive until rebuilt.
+
+`game_odds_tracker.py` fetches the `h2h` market for those NBA events and appends one row per game per observation to `game_odds_tracker.csv`. It keeps event IDs, UTC observation/start times, both teams, paired-book counts, consensus moneyline prices, fair probabilities, vig and power-method k. Prices average decimal payouts; fair probabilities, vig and k average the paired books after de-vigging. Game dates use Eastern time to match the NBA/ESPN calendar.
+
+The combined pipeline automatically loads or fetches quotes for its game date. Quotes older than 30 minutes, started games, incomplete books and invalid probability pairs cannot join. Each team's moneyline diagnostic uses the final team probability: `edge = p_model - p_market`, `EV = p_model * decimal_odds - 1`. Both sides appear in the output; the winner pick's comparison and quote provenance are stored in SQLite. These comparisons do not select bets or change stakes, spread/total picks or rankings. A positive model edge alone does not imply positive EV at the quoted price.
+
+For a manual snapshot, run `python3 game_odds_tracker.py YYYY-MM-DD`. Check the displayed home/away prices against the books and confirm the favorite's fair probability, then inspect the combined pipeline's moneyline diagnostics. `odds_api.py` supplies the shared verified fetcher: if requests fails its TLS handshake, it retries with a standard Python HTTPS client that still authenticates the certificate and hostname. API keys are excluded from error messages.
+
+A live production snapshot on September 18, 2026 recorded the October 20 slate: BOS at DET, PHI at NYK and OKC at SAS, with five paired books each. NYK's consensus price was about -194 against PHI +159, producing a 64.0% fair home probability; the other games were approximately 53% home / 47% away. Reading that real CSV through the combined lookup and joining a controlled 68% home probability produced +4.01 percentage points of edge and +3.04% EV per unit. A -400/+300 test fixture produced 78.24% home probability; a controlled 83% model probability gave +4.76 percentage points of edge and +3.75% EV per unit. Controlled probabilities verify arithmetic and are not game forecasts.
 
 ### Props model (`playerlinepredictor.py`)
 
@@ -99,6 +109,12 @@ For each player prop line:
 - Anchors to market line (12%) to dampen outlier projections
 - Evaluates Over/Under probability via Normal CDF (Poisson regime) or Negative Binomial (overdispersed)
 - Applies confidence penalties: B2B, bench minutes, minute volatility, injury status, thin-market book count
+
+SD falls back from the player's own logs to a supported position estimate, then to the existing playoff/regular-season league tables. `project_stat()` threads its resolved position into this SD calculation. Combo props retain empirical or league combo SD because marginal position variances do not include covariance.
+
+The trainer obtains positions with explicit NBA G/F/C filters; unknown or ambiguous players are never automatically labeled guards. It records position support and pools variances toward the league. A split activates only with at least 100 training observations across 10 players, 50 validation observations across 5 players, a 5% SD difference and improved validation Gaussian residual log score. Old unverified artifacts remain inactive. `--no-fetch` does not fetch missing position labels.
+
+The current saved artifact failed this check: Booker/Joe (G), Johnson/Kuminga (F), and Hartenstein/Bitadze (C) all have the same saved PTS SD, 6.086, matching the league value. Position uncertainty stays inactive until training obtains verified position labels and saves supported estimates. After obtaining those labels, rerun `python3 train_model.py --no-bootstrap` to rebuild the artifact without replacing the live calibration.
 
 ### Calibration (`calibrate.py`)
 
@@ -137,7 +153,7 @@ CI runs automatically on every push via `.github/workflows/ci.yml`.
 
 ## Known limitations
 
-- **Hand-tuned weights are the default.** `learned_params.json` is only active when `USE_LEARNED_GAME_MODEL = True` in `newnbapredictor.py`. The learned model requires a full backtest run via `train_model.py` first.
+- **Hand-tuned weights are the default.** Training saves a `swap` recommendation only when the learned game model beats the baseline on both validation metrics. The predictor applies that recommendation automatically when the required inputs are available; no manual source-code toggle is needed.
 - **2026-27 season.** Season constants are hardcoded; update `SEASON` in `nba_combined.py` and `playerlinepredictor.py` when the season rolls over.
 - **Odds API key required.** Copy `.env.example` to `.env` and set `ODDS_API_KEY`. Without it, scripts exit immediately instead of calling the Odds API.
 - **LibreSSL on macOS Python 3.9** may produce TLS warnings. `pip install --upgrade certifi` resolves this.

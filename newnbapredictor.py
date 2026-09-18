@@ -28,6 +28,8 @@ from typing import Dict, List, Optional, Tuple
 import requests
 import urllib3
 
+from config import current_season
+from game_features import GAME_FEATURE_VERSION, build_live_game_features
 from nba_api_utils import api_call_with_retry as _api_call
 
 logger = logging.getLogger(__name__)
@@ -208,9 +210,9 @@ H2H_SHRINKAGE_K = 5
 # =============================================================================
 # LEARNED MODEL LOADING (from train_model.py output)
 # =============================================================================
-# Auto-set by _load_learned_params() after startup: True only when
-# train_model.py's own backtest confirmed learned beats hand-tuned on
-# BOTH log loss AND Brier score (recommendation == "use_learned").
+# Set by _load_learned_params(): training recommends "swap" only when
+# learned beats hand-tuned on BOTH validation log loss AND Brier score.
+# Accept "use_learned" for compatibility with older saved recommendations.
 USE_LEARNED_GAME_MODEL: bool = False
 
 _LEARNED_GAME_PARAMS: dict = {}
@@ -218,23 +220,35 @@ _VENUE_RESIDUALS: dict = {}   # {team_id_str: float} — isolated home-court edg
 
 
 def _load_learned_params() -> None:
-    """Load learned_params.json once at startup if it exists."""
-    global _LEARNED_GAME_PARAMS, RTG_SCALE, _VENUE_RESIDUALS
+    """Load parameters and apply the saved training recommendation."""
+    global _LEARNED_GAME_PARAMS, USE_LEARNED_GAME_MODEL, _VENUE_RESIDUALS
+    _LEARNED_GAME_PARAMS = {}
+    USE_LEARNED_GAME_MODEL = False
+    _VENUE_RESIDUALS = {}
     params_file = Path(__file__).parent / "learned_params.json"
     if not params_file.exists():
         return
     try:
         with open(params_file) as fh:
             data = json.load(fh)
+        if not isinstance(data, dict):
+            raise ValueError("parameters must be a JSON object")
         gm = data.get("game_model", {})
+        if not isinstance(gm, dict):
+            raise ValueError("game_model must be a JSON object")
         if gm:
             _LEARNED_GAME_PARAMS = gm
             rec = gm.get("recommendation", "keep_hand_tuned")
+            USE_LEARNED_GAME_MODEL = (rec in ("swap", "use_learned")
+                                      and gm.get("feature_version") == GAME_FEATURE_VERSION)
+            if rec in ("swap", "use_learned") and not USE_LEARNED_GAME_MODEL:
+                logger.warning("Learned game inputs changed; rerun train_model.py before using these weights")
             ll_h = gm.get("hand_tuned_log_loss", "?")
             ll_l = gm.get("learned_log_loss", "?")
             print(
                 f"  [train_model] game params loaded  "
-                f"(rec={rec}  ll_hand={ll_h:.4f}  ll_learned={ll_l:.4f})"
+                f"(rec={rec}  approved={USE_LEARNED_GAME_MODEL}  "
+                f"ll_hand={ll_h}  ll_learned={ll_l})"
             )
         vr = data.get("venue_residuals", {})
         if vr:
@@ -244,11 +258,11 @@ def _load_learned_params() -> None:
         print(f"  [train_model] failed to load learned_params.json: {e}")
 
 
-def _sigmoid_learned(features: dict) -> float:
+def _sigmoid_learned(features: dict) -> Optional[float]:
     """
     Compute win probability using the logistic regression from train_model.py.
     features: dict keyed by GAME_FEATURES names.
-    Falls back to hand-tuned sigmoid if params are missing.
+    Returns None to select the hand-tuned path if parameters or inputs are invalid.
     """
     gm = _LEARNED_GAME_PARAMS
     if not gm or not USE_LEARNED_GAME_MODEL:
@@ -258,29 +272,43 @@ def _sigmoid_learned(features: dict) -> float:
     means = gm.get("scaler_mean", [])
     scales = gm.get("scaler_scale", [])
     feats = gm.get("feature_names", [])
-    intercept = gm.get("log_intercept", 0.0)
+    intercept = gm.get("log_intercept")
 
     if not (coefs and means and scales and feats):
+        logger.warning("Using hand-tuned game probability: incomplete learned model parameters")
         return None
 
-    logit = intercept
-    for i, feat in enumerate(feats):
-        raw = features.get(feat, 0.0)
-        if i < len(means) and i < len(scales) and scales[i] > 0:
-            scaled = (raw - means[i]) / scales[i]
-        else:
-            scaled = raw
-        logit += coefs.get(feat, 0.0) * scaled
+    try:
+        if len(means) != len(feats) or len(scales) != len(feats) or len(set(feats)) != len(feats):
+            raise ValueError("feature names and scaler dimensions do not match")
+        missing = [feat for feat in feats if feat not in features]
+        if missing:
+            raise ValueError(f"missing live inputs: {', '.join(missing)}")
+        logit = float(intercept)
+        if not math.isfinite(logit):
+            raise ValueError("non-finite intercept")
+        for i, feat in enumerate(feats):
+            raw, mean, scale, coef = map(float, (features[feat], means[i], scales[i], coefs[feat]))
+            if not all(math.isfinite(value) for value in (raw, mean, scale, coef)) or scale <= 0:
+                raise ValueError(f"invalid input or parameters for {feat}")
+            logit += coef * ((raw - mean) / scale)
+        if not math.isfinite(logit):
+            raise ValueError("non-finite prediction")
+    except (KeyError, TypeError, ValueError, OverflowError) as exc:
+        logger.warning("Using hand-tuned game probability: %s", exc)
+        return None
 
-    return 1.0 / (1.0 + math.exp(-logit))
+    if logit >= 0:
+        return 1.0 / (1.0 + math.exp(-logit))
+    exp_logit = math.exp(logit)
+    return exp_logit / (1.0 + exp_logit)
 
 
-# Run once at import time; then decide whether to engage the learned model.
+# Run once at import time; loading also decides whether to engage the model.
 import json  # noqa: E402
 from pathlib import Path  # noqa: E402
 
 _load_learned_params()
-USE_LEARNED_GAME_MODEL = _LEARNED_GAME_PARAMS.get("recommendation") == "use_learned"
 
 
 # =============================================================================
@@ -307,7 +335,8 @@ def _load_kalman_state() -> None:
         rec   = (state or {}).get("recommendation", "keep_static")
         if ekf is not None:
             _KALMAN_EKF = ekf
-            USE_KALMAN_GAME_MODEL = rec == "use_kalman"
+            USE_KALMAN_GAME_MODEL = (rec == "use_kalman"
+                                     and ekf.feature_version == GAME_FEATURE_VERSION)
             print(
                 f"  [kalman] game EKF loaded  "
                 f"(n_updates={ekf.n_updates}  rec={rec}  active={USE_KALMAN_GAME_MODEL})"
@@ -322,12 +351,15 @@ _load_kalman_state()
 def _sigmoid_kalman(features: dict):
     """
     Compute win probability using the adaptive Kalman EKF.
-    features: dict keyed by GAME_FEATURES names (same as _build_learned_feature_dict).
+    features: dict keyed by GAME_FEATURES names (shared with train_model.py).
     Returns None if Kalman is not active.
     """
     if not USE_KALMAN_GAME_MODEL or _KALMAN_EKF is None:
         return None
-    x_raw = np.array([features.get(f, 0.0) for f in _KALMAN_EKF.feature_names])
+    if any(f not in features or not math.isfinite(features[f]) for f in _KALMAN_EKF.feature_names):
+        logger.warning("Kalman game inputs missing or invalid; using the fallback model")
+        return None
+    x_raw = np.array([features[f] for f in _KALMAN_EKF.feature_names])
     return _KALMAN_EKF.predict_proba(x_raw)
 
 
@@ -1151,20 +1183,44 @@ def _compute_rest_adj(home_form: dict, away_form: dict) -> float:
     return adj
 
 
-def _build_learned_feature_dict(home_row, away_row, home_form, away_form, h2h) -> dict:
-    """Build the feature dict expected by _sigmoid_learned()."""
-    return {
-        "net_rtg_diff": float(home_row["NET_RATING"]) - float(away_row["NET_RATING"]),
-        "efg_diff": home_row.get("EFG_PCT", 0.50) - away_row.get("EFG_PCT", 0.50),
-        "tov_diff": away_row.get("TM_TOV_PCT", 0.14) - home_row.get("TM_TOV_PCT", 0.14),
-        "orb_diff": home_row.get("OREB_PCT", 0.27) - away_row.get("OREB_PCT", 0.27),
-        "ftr_diff": home_row.get("FTA_RATE", 0.24) - away_row.get("FTA_RATE", 0.24),
-        "form_diff": home_form["l10_net_rtg"] - away_form["l10_net_rtg"],
-        "home_b2b": int(home_form["b2b"]),
-        "away_b2b": int(away_form["b2b"]),
-        "rest_diff": float(home_form["days_rest"] - away_form["days_rest"]),
-        "h2h_margin": h2h["avg_margin"] * h2h.get("shrinkage", 0.0),
-    }
+_LEARNED_LOG_CACHE: dict = {}
+
+
+def _fetch_learned_features(home_tid, away_tid, season, game_date):
+    """Fetch each season's raw logs once; training and live use one calculation."""
+    if not USE_LEARNED_GAME_MODEL and not USE_KALMAN_GAME_MODEL:
+        return None
+    names = (_KALMAN_EKF.feature_names if USE_KALMAN_GAME_MODEL
+             else _LEARNED_GAME_PARAMS.get("feature_names", []))
+    try:
+        team_key = ("team", season)
+        if team_key not in _LEARNED_LOG_CACHE:
+            logs = _api_call(lambda: leaguegamefinder.LeagueGameFinder(
+                season_nullable=season, league_id_nullable="00",
+                season_type_nullable="Regular Season", player_or_team_abbreviation="T",
+            ).get_data_frames()[0]).copy()
+            logs["season"] = season
+            _LEARNED_LOG_CACHE[team_key] = logs
+        player_logs = pd.DataFrame()
+        if "star_form_diff" in names:
+            player_key = ("player", season)
+            if player_key not in _LEARNED_LOG_CACHE:
+                from nba_api.stats.endpoints import leaguegamelog
+                logs = _api_call(lambda: leaguegamelog.LeagueGameLog(
+                    season=season, season_type_all_star="Regular Season",
+                    player_or_team_abbreviation="P",
+                ).get_data_frames()[0]).copy()
+                if logs.empty:
+                    raise ValueError("no player game history for star form")
+                logs["season"] = season
+                _LEARNED_LOG_CACHE[player_key] = logs
+            player_logs = _LEARNED_LOG_CACHE[player_key]
+        return build_live_game_features(_LEARNED_LOG_CACHE[team_key], player_logs,
+                                        home_tid, away_tid, season, game_date)
+    except (requests.exceptions.RequestException, json.JSONDecodeError, KeyError,
+            ValueError, TypeError, IndexError, RuntimeError) as exc:
+        logger.warning("Using hand-tuned game probability: could not build game inputs: %s", exc)
+        return None
 
 
 def _compute_prediction(
@@ -1267,9 +1323,9 @@ def _compute_prediction(
 
     # Final probability — priority: Kalman adaptive > static learned > hand-tuned
     expected_margin = round(margin, 2)
-    _feat_dict = _build_learned_feature_dict(home_row, away_row, home_form, away_form, h2h)
-    _kp = _sigmoid_kalman(_feat_dict)
-    _lp = _sigmoid_learned(_feat_dict) if _kp is None else None
+    _feat_dict = _fetch_learned_features(home_id, away_id, season, m["game_date"])
+    _kp = _sigmoid_kalman(_feat_dict) if _feat_dict is not None else None
+    _lp = _sigmoid_learned(_feat_dict) if _feat_dict is not None and _kp is None else None
     home_prob = _kp if _kp is not None else (_lp if _lp is not None else _sigmoid(expected_margin))
     away_prob = 1.0 - home_prob
 
@@ -1363,8 +1419,9 @@ def _season_with_team_stats(season: str) -> str:
 
 
 def predict_games_data(
-    season="2026-27", matchups=None, injuries=None, progress_cb=None
+    season=None, matchups=None, injuries=None, progress_cb=None
 ) -> List[Dict]:
+    season = season or current_season()  # v9: was hardcoded "2026-27" — see config.py
     if matchups is None:
         matchups = get_todays_games()
     if not matchups:
@@ -1549,7 +1606,8 @@ def _print_results(results: List[Dict], season: str):
 # =============================================================================
 # MAIN
 # =============================================================================
-def main(season="2026-27"):
+def main(season=None):
+    season = season or current_season()  # v9: was hardcoded "2026-27" — see config.py
     print("Fetching today's games from ESPN…")
     matchups = get_todays_games()
     if not matchups:

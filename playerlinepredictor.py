@@ -77,6 +77,7 @@ import pandas as pd
 import requests
 import urllib3
 
+from config import current_season
 from env_config import require_env
 from nba_api_utils import safe_dataframe_call
 from player_regression import predict_player_stat  # noqa: E402
@@ -194,7 +195,7 @@ SINGLE_STAT_MARKETS = {
     "player_threes",
 }
 
-SEASON = "2026-27"
+SEASON = current_season()  # v9: was hardcoded "2026-27" — see config.py
 SEASON_TYPE_RS = "Regular Season"
 SEASON_TYPE_PO = "Playoffs"
 
@@ -415,13 +416,28 @@ def _load_learned_player_params() -> None:
 
 
 def get_learned_pos_std(pos_group: str, stat: str, fallback: float) -> float:
-    """Return learned position-group std dev for a stat, or fallback if not available."""
+    """Use a supported position split; legacy/unverified estimates stay inactive."""
+    if not isinstance(pos_group, str):
+        return fallback
     broad_pg = {"G": "G", "PG": "G", "SG": "G", "SF": "F", "PF": "F", "F": "F", "C": "C"}.get(
-        pos_group, "G"
+        pos_group
     )
-    by_pos = _LEARNED_VARIANCE.get("by_position", {})
-    pg_stds = by_pos.get(broad_pg, {})
-    return pg_stds.get(stat, fallback)
+    try:
+        support = _LEARNED_VARIANCE.get("position_support", {}).get(broad_pg, {}).get(stat, {})
+        learned = float(_LEARNED_VARIANCE.get("by_position", {}).get(broad_pg, {})[stat])
+        league = float(_LEARNED_VARIANCE["league_average"][stat])
+        if (support.get("enabled") is True and int(support["train_n"]) >= 100
+                and int(support["train_players"]) >= 10 and int(support["val_n"]) >= 50
+                and int(support["val_players"]) >= 5
+                and math.isfinite(float(support["val_nll_gain"]))
+                and float(support["val_nll_gain"]) > 0
+                and math.isfinite(learned) and learned > 0
+                and math.isfinite(league) and league > 0
+                and abs(learned / league - 1.0) >= 0.05):
+            return learned
+    except (AttributeError, KeyError, TypeError, ValueError, OverflowError):
+        pass
+    return fallback
 
 
 _load_learned_player_params()  # run once at import time
@@ -477,21 +493,10 @@ MANUAL_POSITIONS = {
     "Jaxson Hayes": "C",
 }
 
-# v8 Fix 2: per-player projection multipliers for players with confirmed PTS projection
-# inflation (0W on 3+ PTS OVER bets in bet_log.csv). Suppresses these players at the
-# player level without touching the broader PTS market for other players.
-MANUAL_PLAYER_PENALTIES = {
-    ("Devin Booker", "PTS"): 0.85,
-    ("Anthony Black", "PTS"): 0.85,
-    ("Nickeil Alexander-Walker", "PTS"): 0.85,
-    ("Quentin Grimes", "PTS"): 0.85,
-    ("Isaiah Hartenstein", "PTS"): 0.85,
-    ("Keldon Johnson", "PTS"): 0.85,
-    ("Isaiah Joe", "PTS"): 0.85,
-    ("Goga Bitadze", "PTS"): 0.85,
-    ("Jonathan Kuminga", "PTS"): 0.85,
-    ("Jaxson Hayes", "PTS"): 0.85,
-}
+# Optional extra haircut on top of MARKET_PROJ_ADJ / PLAYER_PROJ_ADJ.
+# Kept empty: a 10-name 0.85x list cannot cover a market-wide PTS OVER miss
+# rate, and stacking it on the PTS market multiplier double-penalizes those names.
+MANUAL_PLAYER_PENALTIES = {}
 
 # Set to True by get_league_logs() when playoff game logs are available.
 # Used by _blend_minutes() to apply rotation adjustments for early playoff games.
@@ -514,6 +519,33 @@ TEAM_DVP_CACHE = {}  # {(team_id, pos_group, stat_col): factor} — computed
 # =============================================================================
 # CALIBRATION
 # =============================================================================
+_STAT_TO_MKT = {"PTS": "PTS", "REB": "REB", "AST": "AST", "FG3M": "3PM"}
+_MARKET_ADJ_MIN_N = 20
+_MARKET_ADJ_CLAMP = (0.92, 1.08)
+
+
+def _build_market_proj_adj(market_direction: dict) -> dict:
+    """Map OVER hit rates to per-stat projection multipliers, including PTS.
+
+    bias = (0.5 - over_rate) * 0.6, then clamp to ±8%. Combo markets inherit
+    the PTS/REB/AST factors inside project_stat() because they are applied
+    per stat-column before summing.
+    """
+    out = {}
+    lo, hi = _MARKET_ADJ_CLAMP
+    for key, info in market_direction.items():
+        if "_OVER" not in key or info.get("n", 0) < _MARKET_ADJ_MIN_N:
+            continue
+        mkt_label = key.replace("_OVER", "")
+        stat_key = next((s for s, m in _STAT_TO_MKT.items() if m == mkt_label), None)
+        if stat_key is None:
+            continue
+        over_rate = info["raw_rate"]
+        bias = (0.5 - over_rate) * 0.6
+        out[stat_key] = round(max(lo, min(hi, 1.0 - bias)), 3)
+    return out
+
+
 def _load_calibration():
     """Load calibration.json into the CALIB global (no-op if file is absent).
 
@@ -535,26 +567,13 @@ def _load_calibration():
             f"{md} market-direction, {pm} player-market, {fp} flag-penalty adjustments)"
         )
 
-        # v7 Fix 1b: build projection multipliers from OVER hit rates.
-        # v8 Fix 1: PTS is excluded — flat market-wide punishment doesn't fix the
-        # root cause (a specific set of bad-projection players). Player-level
-        # penalties in MANUAL_PLAYER_PENALTIES handle those cases more precisely.
-        _STAT_TO_MKT = {"PTS": "PTS", "REB": "REB", "AST": "AST", "FG3M": "3PM"}
-        SKIP_MARKET_ADJ = {"PTS"}  # v8 Fix 1: skip PTS market-level multiplier
+        # Projection multipliers from OVER hit rates (PTS included). A 38.9%
+        # PTS_OVER hit rate is market-wide, not a 10-player problem; combo
+        # markets inherit the PTS column factor in project_stat().
         MARKET_PROJ_ADJ.clear()
-        for key, info in CALIB.get("market_direction", {}).items():
-            if "_OVER" not in key or info.get("n", 0) < 20:
-                continue
-            mkt_label = key.replace("_OVER", "")
-            stat_key = next((s for s, m in _STAT_TO_MKT.items() if m == mkt_label), None)
-            if stat_key is None or stat_key in SKIP_MARKET_ADJ:  # v8 Fix 1
-                continue
-            over_rate = info["raw_rate"]
-            bias = (0.5 - over_rate) * 0.6
-            multiplier = max(0.92, min(1.08, 1.0 - bias))  # v8 Fix 1: tighter clamp ±8%
-            MARKET_PROJ_ADJ[stat_key] = round(multiplier, 3)
+        MARKET_PROJ_ADJ.update(_build_market_proj_adj(CALIB.get("market_direction", {})))
         if MARKET_PROJ_ADJ:
-            print(f"  Projection multipliers (excl. PTS): {MARKET_PROJ_ADJ}")
+            print(f"  Projection multipliers: {MARKET_PROJ_ADJ}")
 
         # v8 Fix 3: load per-player per-stat residual adjustments from player_market.
         # Keys: (player_name, stat_col); values: shrinkage-weighted mean residual
@@ -1414,14 +1433,19 @@ def compute_usage_boost(
 # =============================================================================
 # PLAYER STD DEV
 # =============================================================================
-def get_player_std(pid, po_logs, rs_logs, market_key, stat_cols, po_count, min_games=5):
-    """Blend po_sd and rs_sd using the same adaptive weight as rates."""
-    ck = (pid, market_key)
+def get_player_std(pid, po_logs, rs_logs, market_key, stat_cols, po_count, min_games=5,
+                   pos_group=None):
+    """Empirical SD first, supported position SD second, league SD last."""
+    ck = (pid, market_key, pos_group)
     if ck in PLAYER_STD_CACHE:
         return PLAYER_STD_CACHE[ck]
 
     po_fallback = PROP_STD_DEV_PO.get(market_key, 6.0)
     rs_fallback = PROP_STD_DEV_RS.get(market_key, 5.5)
+    # Marginal stat variances cannot supply a combo SD without covariance data.
+    if len(stat_cols) == 1:
+        po_fallback = get_learned_pos_std(pos_group, stat_cols[0], po_fallback)
+        rs_fallback = get_learned_pos_std(pos_group, stat_cols[0], rs_fallback)
 
     def _calc_sd(logs, fallback):
         if logs.empty or len(logs) < min_games:
@@ -1815,6 +1839,7 @@ def project_stat(
                 logger.warning("Skipping learned player projection for %s: %s", stat_col, exc)
 
     detail = {
+        "pos_group": pos_group,
         "rate": round(rate, 4),
         "min": round(avg_min, 1),
         "min_reduced": round(mins_reduced, 1),
@@ -2017,7 +2042,8 @@ def project_prop(
         total, details, stat_cols, market_key, player_name
     )
 
-    sd = get_player_std(pid, po_logs, rs_logs, market_key, stat_cols, po_count)
+    sd = get_player_std(pid, po_logs, rs_logs, market_key, stat_cols, po_count,
+                        pos_group=details[stat_cols[0]].get("pos_group"))
     raw_total = sum(d.get("rate", 0.0) * d.get("min", 0.0) for d in details.values())
     if raw_total > 0 and total > 0 and sd and sd > 0:
         sd = sd * ((total / raw_total) ** 0.5)

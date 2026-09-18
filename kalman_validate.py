@@ -30,6 +30,8 @@ from pathlib import Path
 import numpy as np
 from sklearn.metrics import brier_score_loss, log_loss
 
+from game_features import GAME_FEATURE_VERSION
+
 warnings.filterwarnings("ignore")
 
 # train_model.py has a __main__ guard, so importing is safe.
@@ -37,6 +39,7 @@ warnings.filterwarnings("ignore")
 try:
     from train_model import (
         build_game_dataset,
+        fetch_player_game_logs,
         fetch_team_game_logs,
         hand_tuned_predict,
     )
@@ -75,6 +78,8 @@ def _static_predict(df) -> np.ndarray:
     with open(PARAMS_FILE) as fh:
         params = json.load(fh)
     gm         = params["game_model"]
+    if gm.get("feature_version") != GAME_FEATURE_VERSION:
+        raise ValueError("Game input definitions changed; rerun train_model.py first")
     feat_names = gm["feature_names"]
     mean       = np.array(gm["scaler_mean"])
     scale      = np.array(gm["scaler_scale"])
@@ -217,9 +222,10 @@ def main() -> None:
     all_seasons = TRAIN_SEASONS + [VAL_SEASON]
     print(f"Loading team game logs for {all_seasons[0]} .. {all_seasons[-1]} ...")
     team_logs = fetch_team_game_logs(all_seasons, force=False)
+    player_logs = fetch_player_game_logs(all_seasons, force=False)
 
     print("Building walk-forward game dataset ...")
-    df_game = build_game_dataset(team_logs)
+    df_game = build_game_dataset(team_logs, player_logs=player_logs)
     if df_game.empty:
         sys.exit("Game dataset is empty — check data_cache/.")
 

@@ -29,9 +29,10 @@ Run:
 
 import json
 import logging
+import math
 import os
 import sys
-from datetime import date
+from datetime import date, datetime, timezone
 
 from dotenv import load_dotenv
 
@@ -40,15 +41,17 @@ load_dotenv()
 import pandas as pd
 import requests.exceptions
 
+import game_odds_tracker  # noqa: E402
 import newnbapredictor as team_model
 import oddstracker
 import playerlinepredictor as props_model
 import predictions_db as pred_db
+from config import current_season
 from roi_analysis import american_to_decimal
 
 logger = logging.getLogger(__name__)
 
-SEASON = "2026-27"
+SEASON = current_season()  # v9: was hardcoded "2026-27" — see config.py
 VERBOSE = "--verbose" in sys.argv
 WIDTH = 80
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -85,6 +88,78 @@ _CALIB_MIN_N = 20
 # Value: {"book_lean": "OVER"|"UNDER"|"NEUTRAL", "lean_strength": float,
 #          "devig_over": float, "vig_pct": float}
 _TODAY_LEAN: dict = {}
+_TODAY_GAME_ODDS: dict = {}
+
+
+def _load_today_game_odds(snap_date: date, matchups: list = None) -> dict:
+    """Load the latest valid moneyline quote for each oriented matchup."""
+    def read_quotes():
+        now = datetime.now(timezone.utc)
+        result = {}
+        try:
+            rows = pd.read_csv(game_odds_tracker.TRACKER_FILE).to_dict("records")
+        except (OSError, ValueError):
+            return result
+        for row in rows:
+            if not game_odds_tracker.usable_snapshot(row, snap_date, now):
+                continue
+            key = (row["home_abbr"], row["away_abbr"])
+            previous = result.get(key)
+            if previous is None or game_odds_tracker._timestamp(row["snapshot_at"]) > game_odds_tracker._timestamp(previous["snapshot_at"]):
+                result[key] = row
+        return result
+
+    quotes = read_quotes()
+    required = {(game_odds_tracker.normalize_team(m["home_abbr"]),
+                 game_odds_tracker.normalize_team(m["away_abbr"])) for m in (matchups or [])}
+    if not quotes or required - quotes.keys():
+        try:
+            game_odds_tracker.snapshot(snap_date)
+            quotes = read_quotes()
+        except (requests.exceptions.RequestException, json.JSONDecodeError, OSError) as exc:
+            print(f"  Could not fetch game moneylines ({type(exc).__name__})")
+    if quotes:
+        print(f"  Game moneylines loaded: {len(quotes)} matchup(s)")
+    return quotes
+
+
+def _attach_game_market(pred: dict) -> None:
+    """Compare h2h with the final home_prob, independent of which model made it.
+
+    These are moneyline diagnostics. They do not change winner selection,
+    spread/total picks, rankings or stakes.
+    """
+    for key in ("moneyline", "p_market", "decimal_odds", "market_edge", "ev",
+                "odds_event_id", "odds_snapshot_at", "odds_books_count"):
+        pred.pop(key, None)
+    ha = game_odds_tracker.normalize_team(pred["home_abbr"])
+    aa = game_odds_tracker.normalize_team(pred["away_abbr"])
+    quote = _TODAY_GAME_ODDS.get((ha, aa))
+    game_date = pred.get("game_date")
+    if not quote or not game_odds_tracker.usable_snapshot(quote, game_date, datetime.now(timezone.utc)):
+        return
+    try:
+        home_prob = float(pred["home_prob"])
+        if not math.isfinite(home_prob) or not 0 <= home_prob <= 1:
+            return
+        comparisons = {}
+        for side, probability in (("home", home_prob), ("away", 1.0 - home_prob)):
+            p_market = float(quote[f"devig_{side}"])
+            decimal = float(quote[f"{side}_decimal_odds"])
+            comparisons[side] = {"p_model": probability, "p_market": p_market,
+                                 "decimal_odds": decimal, "edge": probability - p_market,
+                                 "ev": probability * decimal - 1.0}
+        favorite = game_odds_tracker.normalize_team(pred["favorite"])
+        if favorite not in (ha, aa):
+            return
+        selected = comparisons["home" if favorite == ha else "away"]
+        pred.update({"moneyline": comparisons, "p_market": selected["p_market"],
+                     "decimal_odds": selected["decimal_odds"], "market_edge": selected["edge"],
+                     "ev": selected["ev"], "odds_event_id": quote["event_id"],
+                     "odds_snapshot_at": quote["snapshot_at"],
+                     "odds_books_count": int(quote["books_count"])})
+    except (KeyError, ValueError, TypeError):
+        return
 
 
 def _load_today_lean(snap_date: date) -> dict:
@@ -463,6 +538,15 @@ def print_team_section(pred: dict):
     print(f"  │  {f2:<{IW - 3}}│")
     print(f"  └{'─' * IW}┘")
 
+    if pred.get("moneyline"):
+        for side, abbr in (("home", ha), ("away", aa)):
+            comparison = pred["moneyline"][side]
+            print(f"  Moneyline {abbr}: market {comparison['p_market']:.1%}, "
+                  f"edge {comparison['edge'] * 100:+.1f}pp, "
+                  f"EV {comparison['ev']:+.1%} per unit (consensus price; diagnostic)")
+    else:
+        print("  Moneyline: no recent paired market quote")
+
     # Significant injuries
     sig_inj = [
         d
@@ -759,6 +843,14 @@ def export_game_picks_db(team_preds: list, game_date: date) -> None:
                 "spread_pick": fav,
                 "win_pct": round(float(r["fav_prob"]), 3),
                 "total": round(float(r["predicted_total"]), 1),
+                "home_prob": r.get("home_prob"),
+                "p_market": r.get("p_market"),
+                "decimal_odds": r.get("decimal_odds"),
+                "market_edge": r.get("market_edge"),
+                "ev": r.get("ev"),
+                "odds_event_id": r.get("odds_event_id"),
+                "odds_snapshot_at": r.get("odds_snapshot_at"),
+                "odds_books_count": r.get("odds_books_count"),
             }
         )
     n = pred_db.upsert_game_predictions(rows, game_date)
@@ -799,7 +891,7 @@ def _init_calibration() -> None:
 
 def _fetch_matchups_and_lean() -> tuple:
     """Return (matchups, game_date) and populate today's book-lean snapshot."""
-    global _TODAY_LEAN
+    global _TODAY_LEAN, _TODAY_GAME_ODDS
     print("\n  Fetching games from ESPN…")
     matchups = team_model.get_todays_games()
     if not matchups:
@@ -807,6 +899,7 @@ def _fetch_matchups_and_lean() -> tuple:
         return [], None
     game_date = matchups[0].get("game_date", date.today())
     _TODAY_LEAN = _load_today_lean(game_date)
+    _TODAY_GAME_ODDS = _load_today_game_odds(game_date, matchups)
     tag = "TODAY" if game_date == date.today() else game_date.strftime("%A %B %d")
     print(f"  {len(matchups)} game(s)  —  {tag}")
     for m in matchups:
@@ -838,6 +931,8 @@ def _run_team_model(matchups: list, team_injuries: dict) -> tuple:
         team_preds = team_model.predict_games_data(SEASON, matchups, team_injuries)
     except (requests.exceptions.RequestException, json.JSONDecodeError, KeyError, ValueError) as e:
         print(f"  ⚠  Team model error: {e} — continuing with props only.")
+    for pred in team_preds:
+        _attach_game_market(pred)
     return team_preds, {(p["away_abbr"], p["home_abbr"]): p for p in team_preds}
 
 

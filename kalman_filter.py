@@ -36,6 +36,8 @@ from typing import Optional
 
 import numpy as np
 
+from game_features import GAME_FEATURE_VERSION
+
 _HERE          = Path(__file__).parent
 PARAMS_FILE    = _HERE / "learned_params.json"
 TVP_STATE_FILE = _HERE / "tvp_state.json"
@@ -88,6 +90,7 @@ class GameEKF:
         scaler_scale: np.ndarray,
         n_updates: int = 0,
         q_scalar: float = Q_GAME_SCALAR,
+        feature_version: Optional[str] = None,
     ) -> None:
         self.beta          = beta.copy()
         self.P             = P.copy()
@@ -96,6 +99,7 @@ class GameEKF:
         self.scaler_scale  = scaler_scale
         self.n_updates     = n_updates
         self.q_scalar      = q_scalar
+        self.feature_version = feature_version
         self._d            = len(feature_names)
 
     # ── Internal ────────────────────────────────────────────────────────────────
@@ -149,6 +153,7 @@ class GameEKF:
             "scaler_scale":  self.scaler_scale.tolist(),
             "n_updates":     self.n_updates,
             "q_scalar":      self.q_scalar,
+            "feature_version": self.feature_version,
         }
 
     @classmethod
@@ -161,6 +166,7 @@ class GameEKF:
             scaler_scale  = np.array(d["scaler_scale"]),
             n_updates     = d.get("n_updates", 0),
             q_scalar      = d.get("q_scalar", Q_GAME_SCALAR),
+            feature_version = d.get("feature_version"),
         )
 
     @classmethod
@@ -173,6 +179,8 @@ class GameEKF:
         with open(params_path) as fh:
             p = json.load(fh)
         gm = p["game_model"]
+        if gm.get("feature_version") != GAME_FEATURE_VERSION:
+            raise ValueError("Game input definitions changed; rerun train_model.py first")
 
         feat_names   = gm["feature_names"]
         d            = len(feat_names)
@@ -196,6 +204,7 @@ class GameEKF:
             scaler_scale  = scaler_scale,
             n_updates     = 0,
             q_scalar      = q_scalar,
+            feature_version = gm.get("feature_version"),
         )
 
 

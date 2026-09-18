@@ -34,6 +34,8 @@ from datetime import date
 
 from dotenv import load_dotenv
 
+from odds_api import get_json as _get_odds_json
+
 load_dotenv()
 
 import pandas as pd
@@ -153,13 +155,11 @@ def book_lean(devig_over: float) -> tuple:
 def get_all_events() -> list:
     from datetime import datetime, timezone
 
-    r = requests.get(
+    events = _get_odds_json(
         f"{BASE_URL}/sports/{SPORT}/events",
         params={"apiKey": ODDS_API_KEY},
         timeout=20,
     )
-    r.raise_for_status()
-    events = r.json()
     now = datetime.now(timezone.utc).isoformat()
     upcoming = [e for e in events if e.get("commence_time", "") > now]
     in_play = len(events) - len(upcoming)
@@ -172,7 +172,7 @@ def get_event_props(event_id: str) -> dict:
     """Fetch player prop odds for a single event. Tries wider regions if needed."""
     for regions in ["us", "us,us2,uk,eu,au"]:
         try:
-            r = requests.get(
+            data = _get_odds_json(
                 f"{BASE_URL}/sports/{SPORT}/events/{event_id}/odds",
                 params={
                     "apiKey": ODDS_API_KEY,
@@ -183,12 +183,10 @@ def get_event_props(event_id: str) -> dict:
                 },
                 timeout=25,
             )
-            r.raise_for_status()
-            data = r.json()
             if data.get("bookmakers"):
                 return data
         except (requests.exceptions.RequestException, json.JSONDecodeError) as e:
-            print(f"    Warning: props fetch ({regions}): {e}")
+            print(f"    Warning: props fetch ({regions}): {type(e).__name__}")
     return {}
 
 

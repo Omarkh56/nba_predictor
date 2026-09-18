@@ -49,6 +49,8 @@ import pandas as pd
 import requests.exceptions
 from datetime import date, timedelta
 
+from config import current_season
+
 logger = logging.getLogger(__name__)
 
 warnings.filterwarnings("ignore")
@@ -62,7 +64,7 @@ except ImportError:
 # =============================================================================
 # CONSTANTS
 # =============================================================================
-SEASON         = "2025-26"
+SEASON         = current_season()  # v9: was hardcoded "2025-26" — see config.py
 SEASON_TYPE_RS = "Regular Season"
 SEASON_TYPE_PO = "Playoffs"
 

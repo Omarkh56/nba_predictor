@@ -35,6 +35,32 @@ from sklearn.linear_model import LogisticRegression, Ridge
 from sklearn.metrics import brier_score_loss, log_loss
 from sklearn.preprocessing import StandardScaler
 
+from config import training_seasons
+from game_features import (
+    _ALTITUDE_HOME_TIDS as _ALTITUDE_HOME_TIDS,
+)
+from game_features import (
+    _STAR_FORM_SHRINK_K as _STAR_FORM_SHRINK_K,
+)
+from game_features import (
+    GAME_FEATURE_VERSION,
+    GAME_FEATURES,
+    build_game_dataset,
+    venue_residual_from_record,
+)
+from game_features import (
+    GAME_FEATURES_EXTENDED as GAME_FEATURES_EXTENDED,
+)
+from game_features import (
+    GAME_FEATURES_NEW as GAME_FEATURES_NEW,
+)
+from game_features import (
+    altitude_feature as altitude_feature,
+)
+from game_features import (
+    compute_star_form_index as compute_star_form_index,
+)
+
 warnings.filterwarnings("ignore")
 
 # ── NBA-API patch (same as newnbapredictor.py) ────────────────────────────────
@@ -71,9 +97,13 @@ CALIB_FILE     = _HERE / "calibration.json"
 ABLATION_FILE  = _HERE / "ablation_results.json"
 CACHE_DIR.mkdir(exist_ok=True)
 
-DEFAULT_SEASONS = ["2020-21", "2021-22", "2022-23", "2023-24", "2024-25"]
-VAL_SEASON  = "2023-24"   # drives swap/monitor/keep recommendation
-TEST_SEASON = "2024-25"   # touched exactly once, after model is already selected
+# v9: were hardcoded ["2020-21", ..., "2024-25"] / "2023-24" / "2024-25" — see
+# config.py. training_seasons(5) returns the last 5 COMPLETED seasons,
+# oldest first; the two most recent of those are held out as val/test so the
+# remaining 3 are pure training data (unchanged from the original split).
+DEFAULT_SEASONS = training_seasons(5)
+VAL_SEASON  = DEFAULT_SEASONS[-2]   # drives swap/monitor/keep recommendation
+TEST_SEASON = DEFAULT_SEASONS[-1]   # touched exactly once, after model is already selected
 
 # Current hand-tuned constants (mirrored from newnbapredictor.py)
 RTG_SCALE            = 9.5
@@ -84,34 +114,7 @@ H2H_WEIGHT           = 0.08
 BACK_TO_BACK_PENALTY = 2.2
 REST_DAY_ADVANTAGE   = 0.8
 
-GAME_FEATURES = [
-    "net_rtg_diff",   # season-to-date rolling net rating gap (home - away)
-    "efg_diff",       # eFG% gap (home off - away off adjusted for each D)
-    "tov_diff",       # TOV% edge (positive = home forces more / commits fewer)
-    "orb_diff",       # OREB% gap
-    "ftr_diff",       # FTR gap
-    "form_diff",      # L10 rolling margin gap (home - away)
-    "home_b2b",       # 1 = home on back-to-back
-    "away_b2b",       # 1 = away on back-to-back
-    "rest_diff",      # home rest days - away rest days (capped ±5)
-    "h2h_margin",     # historical H2H avg margin (shrinkage-smoothed)
-]
-
-# New candidate features — included when --new-signals flag is passed.
-# Validated against GAME_FEATURES baseline before wiring in as defaults.
-GAME_FEATURES_NEW = [
-    "altitude_penalty",   # away team acclimatization deficit at DEN/UTA (0=neutral)
-    "venue_residual",     # home team's home-W% minus overall-W% (isolated building effect)
-    "star_form_diff",     # PPG-weighted, shrunk star-player EWMA deviation (home − away)
-]
-GAME_FEATURES_EXTENDED = GAME_FEATURES + GAME_FEATURES_NEW
-
-# Nuggets (1610612743) and Jazz (1610612762) — the only NBA venues above 4 000 ft.
-_ALTITUDE_HOME_TIDS: frozenset = frozenset({1610612743, 1610612762})
-# Star-form shrinkage constant: games needed before trusting a streak (same n/(n+k) used
-# in calibrate.py's player-projection bias).
-_STAR_FORM_SHRINK_K: int = 10
-
+# Game inputs have one implementation shared with live predictions.
 PLAYER_STATS  = ["PTS", "REB", "AST", "FG3M", "STL", "BLK"]
 POS_GROUPS    = ["G", "F", "C"]
 
@@ -185,39 +188,59 @@ def fetch_player_game_logs(seasons: list, force: bool = False) -> pd.DataFrame:
     return pd.concat(frames, ignore_index=True)
 
 
-def fetch_player_positions(seasons: list, force: bool = False) -> dict:
-    """Return {player_id: pos_group} mapping. pos_group in {G, F, C}."""
+def fetch_player_positions(seasons: list, force: bool = False, allow_fetch: bool = True) -> dict:
+    """Map IDs using explicit NBA position filters, never a missing column.
+
+    Ambiguous/unmapped players retain unknown positions. Old all-guard caches
+    are rejected because LeagueDashPlayerStats does not return PLAYER_POSITION.
+    """
     from nba_api.stats.endpoints import leaguedashplayerstats
 
     cache_f = CACHE_DIR / "player_positions.json"
     if cache_f.exists() and not force:
-        with open(cache_f) as fh:
-            return {int(k): v for k, v in json.load(fh).items()}
+        try:
+            with open(cache_f) as fh:
+                cached = json.load(fh)
+            if (isinstance(cached, dict) and cached.get("source") == "nba-position-filters-v1"
+                    and cached.get("season") == seasons[-1]):
+                mapping = {int(k): v for k, v in cached["positions"].items() if v in POS_GROUPS}
+                if set(mapping.values()) == set(POS_GROUPS):
+                    return mapping
+        except (AttributeError, OSError, json.JSONDecodeError, KeyError, ValueError, TypeError):
+            pass
+    if not allow_fetch:
+        print("  No verified position cache; position-specific SDs will remain inactive.")
+        return {}
 
     pos_map = {}
     season = seasons[-1]
     print(f"  [fetch] player positions ({season}) ...", end=" ", flush=True)
     try:
-        df = leaguedashplayerstats.LeagueDashPlayerStats(
-            season=season,
-            season_type_all_star="Regular Season",
-            per_mode_simple="PerGame",
-        ).get_data_frames()[0]
-        for _, row in df.iterrows():
-            pos_raw = str(row.get("PLAYER_POSITION", "") or "").upper()
-            if "C" in pos_raw:
-                pg = "C"
-            elif "F" in pos_raw:
-                pg = "F"
-            else:
-                pg = "G"
-            pos_map[int(row["PLAYER_ID"])] = pg
+        memberships = {}
+        groups = []
+        for pg in POS_GROUPS:
+            df = leaguedashplayerstats.LeagueDashPlayerStats(
+                season=season, season_type_all_star="Regular Season",
+                per_mode_detailed="PerGame", player_position_abbreviation_nullable=pg,
+            ).get_data_frames()[0]
+            ids = set(df["PLAYER_ID"].astype(int))
+            groups.append(ids)
+            for pid in ids:
+                memberships.setdefault(pid, set()).add(pg)
+            _sleep()
+        if any(len(ids) < 10 for ids in groups) or any(a == b for i, a in enumerate(groups) for b in groups[i + 1:]):
+            raise ValueError("NBA position filters returned insufficient/identical groups")
+        pos_map = {pid: next(iter(pgs)) for pid, pgs in memberships.items() if len(pgs) == 1}
+        if any(sum(value == pg for value in pos_map.values()) < 10 for pg in POS_GROUPS):
+            raise ValueError("too few unambiguous players per position")
         print(f"  {len(pos_map)} players")
         with open(cache_f, "w") as fh:
-            json.dump({str(k): v for k, v in pos_map.items()}, fh)
+            json.dump({"source": "nba-position-filters-v1", "season": season,
+                       "positions": {str(k): v for k, v in pos_map.items()}}, fh)
     except (requests.exceptions.RequestException, json.JSONDecodeError,
-            OSError, KeyError, ValueError, TypeError) as e:
-        print(f"  FAILED: {e}")
+            OSError, IndexError, KeyError, ValueError, TypeError) as e:
+        pos_map = {}
+        print(f"  FAILED: {type(e).__name__}")
     _sleep()
     return pos_map
 
@@ -227,336 +250,6 @@ def fetch_player_positions(seasons: list, force: bool = False) -> dict:
 # =============================================================================
 
 # ── New signal helpers ─────────────────────────────────────────────────────────
-
-def altitude_feature(home_tid: int, away_b2b: int, away_rest_days: float) -> float:
-    """
-    Away-team acclimatization deficit at elevation venues (DEN, UTA only).
-    Returns 0.0 for all other home venues.
-    Range [0, 1]: 1 = maximally unacclimatized (B2B into altitude); 0 = well-rested.
-
-    Acclimatization is approximated by rest-days only; a proper model would
-    also track the previous city's elevation, but that data isn't in the NBA
-    game log.  Conservative: teams that arrive 3+ days early are treated as
-    fully acclimatized (factor → 0).
-    """
-    if int(home_tid) not in _ALTITUDE_HOME_TIDS:
-        return 0.0
-    if away_b2b:
-        return 1.0
-    # Linear interpolation: 0 rest_days → 1.0, 3+ rest_days → 0.0
-    return float(max(0.0, (3.0 - float(away_rest_days)) / 3.0))
-
-
-def venue_residual_from_record(home_win_count: int, home_game_count: int,
-                                total_win_count: int, total_game_count: int) -> float:
-    """
-    Isolated venue/crowd effect: home win% minus overall win%.
-    A positive value means the team wins MORE at home than their overall quality
-    predicts; a negative value means they under-perform at home.
-    Returns 0.0 when fewer than 3 home or 3 total games have been played.
-    """
-    if home_game_count < 3 or total_game_count < 3:
-        return 0.0
-    home_wp  = home_win_count  / home_game_count
-    total_wp = total_win_count / total_game_count
-    return float(home_wp - total_wp)
-
-
-def compute_star_form_index(
-    player_logs: pd.DataFrame,
-    ewma_halflife: float = 5.0,
-    top_k: int = 2,
-    shrink_k: int = _STAR_FORM_SHRINK_K,
-) -> pd.DataFrame:
-    """
-    Walk-forward star-player form index per (team_id, game_id).
-
-    For each game G, computes: PPG-weighted mean of the top-k players' EWMA
-    deviations from their own season average, shrunk by n/(n+k) where n is
-    the number of games played before G.
-
-    Returns DataFrame with columns [team_id, game_id, star_form].
-    The value is in points-above-baseline units; positive = hot streak.
-    All features use only data from games BEFORE game G (no lookahead).
-    """
-    if player_logs.empty:
-        return pd.DataFrame(columns=["team_id", "game_id", "star_form"])
-
-    pl = player_logs.copy()
-    pl["GAME_DATE"] = pd.to_datetime(pl["GAME_DATE"])
-    pl["PTS"] = pd.to_numeric(pl["PTS"], errors="coerce").fillna(0.0)
-    pl["MIN"] = pd.to_numeric(pl["MIN"], errors="coerce").fillna(0.0)
-
-    records = []
-    for (team_id, player_id), grp in pl.groupby(["TEAM_ID", "PLAYER_ID"]):
-        g = grp.sort_values("GAME_DATE").reset_index(drop=True)
-        g = g[g["MIN"] >= 8].reset_index(drop=True)   # skip DNPs
-        if len(g) < 5:
-            continue
-
-        g["season_avg"]  = g["PTS"].shift(1).expanding(min_periods=3).mean()
-        g["ewma_pts"]    = g["PTS"].shift(1).ewm(halflife=ewma_halflife, min_periods=3).mean()
-        g["deviation"]   = g["ewma_pts"] - g["season_avg"]
-        g["games_before"] = np.arange(len(g))
-        g["shrink"]      = g["games_before"] / (g["games_before"] + shrink_k)
-        g["shrunk_dev"]  = g["deviation"] * g["shrink"]
-        # Player value proxy: expanding PPG average before this game
-        g["ppg_value"]   = g["PTS"].shift(1).expanding(min_periods=1).mean().fillna(0)
-
-        for _, row in g.iterrows():
-            if pd.isna(row["shrunk_dev"]) or row["ppg_value"] <= 0:
-                continue
-            records.append({
-                "team_id":    int(team_id),
-                "player_id":  int(player_id),
-                "game_id":    str(row["GAME_ID"]),
-                "shrunk_dev": float(row["shrunk_dev"]),
-                "ppg_value":  float(row["ppg_value"]),
-            })
-
-    if not records:
-        return pd.DataFrame(columns=["team_id", "game_id", "star_form"])
-
-    df = pd.DataFrame(records)
-
-    # For each (team, game): weight deviations by PPG value, take top-k contributors
-    out_rows = []
-    for (team_id, game_id), grp in df.groupby(["team_id", "game_id"]):
-        top = grp.nlargest(top_k, "ppg_value")
-        total_val = top["ppg_value"].sum()
-        if total_val <= 0:
-            continue
-        weighted_dev = (top["shrunk_dev"] * top["ppg_value"]).sum() / total_val
-        out_rows.append({"team_id": team_id, "game_id": game_id, "star_form": weighted_dev})
-
-    return pd.DataFrame(out_rows) if out_rows else pd.DataFrame(
-        columns=["team_id", "game_id", "star_form"]
-    )
-
-
-def _four_factors_from_row(row: pd.Series) -> dict:
-    fga  = max(float(row.get("FGA", 1)), 1)
-    fta  = float(row.get("FTA", 0))
-    fgm  = float(row.get("FGM", 0))
-    fg3m = float(row.get("FG3M", 0))
-    tov  = float(row.get("TOV", 0))
-    oreb = float(row.get("OREB", 0))
-    reb  = max(float(row.get("REB", 1)), 1)
-    return {
-        "efg":  (fgm + 0.5 * fg3m) / fga,
-        "tov":  tov / max(fga + 0.44 * fta + tov, 1),
-        "orb":  oreb / reb,
-        "ftr":  fta / fga,
-        "pm":   float(row.get("PLUS_MINUS", 0)),
-        "poss": fga + 0.44 * fta + tov - oreb,   # possessions estimate
-    }
-
-
-def _prep_team_logs(team_logs: pd.DataFrame) -> pd.DataFrame:
-    """Add derived per-game columns (date type, home flag, four-factor stats)."""
-    team_logs = team_logs.copy()
-    team_logs["GAME_DATE"] = pd.to_datetime(team_logs["GAME_DATE"])
-    team_logs["is_home"]   = team_logs["MATCHUP"].str.contains(r"vs\.", na=False)
-
-    for col, fn in [
-        ("efg",  lambda r: (float(r["FGM"]) + 0.5*float(r["FG3M"])) / max(float(r["FGA"]),1)),
-        ("tov_r",lambda r: float(r["TOV"]) / max(float(r["FGA"]) + 0.44*float(r["FTA"]) + float(r["TOV"]),1)),
-        ("orb_r",lambda r: float(r["OREB"]) / max(float(r["REB"]),1)),
-        ("ftr",  lambda r: float(r["FTA"]) / max(float(r["FGA"]),1)),
-    ]:
-        team_logs[col] = team_logs.apply(fn, axis=1)
-    return team_logs
-
-
-def _compute_team_rolling_stats(team_logs: pd.DataFrame, roll_stat_cols: list) -> dict:
-    """Build per-team walk-forward rolling stats, keyed by TEAM_ID, indexed by GAME_ID."""
-    team_stats = {}
-    for tid, grp in team_logs.groupby("TEAM_ID"):
-        g = grp.sort_values("GAME_DATE").reset_index(drop=True)
-        g["prev_date"] = g["GAME_DATE"].shift(1)
-        g["rest_days"] = ((g["GAME_DATE"] - g["prev_date"]).dt.days
-                          .clip(upper=7).fillna(3).astype(int))
-        g["b2b"] = (g["rest_days"] <= 1).astype(int)
-
-        for col in roll_stat_cols:
-            g[f"roll_{col}"] = g[col].shift(1).expanding(min_periods=3).mean()
-
-        g["l10_pm"] = g["PLUS_MINUS"].shift(1).rolling(10, min_periods=4).mean()
-        g["wpct"]   = (g["WL"] == "W").shift(1).expanding(min_periods=3).mean()
-
-        # Walk-forward venue residual: home_win% - overall_win% before this game.
-        # Positive = team wins MORE at home than their overall quality predicts.
-        g["is_win"]      = (g["WL"] == "W").astype(float)
-        g["cum_wins"]    = g["is_win"].shift(1).expanding().sum().fillna(0)
-        g["cum_games"]   = pd.Series(np.arange(len(g)), index=g.index).values  # 0,1,2,...
-        g["cum_hm_wins"] = (g["is_win"] * g["is_home"].astype(float)).shift(1).expanding().sum().fillna(0)
-        g["cum_hm_games"]= g["is_home"].astype(float).shift(1).expanding().sum().fillna(0)
-        g["venue_res"]   = g.apply(
-            lambda r: venue_residual_from_record(
-                int(r["cum_hm_wins"]), int(r["cum_hm_games"]),
-                int(r["cum_wins"]),    int(r["cum_games"]),
-            ),
-            axis=1,
-        )
-
-        team_stats[int(tid)] = g.set_index("GAME_ID")
-    return team_stats
-
-
-def _build_game_records(team_logs: pd.DataFrame, team_stats: dict, roll_stat_cols: list) -> pd.DataFrame:
-    """Match home/away sides of each game and assemble the feature+target row."""
-    records = []
-    for game_id, pair in team_logs.groupby("GAME_ID"):
-        home = pair[pair["is_home"]]
-        away = pair[~pair["is_home"]]
-        if home.empty or away.empty:
-            continue
-        hr = home.iloc[0]
-        ar = away.iloc[0]
-        htid = int(hr["TEAM_ID"])
-        atid = int(ar["TEAM_ID"])
-
-        if htid not in team_stats or atid not in team_stats:
-            continue
-        if game_id not in team_stats[htid].index or game_id not in team_stats[atid].index:
-            continue
-
-        hs = team_stats[htid].loc[game_id]
-        as_ = team_stats[atid].loc[game_id]
-
-        # Skip games with insufficient history (first few games of season)
-        if any(pd.isna(hs[f"roll_{c}"]) for c in roll_stat_cols):
-            continue
-        if any(pd.isna(as_[f"roll_{c}"]) for c in roll_stat_cols):
-            continue
-
-        h_l10 = hs.get("l10_pm", 0) if not pd.isna(hs.get("l10_pm", np.nan)) else hs["roll_PLUS_MINUS"]
-        a_l10 = as_.get("l10_pm", 0) if not pd.isna(as_.get("l10_pm", np.nan)) else as_["roll_PLUS_MINUS"]
-
-        away_rest  = float(as_["rest_days"]) if not pd.isna(as_["rest_days"]) else 3.0
-        away_b2b_v = int(as_["b2b"])
-        h_venue_res = float(hs.get("venue_res", 0.0)) if not pd.isna(hs.get("venue_res", np.nan)) else 0.0
-        a_venue_res = float(as_.get("venue_res", 0.0)) if not pd.isna(as_.get("venue_res", np.nan)) else 0.0
-
-        rec = {
-            # Features — original 10
-            "net_rtg_diff":    hs["roll_PLUS_MINUS"] - as_["roll_PLUS_MINUS"],
-            "efg_diff":        hs["roll_efg"]        - as_["roll_efg"],
-            "tov_diff":        as_["roll_tov_r"]     - hs["roll_tov_r"],
-            "orb_diff":        hs["roll_orb_r"]      - as_["roll_orb_r"],
-            "ftr_diff":        hs["roll_ftr"]         - as_["roll_ftr"],
-            "form_diff":       float(h_l10)           - float(a_l10),
-            "home_b2b":        int(hs["b2b"]),
-            "away_b2b":        int(as_["b2b"]),
-            "rest_diff":       float(np.clip(hs["rest_days"] - as_["rest_days"], -5, 5)),
-            "h2h_margin":      0.0,   # filled below for within-season H2H
-            "home_wpct":       float(hs["wpct"]) if not pd.isna(hs["wpct"]) else 0.5,
-            # New signal 1: altitude
-            "altitude_penalty": altitude_feature(htid, away_b2b_v, away_rest),
-            # New signal 2: residualized venue effect
-            "venue_residual":  h_venue_res - a_venue_res,
-            # New signal 3: star form (filled after player_logs merge)
-            "star_form_diff":  0.0,
-            # Targets
-            "actual_margin":   float(hr["PLUS_MINUS"]),
-            "home_win":        int(hr["WL"] == "W"),
-            # Metadata
-            "game_id":   game_id,
-            "game_date": hr["GAME_DATE"],
-            "season":    hr.get("season", ""),
-            "home_tid":  htid,
-            "away_tid":  atid,
-        }
-        records.append(rec)
-
-    return pd.DataFrame(records)
-
-
-def _add_h2h_margin(df: pd.DataFrame) -> pd.DataFrame:
-    """Fill in within-season H2H margin (shrinkage toward 0, only prior games)."""
-    df = df.sort_values("game_date").reset_index(drop=True)
-    h2h_seen: dict = {}
-    h2h_margins = []
-    for _, row in df.iterrows():
-        key = (min(row["home_tid"], row["away_tid"]),
-               max(row["home_tid"], row["away_tid"]))
-        prior = h2h_seen.get(key, [])
-        if prior:
-            raw   = np.mean(prior)
-            shrink = len(prior) / (len(prior) + 5)
-            h2h_val = raw * shrink
-        else:
-            h2h_val = 0.0
-        h2h_margins.append(h2h_val)
-        # Update with current game margin (from home_tid's perspective)
-        margin_for_key = (row["actual_margin"]
-                          if row["home_tid"] == key[1] else -row["actual_margin"])
-        h2h_seen.setdefault(key, []).append(margin_for_key)
-
-    df["h2h_margin"] = h2h_margins
-    return df
-
-
-def _merge_star_form(df: pd.DataFrame, player_logs) -> pd.DataFrame:
-    """Signal 3: merge star form from player logs (walk-forward, pre-computed)."""
-    if player_logs is None or player_logs.empty:
-        return df
-
-    sf = compute_star_form_index(player_logs)
-    if sf.empty:
-        return df
-
-    sf = sf.rename(columns={"star_form": "_h_star"})
-    sf["game_id"] = sf["game_id"].astype(str)
-    df["game_id"] = df["game_id"].astype(str)
-
-    # Home team star form
-    df = df.merge(
-        sf[["team_id", "game_id", "_h_star"]],
-        left_on=["home_tid", "game_id"],
-        right_on=["team_id", "game_id"],
-        how="left",
-    ).drop(columns="team_id", errors="ignore")
-
-    # Away team star form
-    sf2 = sf.rename(columns={"_h_star": "_a_star"})
-    df = df.merge(
-        sf2[["team_id", "game_id", "_a_star"]],
-        left_on=["away_tid", "game_id"],
-        right_on=["team_id", "game_id"],
-        how="left",
-    ).drop(columns="team_id", errors="ignore")
-
-    df["star_form_diff"] = (
-        df["_h_star"].fillna(0.0) - df["_a_star"].fillna(0.0)
-    )
-    df = df.drop(columns=["_h_star", "_a_star"], errors="ignore")
-    return df
-
-
-def build_game_dataset(team_logs: pd.DataFrame,
-                       player_logs: pd.DataFrame = None) -> pd.DataFrame:
-    """
-    Walk-forward game dataset. For each game G on date D, features are
-    computed exclusively from games before D (no lookahead).
-
-    Returns one row per game (home team perspective).
-    Optional player_logs enables the star_form_diff feature.
-    """
-    if team_logs.empty:
-        return pd.DataFrame()
-
-    team_logs = _prep_team_logs(team_logs)
-    roll_stat_cols = ["PLUS_MINUS", "efg", "tov_r", "orb_r", "ftr"]
-    team_stats = _compute_team_rolling_stats(team_logs, roll_stat_cols)
-    df = _build_game_records(team_logs, team_stats, roll_stat_cols)
-    if df.empty:
-        return df
-
-    df = _add_h2h_margin(df)
-    df = _merge_star_form(df, player_logs)
-    return df
-
 
 # =============================================================================
 # SECTION 3 — HAND-TUNED MODEL PREDICTION (for baseline comparison)
@@ -707,6 +400,7 @@ def fit_game_models(df_train: pd.DataFrame, df_val: pd.DataFrame,
         "ridge_model":            ridge_model,
         "scaler":                 scaler,
         "feature_names":          features,
+        "feature_version":        GAME_FEATURE_VERSION,
         "scaler_mean":            scaler.mean_.tolist(),
         "scaler_scale":           scaler.scale_.tolist(),
         "log_intercept":          float(log_model.intercept_[0]),
@@ -967,7 +661,7 @@ def build_player_dataset(player_logs: pd.DataFrame,
     records = []
     for pid, grp in pl.groupby("PLAYER_ID"):
         g = grp.sort_values("GAME_DATE").reset_index(drop=True)
-        pos_group = pos_map.get(int(pid), "G")
+        pos_group = pos_map.get(int(pid))
 
         g["prev_date"] = g["GAME_DATE"].shift(1)
         g["rest_days"] = ((g["GAME_DATE"] - g["prev_date"]).dt.days
@@ -1016,6 +710,7 @@ def fit_player_models(df_players: pd.DataFrame) -> dict:
     """
     player_results = {}
     variance_results = {"by_position": {pg: {} for pg in POS_GROUPS},
+                        "position_support": {pg: {} for pg in POS_GROUPS},
                         "league_average": {},
                         "shrinkage_n": 15}
 
@@ -1059,16 +754,35 @@ def fit_player_models(df_players: pd.DataFrame) -> dict:
         # Residual-based variance per position group
         preds_tr  = model.predict(sc.transform(Xtr))
         resid_tr  = ytr - preds_tr
-        tr_pos    = df_players.loc[tr.index, "pos_group"] if hasattr(tr.index, "__iter__") else tr["pos_group"]
+        resid_va = yva - preds_val
+        league_std = float(np.std(resid_tr))
 
         pos_stds = {}
         for pg in POS_GROUPS:
-            mask = tr.get("pos_group", pd.Series(dtype=str)) == pg if isinstance(tr, pd.DataFrame) else (tr_pos == pg)
-            pg_resid = resid_tr[mask.values if hasattr(mask, "values") else mask]
-            pos_stds[pg] = float(np.std(pg_resid)) if len(pg_resid) > 10 else float(np.std(resid_tr))
+            mask = tr["pos_group"] == pg
+            val_mask = va["pos_group"] == pg
+            pg_resid, val_resid = resid_tr[mask.values], resid_va[val_mask.values]
+            n, vn = len(pg_resid), len(val_resid)
+            players = int(tr.loc[mask, "player_id"].nunique())
+            val_players = int(va.loc[val_mask, "player_id"].nunique())
+            # Pool thin estimates toward the league residual variance.
+            weight = n / (n + variance_results["shrinkage_n"])
+            variance = float(np.var(pg_resid)) if n > 1 else league_std ** 2
+            pos_stds[pg] = math.sqrt(weight * variance + (1 - weight) * league_std ** 2)
+            gain = 0.0
+            if vn and pos_stds[pg] > 0 and league_std > 0:
+                mse = float(np.mean(val_resid ** 2))
+                gain = (math.log(league_std) + mse / (2 * league_std ** 2)
+                        - math.log(pos_stds[pg]) - mse / (2 * pos_stds[pg] ** 2))
+            variance_results["position_support"][pg][stat] = {
+                "train_n": n, "train_players": players, "val_n": vn,
+                "val_players": val_players, "val_nll_gain": gain,
+                "enabled": bool(n >= 100 and players >= 10 and vn >= 50 and val_players >= 5
+                                and league_std > 0 and abs(pos_stds[pg] / league_std - 1) >= 0.05
+                                and math.isfinite(gain) and gain > 0),
+            }
             variance_results["by_position"][pg][stat] = round(pos_stds[pg], 3)
 
-        league_std = float(np.std(resid_tr))
         variance_results["league_average"][stat] = round(league_std, 3)
 
         player_results[stat] = {
@@ -1313,7 +1027,7 @@ def _fetch_pipeline_data(seasons, no_fetch, force_fetch):
         print("\n[1-3/5] Loading from cache ...")
         team_logs   = fetch_team_game_logs(seasons, force=False)
         player_logs = fetch_player_game_logs(seasons, force=False)
-        pos_map     = fetch_player_positions(seasons, force=False)
+        pos_map     = fetch_player_positions(seasons, force=False, allow_fetch=False)
     return team_logs, player_logs, pos_map
 
 
@@ -1391,10 +1105,10 @@ def _print_next_steps(rec):
     print("\n  Done. Next steps:")
     if rec == "swap":
         print("  → Learned model outperforms baseline on both metrics.")
-        print("    Set USE_LEARNED_GAME_MODEL = True in newnbapredictor.py")
+        print("    newnbapredictor.py selects it automatically when all required inputs are available.")
     elif rec == "monitor":
         print("  → Mixed results. Re-run after more games accumulate.")
-        print("    Keep USE_LEARNED_GAME_MODEL = False for now.")
+        print("    newnbapredictor.py keeps the hand-tuned model for this recommendation.")
     else:
         print("  → Hand-tuned baseline still wins. No swap needed yet.")
         print("    Re-run at midseason or after significant lineup changes.")
