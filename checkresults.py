@@ -497,6 +497,7 @@ def check_predictions(predictions, actual_stats):
                 "margin": margin,
                 "result": outcome,
                 "minutes": player_data.get("MIN", "?"),
+                "flags": pred.get("flags", ""),  # risk flags at prediction time, for calibrate.py
             }
         )
 

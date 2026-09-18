@@ -136,7 +136,7 @@ def load_prop_predictions(target_date: date, path: Path = DB_PATH) -> List[dict]
     date_str = target_date.isoformat()
     with _connect(path) as conn:
         cur = conn.execute(
-            "SELECT player, market, line, pick, projection FROM prop_predictions "
+            "SELECT player, market, line, pick, projection, flags FROM prop_predictions "
             "WHERE date = ? ORDER BY confidence DESC",
             (date_str,),
         )
@@ -147,9 +147,25 @@ def load_prop_predictions(target_date: date, path: Path = DB_PATH) -> List[dict]
                 "line": float(row[2]) if row[2] is not None else 0.0,
                 "pick": row[3],
                 "projection": float(row[4]) if row[4] is not None else 0.0,
+                "flags": row[5] or "",
             }
             for row in cur.fetchall()
         ]
+
+
+def load_all_prop_flags(path: Path = DB_PATH) -> dict:
+    """Return {(date, player, market, pick): flags} for every stored prop
+    prediction. Used to backfill the Flags column into bet_log.csv for
+    already-graded rows (checkresults.py only started writing it forward
+    from when this was added)."""
+    if not Path(path).exists():
+        return {}
+    with _connect(path) as conn:
+        cur = conn.execute("SELECT date, player, market, pick, flags FROM prop_predictions")
+        return {
+            (row[0], row[1].strip(), row[2].strip(), (row[3] or "").strip().upper()): row[4] or ""
+            for row in cur.fetchall()
+        }
 
 
 def load_game_predictions(target_date: date, path: Path = DB_PATH) -> List[dict]:

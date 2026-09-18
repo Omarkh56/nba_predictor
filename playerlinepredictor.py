@@ -79,6 +79,7 @@ import urllib3
 
 from env_config import require_env
 from nba_api_utils import safe_dataframe_call
+from player_regression import predict_player_stat  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -1773,21 +1774,19 @@ def project_stat(
         lp = _LEARNED_PLAYER_PARAMS.get(stat_col)
         if lp:
             try:
-                _lp_intercept   = lp.get("intercept", 0.0)
-                _lp_ewma_weight = lp.get("ewma_weight", 1.0)
-                _lp_home_boost  = lp.get("home_boost", 0.0)
-                learned_pred    = (
-                    _lp_intercept
-                    + _lp_ewma_weight * ewma_proj_for_stat
-                    + _lp_home_boost  * _lp_is_home
+                # The fitted coefficients expect StandardScaler-transformed
+                # features, not raw points/home values. This path has no reliable
+                # pre-game rest input, so the helper uses its training mean.
+                learned_pred = predict_player_stat(
+                    lp, stat_col, ewma_proj_for_stat, is_home
                 )
                 if learned_pred > 0:
                     blend           = 0.15
                     blended         = (1 - blend) * final_proj + blend * learned_pred * combined_mult
                     learned_proj_adj = blended - final_proj
                     final_proj       = max(0.0, blended)
-            except (ValueError, TypeError, KeyError):
-                pass
+            except (ValueError, TypeError, KeyError) as exc:
+                logger.warning("Skipping learned player projection for %s: %s", stat_col, exc)
 
     detail = {
         "rate": round(rate, 4),
@@ -2070,6 +2069,7 @@ def _nb_over_prob(proj, sd, line):
 
 
 def evaluate_prop(line, proj, market_key, sd=None, conf_penalty=0.0):
+    """Choose the more likely side and return its penalty-adjusted confidence."""
     if sd is None or sd <= 0:
         sd = PROP_STD_DEV_PO.get(market_key, 5.0)
     edge = proj - line
@@ -2082,7 +2082,9 @@ def evaluate_prop(line, proj, market_key, sd=None, conf_penalty=0.0):
         z = edge / sd
         over_p = normal_cdf(z)
     under_p = 1.0 - over_p
-    conf = max(50.0, max(over_p, under_p) * 100 - conf_penalty)
+    pick = "OVER" if over_p > under_p else "UNDER"
+    pick_p = over_p if pick == "OVER" else under_p
+    conf = max(0.0, min(100.0, pick_p * 100 - conf_penalty))
 
     return {
         "edge": round(edge, 1),
@@ -2090,7 +2092,7 @@ def evaluate_prop(line, proj, market_key, sd=None, conf_penalty=0.0):
         "over_prob": round(over_p * 100, 1),
         "under_prob": round(under_p * 100, 1),
         "confidence": round(conf, 1),
-        "pick": "OVER" if edge > 0 else "UNDER",
+        "pick": pick,
     }
 
 
@@ -2178,7 +2180,7 @@ def _build_player_context(
 def _compute_direction_penalty(
     mkt: str, label: str, pick_dir: str, proj: float, line: float, book_count: int, meta: dict
 ) -> tuple:
-    """Return (direction_penalty, adj_sd, book_flag) for a single prop row."""
+    """Return (direction_penalty, book_flag) for the selected side."""
     if book_count == 1:
         book_penalty, book_flag = 4.0, "1-BOOK"
     elif book_count == 2:
@@ -2280,7 +2282,7 @@ def _build_prop_flags(
     if dominant_trend == "declining":
         flags.append("TREND↓")
         if pick_dir == "OVER":
-            ev["confidence"] = max(50.0, ev["confidence"] - 3.0)
+            ev["confidence"] = max(0.0, ev["confidence"] - 3.0)
     elif dominant_trend == "improving":
         flags.append("TREND↑")
 
@@ -2363,7 +2365,9 @@ def process_game(
             continue
 
         proj = (1.0 - MARKET_ANCHOR_WEIGHT) * proj + MARKET_ANCHOR_WEIGHT * line
-        pick_dir = "UNDER" if proj < line else "OVER"
+        # A skewed count distribution can favor UNDER even when its mean is
+        # above the line. Use the probability-based pick for every adjustment.
+        pick_dir = evaluate_prop(line, proj, mkt, sd=sd)["pick"]
         adj_sd = (
             sd * COMBO_UNDER_SD_MULT
             if (pick_dir == "UNDER" and mkt in COMBO_UNDER_MARKETS and sd)
@@ -2378,7 +2382,7 @@ def process_game(
 
         ev = evaluate_prop(line, proj, mkt, sd=adj_sd, conf_penalty=total_penalty)
         if ev["edge_pct"] > SUSPICIOUS_EDGE_PCT:
-            ev["confidence"] = max(50.0, ev["confidence"] - 20.0)
+            ev["confidence"] = max(0.0, ev["confidence"] - 20.0)
             ev["_suspicious"] = True
         else:
             ev["_suspicious"] = False
