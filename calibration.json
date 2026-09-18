@@ -1,97 +1,97 @@
 {
-  "generated": "2026-05-10",
-  "total_bets": 1081,
-  "overall_hit_rate": 0.512,
-  "prior_hit_rate": 0.512,
+  "generated": "2026-09-18",
+  "total_bets": 1163,
+  "overall_hit_rate": 0.506,
+  "prior_hit_rate": 0.506,
   "prior_source": "empirical",
   "market_direction": {
     "3PM_OVER": {
-      "n": 91,
-      "hits": 49,
-      "raw_rate": 0.538,
-      "rate": 0.535,
-      "conf_adj": 2.3,
-      "mean_margin": 0.18,
-      "near_miss_rate": 0.531
+      "n": 95,
+      "hits": 51,
+      "raw_rate": 0.537,
+      "rate": 0.533,
+      "conf_adj": 2.7,
+      "mean_margin": 0.17,
+      "near_miss_rate": 0.529
     },
     "3PM_UNDER": {
       "n": 12,
       "hits": 3,
       "raw_rate": 0.25,
-      "rate": 0.396,
-      "conf_adj": -11.7,
+      "rate": 0.392,
+      "conf_adj": -11.4,
       "mean_margin": -0.17,
       "near_miss_rate": 1.0
     },
     "AST_OVER": {
-      "n": 184,
-      "hits": 103,
-      "raw_rate": 0.56,
-      "rate": 0.557,
-      "conf_adj": 4.4,
-      "mean_margin": 0.61,
-      "near_miss_rate": 0.508
+      "n": 204,
+      "hits": 109,
+      "raw_rate": 0.534,
+      "rate": 0.533,
+      "conf_adj": 2.7,
+      "mean_margin": 0.46,
+      "near_miss_rate": 0.493
     },
     "AST_UNDER": {
-      "n": 64,
-      "hits": 41,
-      "raw_rate": 0.641,
-      "rate": 0.618,
-      "conf_adj": 10.5,
-      "mean_margin": 0.19,
-      "near_miss_rate": 0.45
+      "n": 77,
+      "hits": 51,
+      "raw_rate": 0.662,
+      "rate": 0.639,
+      "conf_adj": 13.3,
+      "mean_margin": 0.35,
+      "near_miss_rate": 0.391
     },
     "PRA_OVER": {
-      "n": 68,
+      "n": 71,
       "hits": 30,
-      "raw_rate": 0.441,
-      "rate": 0.453,
-      "conf_adj": -5.9,
-      "mean_margin": 0.98,
-      "near_miss_rate": 0.107
+      "raw_rate": 0.423,
+      "rate": 0.436,
+      "conf_adj": -7.0,
+      "mean_margin": 0.58,
+      "near_miss_rate": 0.097
     },
     "PRA_UNDER": {
       "n": 5,
       "hits": 2,
       "raw_rate": 0.4,
-      "rate": 0.487,
-      "conf_adj": -2.5,
+      "rate": 0.482,
+      "conf_adj": -2.4,
       "mean_margin": -2.5,
       "near_miss_rate": 0.0
     },
     "PTS_OVER": {
-      "n": 106,
-      "hits": 42,
-      "raw_rate": 0.396,
-      "rate": 0.41,
-      "conf_adj": -10.3,
-      "mean_margin": 0.52,
-      "near_miss_rate": 0.31
+      "n": 113,
+      "hits": 44,
+      "raw_rate": 0.389,
+      "rate": 0.402,
+      "conf_adj": -10.4,
+      "mean_margin": 0.29,
+      "near_miss_rate": 0.298
     },
     "PTS_UNDER": {
-      "n": 35,
-      "hits": 16,
-      "raw_rate": 0.457,
-      "rate": 0.473,
-      "conf_adj": -4.0,
-      "mean_margin": -0.55,
+      "n": 36,
+      "hits": 17,
+      "raw_rate": 0.472,
+      "rate": 0.482,
+      "conf_adj": -2.4,
+      "mean_margin": -0.17,
       "near_miss_rate": 0.3
     },
     "PTS+AST_OVER": {
-      "n": 105,
-      "hits": 52,
-      "raw_rate": 0.495,
-      "rate": 0.497,
-      "conf_adj": -1.5,
-      "mean_margin": -0.4,
+      "n": 106,
+      "hits": 53,
+      "raw_rate": 0.5,
+      "rate": 0.501,
+      "conf_adj": -0.5,
+      "mean_margin": -0.39,
       "near_miss_rate": 0.079
     },
     "PTS+AST_UNDER": {
       "n": 9,
       "hits": 7,
       "raw_rate": 0.778,
-      "rate": 0.61,
-      "conf_adj": 9.7,
+      "rate": 0.606,
+      "conf_adj": 10.0,
       "mean_margin": 2.72,
       "near_miss_rate": 0.0
     },
@@ -99,8 +99,8 @@
       "n": 20,
       "hits": 6,
       "raw_rate": 0.3,
-      "rate": 0.389,
-      "conf_adj": -12.4,
+      "rate": 0.386,
+      "conf_adj": -12.0,
       "mean_margin": -2.43,
       "near_miss_rate": 0.182
     },
@@ -108,47 +108,498 @@
       "n": 7,
       "hits": 2,
       "raw_rate": 0.286,
-      "rate": 0.444,
-      "conf_adj": -6.9,
+      "rate": 0.439,
+      "conf_adj": -6.7,
       "mean_margin": -4.17,
       "near_miss_rate": 0.0
     },
     "REB_OVER": {
-      "n": 245,
-      "hits": 130,
-      "raw_rate": 0.531,
-      "rate": 0.53,
-      "conf_adj": 1.7,
-      "mean_margin": 0.22,
-      "near_miss_rate": 0.282
+      "n": 271,
+      "hits": 140,
+      "raw_rate": 0.517,
+      "rate": 0.516,
+      "conf_adj": 1.0,
+      "mean_margin": 0.17,
+      "near_miss_rate": 0.286
     },
     "REB_UNDER": {
-      "n": 50,
-      "hits": 29,
-      "raw_rate": 0.58,
-      "rate": 0.565,
-      "conf_adj": 5.3,
-      "mean_margin": 0.59,
-      "near_miss_rate": 0.417
+      "n": 52,
+      "hits": 30,
+      "raw_rate": 0.577,
+      "rate": 0.562,
+      "conf_adj": 5.6,
+      "mean_margin": 0.58,
+      "near_miss_rate": 0.385
     },
     "REB+AST_OVER": {
-      "n": 58,
-      "hits": 27,
-      "raw_rate": 0.466,
-      "rate": 0.475,
-      "conf_adj": -3.8,
-      "mean_margin": 0.23,
-      "near_miss_rate": 0.32
+      "n": 63,
+      "hits": 28,
+      "raw_rate": 0.444,
+      "rate": 0.455,
+      "conf_adj": -5.0,
+      "mean_margin": -0.02,
+      "near_miss_rate": 0.31
     },
     "REB+AST_UNDER": {
       "n": 22,
       "hits": 15,
       "raw_rate": 0.682,
-      "rate": 0.615,
-      "conf_adj": 10.3,
+      "rate": 0.612,
+      "conf_adj": 10.7,
       "mean_margin": 1.22,
       "near_miss_rate": 0.0
     }
   },
-  "player_market": {}
+  "player_market": {
+    "Ajay Mitchell|AST": {
+      "n": 1,
+      "mean_residual": -1.91,
+      "adj": 0.0
+    },
+    "Ajay Mitchell|REB+AST": {
+      "n": 1,
+      "mean_residual": -2.52,
+      "adj": 0.0
+    },
+    "Alex Caruso|REB": {
+      "n": 1,
+      "mean_residual": 0.88,
+      "adj": 0.0
+    },
+    "Anthony Edwards|AST": {
+      "n": 3,
+      "mean_residual": -1.0,
+      "adj": -0.2
+    },
+    "Ausar Thompson|AST": {
+      "n": 1,
+      "mean_residual": -2.97,
+      "adj": 0.0
+    },
+    "Austin Reaves|REB": {
+      "n": 1,
+      "mean_residual": 3.29,
+      "adj": 0.0
+    },
+    "Cade Cunningham|REB": {
+      "n": 1,
+      "mean_residual": -3.29,
+      "adj": 0.0
+    },
+    "Cade Cunningham|REB+AST": {
+      "n": 1,
+      "mean_residual": -7.08,
+      "adj": 0.0
+    },
+    "Cason Wallace|AST": {
+      "n": 1,
+      "mean_residual": -2.38,
+      "adj": 0.0
+    },
+    "Cason Wallace|PRA": {
+      "n": 1,
+      "mean_residual": -8.79,
+      "adj": 0.0
+    },
+    "Daniss Jenkins|AST": {
+      "n": 1,
+      "mean_residual": -0.85,
+      "adj": 0.0
+    },
+    "Daniss Jenkins|PTS": {
+      "n": 1,
+      "mean_residual": -5.74,
+      "adj": 0.0
+    },
+    "De'Aaron Fox|AST": {
+      "n": 1,
+      "mean_residual": -3.2,
+      "adj": 0.0
+    },
+    "Dean Wade|PRA": {
+      "n": 1,
+      "mean_residual": -3.88,
+      "adj": 0.0
+    },
+    "Dean Wade|PTS": {
+      "n": 1,
+      "mean_residual": -4.91,
+      "adj": 0.0
+    },
+    "Deandre Ayton|AST": {
+      "n": 1,
+      "mean_residual": 0.32,
+      "adj": 0.0
+    },
+    "Deandre Ayton|REB+AST": {
+      "n": 1,
+      "mean_residual": -6.0,
+      "adj": 0.0
+    },
+    "Devin Vassell|AST": {
+      "n": 3,
+      "mean_residual": -0.67,
+      "adj": -0.13
+    },
+    "Devin Vassell|REB": {
+      "n": 1,
+      "mean_residual": -4.76,
+      "adj": 0.0
+    },
+    "Donovan Mitchell|AST": {
+      "n": 1,
+      "mean_residual": -1.27,
+      "adj": 0.0
+    },
+    "Duncan Robinson|3PM": {
+      "n": 1,
+      "mean_residual": -2.64,
+      "adj": 0.0
+    },
+    "Duncan Robinson|PRA": {
+      "n": 1,
+      "mean_residual": -13.23,
+      "adj": 0.0
+    },
+    "Dylan Harper|AST": {
+      "n": 3,
+      "mean_residual": -1.25,
+      "adj": -0.25
+    },
+    "Dylan Harper|REB": {
+      "n": 3,
+      "mean_residual": 4.33,
+      "adj": 0.87
+    },
+    "Evan Mobley|AST": {
+      "n": 1,
+      "mean_residual": 1.15,
+      "adj": 0.0
+    },
+    "Isaiah Joe|PTS": {
+      "n": 1,
+      "mean_residual": -8.32,
+      "adj": 0.0
+    },
+    "Jaden McDaniels|AST": {
+      "n": 1,
+      "mean_residual": -2.94,
+      "adj": 0.0
+    },
+    "Jaden McDaniels|REB": {
+      "n": 1,
+      "mean_residual": 0.09,
+      "adj": 0.0
+    },
+    "James Harden|REB": {
+      "n": 1,
+      "mean_residual": -5.12,
+      "adj": 0.0
+    },
+    "Jaylon Tyson|3PM": {
+      "n": 1,
+      "mean_residual": -0.94,
+      "adj": 0.0
+    },
+    "Julian Champagnie|REB": {
+      "n": 3,
+      "mean_residual": -1.63,
+      "adj": -0.33
+    },
+    "Julian Champagnie|REB+AST": {
+      "n": 1,
+      "mean_residual": -0.44,
+      "adj": 0.0
+    },
+    "Julius Randle|REB": {
+      "n": 2,
+      "mean_residual": 2.8,
+      "adj": 0.4
+    },
+    "Keldon Johnson|REB": {
+      "n": 3,
+      "mean_residual": -2.08,
+      "adj": -0.42
+    },
+    "LeBron James|AST": {
+      "n": 1,
+      "mean_residual": -5.64,
+      "adj": 0.0
+    },
+    "Luguentz Dort|3PM": {
+      "n": 1,
+      "mean_residual": 0.06,
+      "adj": 0.0
+    },
+    "Luguentz Dort|AST": {
+      "n": 1,
+      "mean_residual": -1.38,
+      "adj": 0.0
+    },
+    "Luke Kennard|REB": {
+      "n": 1,
+      "mean_residual": -1.03,
+      "adj": 0.0
+    },
+    "Luke Kornet|REB": {
+      "n": 2,
+      "mean_residual": -4.91,
+      "adj": -0.7
+    },
+    "Marcus Smart|AST": {
+      "n": 1,
+      "mean_residual": -2.0,
+      "adj": 0.0
+    },
+    "Marcus Smart|REB+AST": {
+      "n": 1,
+      "mean_residual": -3.56,
+      "adj": 0.0
+    },
+    "Max Strus|REB": {
+      "n": 1,
+      "mean_residual": -0.82,
+      "adj": 0.0
+    },
+    "Mike Conley|PTS": {
+      "n": 2,
+      "mean_residual": -0.67,
+      "adj": -0.1
+    },
+    "Naz Reid|AST": {
+      "n": 3,
+      "mean_residual": 0.59,
+      "adj": 0.12
+    },
+    "Naz Reid|REB": {
+      "n": 1,
+      "mean_residual": 1.44,
+      "adj": 0.0
+    },
+    "Rudy Gobert|AST": {
+      "n": 3,
+      "mean_residual": -1.13,
+      "adj": -0.23
+    },
+    "Rudy Gobert|REB": {
+      "n": 2,
+      "mean_residual": -5.56,
+      "adj": -0.79
+    },
+    "Rui Hachimura|3PM": {
+      "n": 1,
+      "mean_residual": 0.53,
+      "adj": 0.0
+    },
+    "Rui Hachimura|AST": {
+      "n": 1,
+      "mean_residual": 0.06,
+      "adj": 0.0
+    },
+    "Shai Gilgeous-Alexander|REB": {
+      "n": 1,
+      "mean_residual": -2.27,
+      "adj": 0.0
+    },
+    "Stephon Castle|AST": {
+      "n": 1,
+      "mean_residual": -3.91,
+      "adj": 0.0
+    },
+    "Terrence Shannon Jr.|PTS": {
+      "n": 3,
+      "mean_residual": -9.25,
+      "adj": -1.85
+    },
+    "Terrence Shannon Jr.|REB": {
+      "n": 3,
+      "mean_residual": -2.36,
+      "adj": -0.47
+    },
+    "Tobias Harris|AST": {
+      "n": 1,
+      "mean_residual": 3.76,
+      "adj": 0.0
+    },
+    "Tobias Harris|PTS+AST": {
+      "n": 1,
+      "mean_residual": -2.05,
+      "adj": 0.0
+    },
+    "Victor Wembanyama|AST": {
+      "n": 3,
+      "mean_residual": 0.99,
+      "adj": 0.2
+    }
+  },
+  "flag_penalties": {
+    "UNDER_PICK": {
+      "n": 220,
+      "fitted_pp": 9.25,
+      "hand_tuned_pp": -2.0,
+      "pp": 7.52,
+      "source": "UNDER_CONF_PENALTY (applies to every UNDER pick)"
+    },
+    "STAR_UNDER": {
+      "n": 0,
+      "fitted_pp": 0.0,
+      "hand_tuned_pp": -5.0,
+      "pp": -5.0,
+      "source": "STAR_UNDER_PENALTY (UNDER + proj >= STAR_PROJ_THRESHOLD=28)"
+    },
+    "LOW_LINE": {
+      "n": 152,
+      "fitted_pp": 2.56,
+      "hand_tuned_pp": -5.0,
+      "pp": 0.99,
+      "source": "LOW_LINE_CONF_PENALTY (line <= 1.5)"
+    },
+    "NO_PO": {
+      "n": 208,
+      "fitted_pp": -2.33,
+      "hand_tuned_pp": -8.0,
+      "pp": -3.25,
+      "source": "PLAYOFF_NO_PO_PENALTY (playoff season, po_raw_count == 0)"
+    },
+    "PTS_REB_OVER": {
+      "n": 20,
+      "fitted_pp": 0.78,
+      "hand_tuned_pp": -5.0,
+      "pp": -3.07,
+      "source": "PTS_REB_OVER_PENALTY"
+    },
+    "ONE_BOOK": {
+      "n": 83,
+      "fitted_pp": 14.24,
+      "hand_tuned_pp": -4.0,
+      "pp": 8.31,
+      "source": "book_penalty (book_count == 1)"
+    },
+    "TWO_BOOK": {
+      "n": 53,
+      "fitted_pp": 3.97,
+      "hand_tuned_pp": -2.0,
+      "pp": 1.4,
+      "source": "book_penalty (book_count == 2)"
+    },
+    "ROAD_B2B": {
+      "n": 4,
+      "fitted_pp": 15.67,
+      "hand_tuned_pp": -3.0,
+      "pp": -1.3,
+      "source": "road_b2b_penalty (fixed 3.0; underlying road_b2b is boolean)"
+    },
+    "SUSPICIOUS_EDGE": {
+      "n": 276,
+      "fitted_pp": -2.33,
+      "hand_tuned_pp": -20.0,
+      "pp": -4.57,
+      "source": "SUSPICIOUS_EDGE_PCT dock (edge_pct > 40)"
+    },
+    "TREND_DOWN_OVER": {
+      "n": 13,
+      "fitted_pp": -13.8,
+      "hand_tuned_pp": -3.0,
+      "pp": -5.65,
+      "source": "inline trend penalty (declining trend + OVER only)"
+    },
+    "GTD": {
+      "n": 0,
+      "fitted_pp": 0.0,
+      "hand_tuned_pp": -5.0,
+      "pp": -5.0,
+      "source": "_self_injury_check (Questionable/Day-To-Day)"
+    },
+    "PROBABLE": {
+      "n": 0,
+      "fitted_pp": 0.0,
+      "hand_tuned_pp": -1.0,
+      "pp": -1.0,
+      "source": "_self_injury_check (Probable)"
+    },
+    "BENCH": {
+      "n": 83,
+      "fitted_pp": 8.32,
+      "hand_tuned_pp": null,
+      "pp": 8.32,
+      "source": "bench_penalty \u2014 continuous: max(0, (20 - avg_min) * 1.5), not a fixed constant"
+    },
+    "MINS_VOL": {
+      "n": 61,
+      "fitted_pp": -7.91,
+      "hand_tuned_pp": null,
+      "pp": -7.91,
+      "source": "mins_vol_penalty \u2014 continuous: min(8, (CV-0.20)*25), not a fixed constant"
+    },
+    "LOW_PO": {
+      "n": 232,
+      "fitted_pp": 3.23,
+      "hand_tuned_pp": null,
+      "pp": 3.23,
+      "source": "no fixed constant today \u2014 informational only"
+    },
+    "PO_ROLE": {
+      "n": 97,
+      "fitted_pp": 12.12,
+      "hand_tuned_pp": null,
+      "pp": 12.12,
+      "source": "no fixed constant today \u2014 overlaps NO-PO"
+    },
+    "ROT_RISK": {
+      "n": 87,
+      "fitted_pp": -5.3,
+      "hand_tuned_pp": null,
+      "pp": -5.3,
+      "source": "no fixed constant today \u2014 informational only"
+    },
+    "TREND_DOWN_UNDER": {
+      "n": 12,
+      "fitted_pp": -5.38,
+      "hand_tuned_pp": null,
+      "pp": -5.38,
+      "source": "declining trend currently only penalized for OVER picks"
+    },
+    "TREND_UP": {
+      "n": 39,
+      "fitted_pp": -25.68,
+      "hand_tuned_pp": null,
+      "pp": -25.68,
+      "source": "no fixed constant today \u2014 informational only"
+    },
+    "STRONG": {
+      "n": 209,
+      "fitted_pp": 0.17,
+      "hand_tuned_pp": null,
+      "pp": 0.17,
+      "source": "no fixed constant today \u2014 informational only"
+    },
+    "HI_USG": {
+      "n": 23,
+      "fitted_pp": -4.8,
+      "hand_tuned_pp": null,
+      "pp": -4.8,
+      "source": "no fixed constant today \u2014 informational only"
+    },
+    "LO_USG": {
+      "n": 44,
+      "fitted_pp": 10.23,
+      "hand_tuned_pp": null,
+      "pp": 10.23,
+      "source": "no fixed constant today \u2014 informational only"
+    },
+    "DVP_HIGH": {
+      "n": 133,
+      "fitted_pp": -3.07,
+      "hand_tuned_pp": null,
+      "pp": -3.07,
+      "source": "no fixed constant today \u2014 informational only"
+    },
+    "DVP_LOW": {
+      "n": 110,
+      "fitted_pp": -0.81,
+      "hand_tuned_pp": null,
+      "pp": -0.81,
+      "source": "no fixed constant today \u2014 informational only"
+    }
+  }
 }

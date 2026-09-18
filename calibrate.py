@@ -32,6 +32,8 @@ from pathlib import Path
 
 import pandas as pd
 
+import fit_flag_penalties as ffp
+
 # ---------------------------------------------------------------------------
 # Paths (relative to this script's directory)
 # ---------------------------------------------------------------------------
@@ -48,6 +50,12 @@ LAPLACE_K = 1.5  # Laplace pseudo-counts for smoothing (per side)
 SHRINKAGE_N = 12  # sample size for ~50% trust in sample rate vs prior
 MIN_BETS_TO_ADJ = 4  # need at least this many graded bets for market-direction adj
 PLAYER_MARKET_MIN_BETS = 2  # v9 Fix 6: was 3; shrinkage estimator handles small-sample noise
+
+# Flag-penalty fit (fit_flag_penalties.py) shrinkage. Larger than SHRINKAGE_N
+# because these coefficients come from a ~30-feature logistic regression
+# (correlated, higher-variance) rather than a simple per-group hit rate —
+# needs more data before we let it move production penalties very far.
+FLAG_SHRINK_N = 40
 
 # ---------------------------------------------------------------------------
 
@@ -178,6 +186,68 @@ def _calibrate_player_market(graded: "pd.DataFrame") -> dict:
     return player_market
 
 
+def _calibrate_flag_penalties(graded: "pd.DataFrame") -> dict:
+    """Fit fit_flag_penalties.py's logistic regression on the graded log and
+    shrink each hand-tuned-backed flag's fitted confidence-point effect
+    toward its current hand-tuned constant, weighted by sample size.
+
+    Stored 'pp' is confidence points GAINED by the picked side when the flag
+    is present (positive = should raise confidence, negative = lower it) —
+    the same sign convention playerlinepredictor.py's _flag_penalty() reads.
+    Flags with no hand-tuned constant (informational-only today) are still
+    fit and stored for visibility, with hand_tuned_pp = null.
+    """
+    df = graded.copy()
+    if "flags" not in df.columns:
+        df["flags"] = ""
+    df["flags"] = df["flags"].fillna("")
+    df["market"] = df["market"].astype(str).str.strip()
+    df["pick"] = df["pick"].astype(str).str.strip().str.upper()
+
+    if len(df) < 30:
+        return {}
+
+    X, feat_names = ffp.build_features(df)
+    y = df["hit"].values
+    base_rate = float(y.mean())
+    clf = ffp.fit_logistic(X, y)
+    coefs = dict(zip(feat_names, clf.coef_[0]))
+
+    out = {}
+    for name, (matcher, hand_pp, source) in ffp.PENALTY_MAP.items():
+        mask = [matcher(f, r) for f, (_, r) in zip(df["flags"], df.iterrows())]
+        n = int(sum(mask))
+        fitted_pp = ffp.coef_to_pp(coefs.get(name, 0.0), base_rate)
+        if hand_pp is None:
+            shrunk_pp = fitted_pp if n >= MIN_BETS_TO_ADJ else 0.0
+        else:
+            w = n / (n + FLAG_SHRINK_N)
+            shrunk_pp = w * fitted_pp + (1 - w) * hand_pp
+        out[name] = {
+            "n": n,
+            "fitted_pp": round(fitted_pp, 2),
+            "hand_tuned_pp": hand_pp,
+            "pp": round(float(shrunk_pp), 2),
+            "source": source,
+        }
+    return out
+
+
+def _print_flag_penalty_summary(flag_penalties: dict) -> None:
+    if not flag_penalties:
+        return
+    print()
+    print("  Flag-penalty fit (shrunk toward hand-tuned constant by sample size):")
+    print(f"  {'Flag':<18} {'N':>4} {'Hand pp':>9} {'Fitted pp':>10} {'Shrunk pp':>10}  Note")
+    print(f"  {'─' * 18} {'─' * 4} {'─' * 9} {'─' * 10} {'─' * 10}  {'─' * 25}")
+    for name, v in sorted(flag_penalties.items(), key=lambda x: -x[1]["n"]):
+        hand = f"{v['hand_tuned_pp']:+.1f}" if v["hand_tuned_pp"] is not None else "  n/a"
+        note = "no hand-tuned constant" if v["hand_tuned_pp"] is None else ""
+        print(
+            f"  {name:<18} {v['n']:>4} {hand:>9} {v['fitted_pp']:>+10.2f} {v['pp']:>+10.2f}  {note}"
+        )
+
+
 def _print_calibration_summary(market_dir: dict, margin_stats: dict, player_market: dict) -> None:
     """Print verbose calibration tables to stdout."""
     print()
@@ -253,6 +323,7 @@ def calibrate(verbose=False):
     market_dir = _calibrate_market_direction(graded, prior)
     margin_stats = _calibrate_margins(graded)
     player_market = _calibrate_player_market(graded)
+    flag_penalties = _calibrate_flag_penalties(graded)
 
     # Merge margin stats into market_dir entries
     for key, ms in margin_stats.items():
@@ -268,6 +339,7 @@ def calibrate(verbose=False):
         "prior_source": prior_source,
         "market_direction": market_dir,
         "player_market": player_market,
+        "flag_penalties": flag_penalties,
     }
 
     with open(CALIB_FILE, "w") as f:
@@ -276,11 +348,13 @@ def calibrate(verbose=False):
     print(f"  Saved → {CALIB_FILE}")
     print(
         f"  {len(market_dir)} market-direction adjustments, "
-        f"{len(player_market)} player-market biases"
+        f"{len(player_market)} player-market biases, "
+        f"{len(flag_penalties)} flag-penalty fits"
     )
 
     if verbose or "--summary" in sys.argv:
         _print_calibration_summary(market_dir, margin_stats, player_market)
+        _print_flag_penalty_summary(flag_penalties)
 
 
 if __name__ == "__main__":

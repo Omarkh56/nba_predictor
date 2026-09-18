@@ -249,6 +249,8 @@ LOW_LINE_CONF_PENALTY = 5.0  # penalty applied to very short lines
 
 # v6 fixes: sanity filters and projection anchoring
 SUSPICIOUS_EDGE_PCT = 40.0  # v6 Fix 3: edge% above this docks confidence −20pp (model error likely)
+SUSPICIOUS_EDGE_DOCK = 20.0  # confidence points docked when edge_pct > SUSPICIOUS_EDGE_PCT
+TREND_DOWN_OVER_PENALTY = 3.0  # confidence docked for OVER picks on a declining-trend player
 MARKET_ANCHOR_WEIGHT = 0.12  # v6 Fix 6: 12% pull toward market line dampens runaway projections
 
 # -----------------------------------------------------------------------------
@@ -342,6 +344,24 @@ FG3M_PPG_RATIO = 0.12
 # Empty dict = no calibration applied (safe default when file is absent).
 CALIB = {}
 CALIB_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "calibration.json")
+
+
+def _flag_penalty(name: str, default: float) -> float:
+    """Data-driven replacement for a hand-tuned confidence-penalty constant.
+
+    Reads calibration.json's flag_penalties[name].pp — fit_flag_penalties.py's
+    logistic-regression estimate, shrunk toward `default` by calibrate.py
+    based on sample size (see FLAG_SHRINK_N there) — so it moves only as far
+    as the data supports and falls back to `default` exactly when there's no
+    calibration data yet (missing key, or n=0). `pp` is stored as confidence
+    points *gained*; the penalty added to direction_penalty is its negation,
+    matching the sign convention every call site below already used for the
+    fixed constants.
+    """
+    entry = CALIB.get("flag_penalties", {}).get(name)
+    if not entry:
+        return default
+    return -entry["pp"]
 
 # =============================================================================
 # LEARNED MODEL PARAMS (from train_model.py → learned_params.json)
@@ -504,9 +524,10 @@ def _load_calibration():
         total = CALIB.get("total_bets", 0)
         md = len(CALIB.get("market_direction", {}))
         pm = len(CALIB.get("player_market", {}))
+        fp = len(CALIB.get("flag_penalties", {}))
         print(
             f"  Calibration loaded ({total} bets, "
-            f"{md} market-direction, {pm} player-market adjustments)"
+            f"{md} market-direction, {pm} player-market, {fp} flag-penalty adjustments)"
         )
 
         # v7 Fix 1b: build projection multipliers from OVER hit rates.
@@ -1821,9 +1842,9 @@ def _self_injury_check(player_name: str, injuries: list):
     if status in ("Out", "Doubtful"):
         return 0.0, "", True
     if status in ("Questionable", "Day-To-Day"):
-        return 5.0, "⚠GTD", False
+        return _flag_penalty("GTD", 5.0), "⚠GTD", False
     if status == "Probable":
-        return 1.0, "PROB", False
+        return _flag_penalty("PROBABLE", 1.0), "PROB", False
     return 0.0, "", False
 
 
@@ -1906,7 +1927,7 @@ def _build_prop_metadata(
             mins_vol_flag = True
 
     road_b2b = _is_road_b2b(po_logs, is_home)
-    road_b2b_penalty = 3.0 if road_b2b else 0.0
+    road_b2b_penalty = _flag_penalty("ROAD_B2B", 3.0) if road_b2b else 0.0
     total_penalty = bench_penalty + mins_vol_penalty + road_b2b_penalty + self_inj_penalty
 
     return {
@@ -2182,26 +2203,26 @@ def _compute_direction_penalty(
 ) -> tuple:
     """Return (direction_penalty, book_flag) for the selected side."""
     if book_count == 1:
-        book_penalty, book_flag = 4.0, "1-BOOK"
+        book_penalty, book_flag = _flag_penalty("ONE_BOOK", 4.0), "1-BOOK"
     elif book_count == 2:
-        book_penalty, book_flag = 2.0, "2-BOOK"
+        book_penalty, book_flag = _flag_penalty("TWO_BOOK", 2.0), "2-BOOK"
     else:
         book_penalty, book_flag = 0.0, ""
 
     direction_penalty = float(book_penalty)
 
     if pick_dir == "UNDER":
-        direction_penalty += UNDER_CONF_PENALTY
+        direction_penalty += _flag_penalty("UNDER_PICK", UNDER_CONF_PENALTY)
         if mkt in COMBO_UNDER_MARKETS:
             pass  # caller inflates sd; we just track penalty here
         if proj >= STAR_PROJ_THRESHOLD:
-            direction_penalty += STAR_UNDER_PENALTY
+            direction_penalty += _flag_penalty("STAR_UNDER", STAR_UNDER_PENALTY)
     if mkt == "player_points_rebounds" and pick_dir == "OVER":
-        direction_penalty += PTS_REB_OVER_PENALTY
+        direction_penalty += _flag_penalty("PTS_REB_OVER", PTS_REB_OVER_PENALTY)
     if IS_PLAYOFF_SEASON and meta.get("po_raw_count", meta["po_count"]) == 0:
-        direction_penalty += PLAYOFF_NO_PO_PENALTY
+        direction_penalty += _flag_penalty("NO_PO", PLAYOFF_NO_PO_PENALTY)
     if line <= LOW_LINE_THRESHOLD:
-        direction_penalty += LOW_LINE_CONF_PENALTY
+        direction_penalty += _flag_penalty("LOW_LINE", LOW_LINE_CONF_PENALTY)
 
     calib_adj = (
         CALIB.get("market_direction", {}).get(f"{label}_{pick_dir}", {}).get("conf_adj", 0.0)
@@ -2282,7 +2303,8 @@ def _build_prop_flags(
     if dominant_trend == "declining":
         flags.append("TREND↓")
         if pick_dir == "OVER":
-            ev["confidence"] = max(0.0, ev["confidence"] - 3.0)
+            dock = _flag_penalty("TREND_DOWN_OVER", TREND_DOWN_OVER_PENALTY)
+            ev["confidence"] = max(0.0, ev["confidence"] - dock)
     elif dominant_trend == "improving":
         flags.append("TREND↑")
 
@@ -2382,7 +2404,8 @@ def process_game(
 
         ev = evaluate_prop(line, proj, mkt, sd=adj_sd, conf_penalty=total_penalty)
         if ev["edge_pct"] > SUSPICIOUS_EDGE_PCT:
-            ev["confidence"] = max(0.0, ev["confidence"] - 20.0)
+            dock = _flag_penalty("SUSPICIOUS_EDGE", SUSPICIOUS_EDGE_DOCK)
+            ev["confidence"] = max(0.0, ev["confidence"] - dock)
             ev["_suspicious"] = True
         else:
             ev["_suspicious"] = False
