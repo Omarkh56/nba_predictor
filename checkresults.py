@@ -498,6 +498,15 @@ def check_predictions(predictions, actual_stats):
                 "result": outcome,
                 "minutes": player_data.get("MIN", "?"),
                 "flags": pred.get("flags", ""),  # risk flags at prediction time, for calibrate.py
+                # p_model as a 0-1 probability, matching load_all_prop_model_confidence()'s
+                # convention — pred["confidence"] (0-100) when live, already-converted
+                # pred["p_model"] when replaying a manually-built PREDICTIONS entry.
+                "p_model": (
+                    pred["confidence"] / 100.0
+                    if pred.get("confidence") is not None
+                    else pred.get("p_model")
+                ),
+                "p_market": pred.get("p_market"),  # de-vigged market prob at prediction time
             }
         )
 
@@ -628,6 +637,103 @@ def _migrate_flags_column():
     )
 
 
+def _load_historical_market_probs() -> dict:
+    """Return {(date, player, market): (devig_over, devig_under)} from
+    odds_tracker.csv's full history — used to backfill p_market into
+    bet_log.csv rows that predate p_market being captured live in
+    predictions.db (every row up to when this was added)."""
+    tracker_path = oddstracker.TRACKER_FILE
+    if not (os.path.isfile(tracker_path) and os.path.getsize(tracker_path) > 0):
+        return {}
+    try:
+        odds = pd.read_csv(tracker_path)
+    except (OSError, ValueError):
+        return {}
+    if odds.empty or "devig_over" not in odds.columns:
+        return {}
+    odds = odds.drop_duplicates(subset=["date", "player", "market"], keep="first")
+    lookup = {}
+    for _, row in odds.iterrows():
+        key = (str(row["date"]).strip(), str(row["player"]).strip(), str(row["market"]).strip())
+        devig_over = row.get("devig_over")
+        devig_under = row.get("devig_under")
+        if pd.isna(devig_over):
+            continue
+        lookup[key] = (
+            float(devig_over),
+            float(devig_under) if pd.notna(devig_under) else 1.0 - float(devig_over),
+        )
+    return lookup
+
+
+def _migrate_market_calib_columns():
+    """One-time migration: add 'p_model' and 'p_market' columns to
+    bet_log.csv if missing.
+
+    p_model backfills from predictions.db's confidence (present for nearly
+    every historically-graded row). p_market backfills from odds_tracker.csv
+    directly, since p_market was never captured in predictions.db until this
+    was added — coverage will be much thinner (odds_tracker.csv only
+    overlaps a fraction of bet_log.csv's date range; see Market Calibration
+    Weighting notes) and will only improve going forward as new bets that
+    already carry p_market from predictions.db get graded.
+
+    Old schema (10 cols): ...,result,flags
+    New schema (12 cols): ...,result,flags,p_model,p_market
+    """
+    if not (os.path.isfile(LOG_FILE) and os.path.getsize(LOG_FILE) > 0):
+        return
+    with open(LOG_FILE) as fh:
+        lines = fh.readlines()
+    if not lines:
+        return
+    header_fields = [c.strip() for c in lines[0].strip().split(",")]
+    if "p_market" in header_fields:
+        return  # already migrated
+
+    try:
+        idx = {name: header_fields.index(name) for name in ("date", "player", "market", "pick")}
+    except ValueError:
+        return  # unexpected schema — leave untouched
+
+    model_lookup = pred_db.load_all_prop_model_confidence()
+    market_lookup = _load_historical_market_probs()
+
+    matched_model = 0
+    matched_market = 0
+    migrated = [",".join(header_fields + ["p_model", "p_market"]) + "\n"]
+    for line in lines[1:]:
+        fields = line.rstrip("\n").split(",")
+        d = fields[idx["date"]].strip()
+        p = fields[idx["player"]].strip()
+        m = fields[idx["market"]].strip()
+        pick = fields[idx["pick"]].strip().upper()
+
+        p_model = model_lookup.get((d, p, m, pick))
+        p_model_str = f"{p_model:.4f}" if p_model is not None else ""
+        if p_model is not None:
+            matched_model += 1
+
+        p_market_str = ""
+        devig = market_lookup.get((d, p, m))
+        if devig is not None:
+            devig_over, devig_under = devig
+            p_market = devig_under if pick == "UNDER" else devig_over
+            p_market_str = f"{p_market:.4f}"
+            matched_market += 1
+
+        migrated.append(",".join(fields + [p_model_str, p_market_str]) + "\n")
+
+    with open(LOG_FILE, "w") as fh:
+        fh.writelines(migrated)
+    n = len(lines) - 1
+    print(
+        f"  Migrated bet_log.csv → added 'p_model'/'p_market' columns "
+        f"(p_model: {matched_model}/{n} backfilled from predictions.db; "
+        f"p_market: {matched_market}/{n} backfilled from odds_tracker.csv)."
+    )
+
+
 def append_to_log(results, check_date):
     """Append graded bets to bet_log.csv for downstream calibration.
 
@@ -658,6 +764,8 @@ def append_to_log(results, check_date):
         "margin",
         "result",
         "flags",
+        "p_model",
+        "p_market",
     ]
 
     file_exists = os.path.isfile(LOG_FILE) and os.path.getsize(LOG_FILE) > 0
@@ -684,6 +792,10 @@ def append_to_log(results, check_date):
     if file_exists:
         _migrate_flags_column()
 
+    # Migrate old schema (no p_model/p_market columns) before appending new rows
+    if file_exists:
+        _migrate_market_calib_columns()
+
     new_rows = []
     for r in results:
         if r.get("actual") is None:
@@ -708,6 +820,10 @@ def append_to_log(results, check_date):
                 "margin": r.get("margin", ""),
                 "result": outcome,
                 "flags": r.get("flags", ""),
+                # .get(key, "") only catches a missing key, not an explicit None
+                # (p_model/p_market are frequently None — no odds snapshot, etc.)
+                "p_model": r.get("p_model") if r.get("p_model") is not None else "",
+                "p_market": r.get("p_market") if r.get("p_market") is not None else "",
             }
         )
 

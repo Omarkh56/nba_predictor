@@ -157,6 +157,17 @@ def _build_calib_rank_weights(calib: dict) -> dict:
     return weights
 
 
+def _p_market(player: str, market: str, pick: str):
+    """De-vigged market probability (devig_power, via oddstracker.py) for the
+    picked side. Returns None when no same-day odds_tracker.csv snapshot
+    exists for this (player, market)."""
+    lean = _get_lean(player, market)
+    if not lean:
+        return None
+    devig_over = lean.get("devig_over", 0.5)
+    return lean.get("devig_under", 1.0 - devig_over) if pick == "UNDER" else devig_over
+
+
 def _market_edge_pct(player: str, market: str, pick: str, confidence: float):
     """True edge vs. the de-vigged market, in percentage points:
     model_probability − devig_market_probability (for the picked side).
@@ -164,13 +175,11 @@ def _market_edge_pct(player: str, market: str, pick: str, confidence: float):
     Returns None when no same-day odds_tracker.csv snapshot exists for this
     (player, market) — the caller should fall back to edge_pct.
     """
-    lean = _get_lean(player, market)
-    if not lean:
+    p_mkt = _p_market(player, market, pick)
+    if p_mkt is None:
         return None
-    devig_over = lean.get("devig_over", 0.5)
-    devig_pick = lean.get("devig_under", 1.0 - devig_over) if pick == "UNDER" else devig_over
     model_prob = confidence / 100.0
-    return (model_prob - devig_pick) * 100.0
+    return (model_prob - p_mkt) * 100.0
 
 
 def _enrich_with_market_edge(df: pd.DataFrame) -> pd.DataFrame:
@@ -679,6 +688,7 @@ def print_best_bets(pred: dict, props_df: pd.DataFrame):
 def _pick_to_dict(row: pd.Series, game_key: str, pred) -> dict:
     """Convert a props DataFrame row + game context to a JSON-exportable dict."""
     meta = row.get("meta") or {}
+    p_mkt = _p_market(str(row["Player"]), str(row["Market"]), str(row["Pick"]))
     return {
         "game": game_key,
         "player": row["Player"],
@@ -689,6 +699,7 @@ def _pick_to_dict(row: pd.Series, game_key: str, pred) -> dict:
         "confidence": float(row["Confidence"]),
         "edge_pct": float(row["Edge%"]),
         "flags": row["Flags"],
+        "p_market": p_mkt,  # de-vigged market probability at prediction time, or None
         "po_count": int(row.get("PO_Games", 0)),
         "avg_min": float(meta.get("avg_min", 0)),
         "book_count": int(row.get("book_count", 0)),
