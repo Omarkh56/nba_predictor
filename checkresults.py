@@ -581,6 +581,53 @@ def print_results(results):
 # =============================================================================
 # BET LOG
 # =============================================================================
+def _migrate_flags_column():
+    """One-time migration: add a 'flags' column to bet_log.csv if missing,
+    backfilling historical rows from predictions.db's prop_predictions.flags
+    (matched on date/player/market/pick) where a row exists there.
+
+    Old schema (9 cols): date,player,market,line,pick,projection,actual,margin,result
+    New schema (10 cols): ...,result,flags
+    """
+    if not (os.path.isfile(LOG_FILE) and os.path.getsize(LOG_FILE) > 0):
+        return
+    with open(LOG_FILE) as fh:
+        lines = fh.readlines()
+    if not lines:
+        return
+    header_fields = [c.strip() for c in lines[0].strip().split(",")]
+    if "flags" in header_fields:
+        return  # already migrated
+
+    try:
+        idx = {name: header_fields.index(name) for name in ("date", "player", "market", "pick")}
+    except ValueError:
+        return  # unexpected schema (e.g. pre-margin-migration) — leave untouched
+
+    flag_lookup = pred_db.load_all_prop_flags()
+    matched = 0
+    migrated = [",".join(header_fields + ["flags"]) + "\n"]
+    for line in lines[1:]:
+        fields = line.rstrip("\n").split(",")
+        key = (
+            fields[idx["date"]].strip(),
+            fields[idx["player"]].strip(),
+            fields[idx["market"]].strip(),
+            fields[idx["pick"]].strip().upper(),
+        )
+        flags = flag_lookup.get(key, "")
+        if flags:
+            matched += 1
+        migrated.append(",".join(fields + [flags]) + "\n")
+
+    with open(LOG_FILE, "w") as fh:
+        fh.writelines(migrated)
+    print(
+        f"  Migrated bet_log.csv → added 'flags' column "
+        f"({matched}/{len(lines) - 1} historical rows backfilled from predictions.db)."
+    )
+
+
 def append_to_log(results, check_date):
     """Append graded bets to bet_log.csv for downstream calibration.
 
@@ -610,6 +657,7 @@ def append_to_log(results, check_date):
         "actual",
         "margin",
         "result",
+        "flags",
     ]
 
     file_exists = os.path.isfile(LOG_FILE) and os.path.getsize(LOG_FILE) > 0
@@ -631,6 +679,10 @@ def append_to_log(results, check_date):
                 migrated.append(",".join(fields) + "\n")
             with open(LOG_FILE, "w") as fh:
                 fh.writelines(migrated)
+
+    # Migrate old schema (no flags column) before appending new rows
+    if file_exists:
+        _migrate_flags_column()
 
     new_rows = []
     for r in results:
@@ -655,6 +707,7 @@ def append_to_log(results, check_date):
                 "actual": r["actual"],
                 "margin": r.get("margin", ""),
                 "result": outcome,
+                "flags": r.get("flags", ""),
             }
         )
 

@@ -1,0 +1,320 @@
+{
+  "generated_from": "bet_log.csv",
+  "n_graded_bets": 1163,
+  "baseline_hit_rate": 0.5056,
+  "method": "LogisticRegression(C=1.0) on market dummies + flag booleans; pp = coef * base_rate * (1-base_rate) * 100; 90% CI from 200 bootstrap resamples",
+  "flags": {
+    "UNDER_PICK": {
+      "fitted_pp": 9.25,
+      "hand_tuned_pp": -2.0,
+      "ci90_pp": [
+        2.33,
+        15.91
+      ],
+      "n": 220,
+      "reliable": true,
+      "significant": true,
+      "raw_hit_rate": 0.5773,
+      "source": "UNDER_CONF_PENALTY (applies to every UNDER pick)"
+    },
+    "STAR_UNDER": {
+      "fitted_pp": 0.0,
+      "hand_tuned_pp": -5.0,
+      "ci90_pp": [
+        0.0,
+        0.0
+      ],
+      "n": 0,
+      "reliable": false,
+      "significant": true,
+      "raw_hit_rate": null,
+      "source": "STAR_UNDER_PENALTY (UNDER + proj >= STAR_PROJ_THRESHOLD=28)"
+    },
+    "LOW_LINE": {
+      "fitted_pp": 2.56,
+      "hand_tuned_pp": -5.0,
+      "ci90_pp": [
+        -6.82,
+        10.69
+      ],
+      "n": 152,
+      "reliable": true,
+      "significant": false,
+      "raw_hit_rate": 0.5724,
+      "source": "LOW_LINE_CONF_PENALTY (line <= 1.5)"
+    },
+    "NO_PO": {
+      "fitted_pp": -2.33,
+      "hand_tuned_pp": -8.0,
+      "ci90_pp": [
+        -11.61,
+        7.12
+      ],
+      "n": 208,
+      "reliable": true,
+      "significant": false,
+      "raw_hit_rate": 0.5096,
+      "source": "PLAYOFF_NO_PO_PENALTY (playoff season, po_raw_count == 0)"
+    },
+    "PTS_REB_OVER": {
+      "fitted_pp": 0.78,
+      "hand_tuned_pp": -5.0,
+      "ci90_pp": [
+        -19.21,
+        16.44
+      ],
+      "n": 20,
+      "reliable": true,
+      "significant": false,
+      "raw_hit_rate": 0.3,
+      "source": "PTS_REB_OVER_PENALTY"
+    },
+    "ONE_BOOK": {
+      "fitted_pp": 14.24,
+      "hand_tuned_pp": -4.0,
+      "ci90_pp": [
+        3.42,
+        25.23
+      ],
+      "n": 83,
+      "reliable": true,
+      "significant": true,
+      "raw_hit_rate": 0.5542,
+      "source": "book_penalty (book_count == 1)"
+    },
+    "TWO_BOOK": {
+      "fitted_pp": 3.97,
+      "hand_tuned_pp": -2.0,
+      "ci90_pp": [
+        -7.57,
+        17.05
+      ],
+      "n": 53,
+      "reliable": true,
+      "significant": false,
+      "raw_hit_rate": 0.5472,
+      "source": "book_penalty (book_count == 2)"
+    },
+    "ROAD_B2B": {
+      "fitted_pp": 15.67,
+      "hand_tuned_pp": -3.0,
+      "ci90_pp": [
+        -4.37,
+        31.2
+      ],
+      "n": 4,
+      "reliable": false,
+      "significant": false,
+      "raw_hit_rate": 0.75,
+      "source": "road_b2b_penalty (fixed 3.0; underlying road_b2b is boolean)"
+    },
+    "SUSPICIOUS_EDGE": {
+      "fitted_pp": -2.33,
+      "hand_tuned_pp": -20.0,
+      "ci90_pp": [
+        -9.02,
+        3.67
+      ],
+      "n": 276,
+      "reliable": true,
+      "significant": true,
+      "raw_hit_rate": 0.4891,
+      "source": "SUSPICIOUS_EDGE_PCT dock (edge_pct > 40)"
+    },
+    "TREND_DOWN_OVER": {
+      "fitted_pp": -13.8,
+      "hand_tuned_pp": -3.0,
+      "ci90_pp": [
+        -27.75,
+        4.31
+      ],
+      "n": 13,
+      "reliable": false,
+      "significant": false,
+      "raw_hit_rate": 0.3846,
+      "source": "inline trend penalty (declining trend + OVER only)"
+    },
+    "GTD": {
+      "fitted_pp": 0.0,
+      "hand_tuned_pp": -5.0,
+      "ci90_pp": [
+        0.0,
+        0.0
+      ],
+      "n": 0,
+      "reliable": false,
+      "significant": true,
+      "raw_hit_rate": null,
+      "source": "_self_injury_check (Questionable/Day-To-Day)"
+    },
+    "PROBABLE": {
+      "fitted_pp": 0.0,
+      "hand_tuned_pp": -1.0,
+      "ci90_pp": [
+        0.0,
+        0.0
+      ],
+      "n": 0,
+      "reliable": false,
+      "significant": true,
+      "raw_hit_rate": null,
+      "source": "_self_injury_check (Probable)"
+    },
+    "BENCH": {
+      "fitted_pp": 8.32,
+      "hand_tuned_pp": null,
+      "ci90_pp": [
+        -0.89,
+        19.58
+      ],
+      "n": 83,
+      "reliable": true,
+      "significant": false,
+      "raw_hit_rate": 0.5422,
+      "source": "bench_penalty \u2014 continuous: max(0, (20 - avg_min) * 1.5), not a fixed constant"
+    },
+    "MINS_VOL": {
+      "fitted_pp": -7.91,
+      "hand_tuned_pp": null,
+      "ci90_pp": [
+        -19.17,
+        2.82
+      ],
+      "n": 61,
+      "reliable": true,
+      "significant": false,
+      "raw_hit_rate": 0.4754,
+      "source": "mins_vol_penalty \u2014 continuous: min(8, (CV-0.20)*25), not a fixed constant"
+    },
+    "LOW_PO": {
+      "fitted_pp": 3.23,
+      "hand_tuned_pp": null,
+      "ci90_pp": [
+        -3.58,
+        9.08
+      ],
+      "n": 232,
+      "reliable": true,
+      "significant": false,
+      "raw_hit_rate": 0.5086,
+      "source": "no fixed constant today \u2014 informational only"
+    },
+    "PO_ROLE": {
+      "fitted_pp": 12.12,
+      "hand_tuned_pp": null,
+      "ci90_pp": [
+        0.49,
+        23.81
+      ],
+      "n": 97,
+      "reliable": true,
+      "significant": false,
+      "raw_hit_rate": 0.5464,
+      "source": "no fixed constant today \u2014 overlaps NO-PO"
+    },
+    "ROT_RISK": {
+      "fitted_pp": -5.3,
+      "hand_tuned_pp": null,
+      "ci90_pp": [
+        -16.37,
+        3.31
+      ],
+      "n": 87,
+      "reliable": true,
+      "significant": false,
+      "raw_hit_rate": 0.4598,
+      "source": "no fixed constant today \u2014 informational only"
+    },
+    "TREND_DOWN_UNDER": {
+      "fitted_pp": -5.38,
+      "hand_tuned_pp": null,
+      "ci90_pp": [
+        -22.59,
+        18.19
+      ],
+      "n": 12,
+      "reliable": false,
+      "significant": false,
+      "raw_hit_rate": 0.5833,
+      "source": "declining trend currently only penalized for OVER picks"
+    },
+    "TREND_UP": {
+      "fitted_pp": -25.68,
+      "hand_tuned_pp": null,
+      "ci90_pp": [
+        -40.85,
+        -12.71
+      ],
+      "n": 39,
+      "reliable": true,
+      "significant": false,
+      "raw_hit_rate": 0.2564,
+      "source": "no fixed constant today \u2014 informational only"
+    },
+    "STRONG": {
+      "fitted_pp": 0.17,
+      "hand_tuned_pp": null,
+      "ci90_pp": [
+        -6.61,
+        7.15
+      ],
+      "n": 209,
+      "reliable": true,
+      "significant": false,
+      "raw_hit_rate": 0.4928,
+      "source": "no fixed constant today \u2014 informational only"
+    },
+    "HI_USG": {
+      "fitted_pp": -4.8,
+      "hand_tuned_pp": null,
+      "ci90_pp": [
+        -18.43,
+        7.88
+      ],
+      "n": 23,
+      "reliable": true,
+      "significant": false,
+      "raw_hit_rate": 0.4348,
+      "source": "no fixed constant today \u2014 informational only"
+    },
+    "LO_USG": {
+      "fitted_pp": 10.23,
+      "hand_tuned_pp": null,
+      "ci90_pp": [
+        -4.38,
+        21.3
+      ],
+      "n": 44,
+      "reliable": true,
+      "significant": false,
+      "raw_hit_rate": 0.5,
+      "source": "no fixed constant today \u2014 informational only"
+    },
+    "DVP_HIGH": {
+      "fitted_pp": -3.07,
+      "hand_tuned_pp": null,
+      "ci90_pp": [
+        -10.07,
+        4.92
+      ],
+      "n": 133,
+      "reliable": true,
+      "significant": false,
+      "raw_hit_rate": 0.4737,
+      "source": "no fixed constant today \u2014 informational only"
+    },
+    "DVP_LOW": {
+      "fitted_pp": -0.81,
+      "hand_tuned_pp": null,
+      "ci90_pp": [
+        -9.64,
+        8.45
+      ],
+      "n": 110,
+      "reliable": true,
+      "significant": false,
+      "raw_hit_rate": 0.5364,
+      "source": "no fixed constant today \u2014 informational only"
+    }
+  }
+}
