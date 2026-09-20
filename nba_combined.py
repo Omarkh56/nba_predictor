@@ -798,6 +798,7 @@ def _pick_to_dict(row: pd.Series, game_key: str, pred) -> dict:
     # sample on the live market sample (~150 rows) -- using it to size real
     # stakes would be premature. Revisit once that check passes.
     stake_pct = props_model.compute_stake_pct(p_model, d, total_penalty)
+    book_spread = props_model.GAME_SPREADS.get(game_key)
     return {
         "game": game_key,
         "player": row["Player"],
@@ -815,8 +816,23 @@ def _pick_to_dict(row: pd.Series, game_key: str, pred) -> dict:
         "avg_min": float(meta.get("avg_min", 0)),
         "book_count": int(row.get("book_count", 0)),
         "usg_pct": float(meta.get("usg_pct", 0)),
+        # v9: record the exact history snapshot used to make this pick.
+        "rs_raw_count": meta.get("rs_raw_count"),
+        "rs_usable_count": meta.get("rs_usable_count"),
+        "po_raw_count": meta.get("po_raw_count"),
+        "po_usable_count": meta.get("po_usable_count"),
+        "fetch_status": meta.get("fetch_status"),
+        "source_last_game_date": meta.get("source_last_game_date"),
+        "data_as_of_utc": meta.get("data_as_of_utc"),
+        "data_age_days": meta.get("data_age_days"),
+        "active_season": meta.get("active_season"),
+        "season_mode": meta.get("season_mode"),
+        "model_version": meta.get("model_version"),
+        # Bookmaker input and model output are deliberately separate.
+        "book_spread": float(book_spread) if book_spread is not None else None,
+        "model_margin": float(pred["expected_margin"]) if pred else None,
         # Game-level context from team model (None if team model unavailable)
-        "game_spread": float(pred["expected_margin"]) if pred else None,
+        "game_spread": float(pred["expected_margin"]) if pred else None,  # legacy: model margin
         "game_total": float(pred["predicted_total"]) if pred else None,
         "game_pace": float((pred.get("home_pace", 99.5) + pred.get("away_pace", 99.5)) / 2)
         if pred
@@ -960,8 +976,9 @@ def _setup_odds_and_spreads(matchups: list, team_map: dict) -> list:
                 odds_ev["id"], m["home_name"]
             )
         if pred:
-            props_model.GAME_SPREADS[gk] = pred["expected_margin"]
-            print(f"    {gk}: model spread {pred['expected_margin']:+.1f}")
+            book = props_model.GAME_SPREADS.get(gk)
+            book_tag = f"; book spread {book:+.1f}" if book is not None else "; book spread unavailable"
+            print(f"    {gk}: model margin {pred['expected_margin']:+.1f}{book_tag}")
     return all_events
 
 

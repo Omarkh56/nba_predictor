@@ -42,6 +42,19 @@ _PROP_ROW = {
     "game_total":  228.0,
     "game_pace":   100.5,
     "fav_win_pct": 0.62,
+    "rs_raw_count": 72,
+    "rs_usable_count": 18,
+    "po_raw_count": 4,
+    "po_usable_count": 3,
+    "fetch_status": "rs=ok;po=ok;po_raw=ok",
+    "source_last_game_date": "2024-01-14",
+    "data_as_of_utc": "2024-01-15T12:00:00+00:00",
+    "data_age_days": 1,
+    "active_season": "2023-24",
+    "season_mode": "regular",
+    "model_version": "test-v9",
+    "book_spread": -4.5,
+    "model_margin": 3.2,
 }
 
 _GAME_ROW = {
@@ -75,6 +88,12 @@ class TestPropPredictions:
         assert r["pick"]   == "OVER"
         assert r["line"]   == pytest.approx(27.5)
         assert r["projection"] == pytest.approx(29.1)
+        assert r["rs_raw_count"] == 72
+        assert r["po_raw_count"] == 4
+        assert r["fetch_status"] == "rs=ok;po=ok;po_raw=ok"
+        assert r["active_season"] == "2023-24"
+        assert r["book_spread"] == pytest.approx(-4.5)
+        assert r["model_margin"] == pytest.approx(3.2)
 
     def test_multiple_rows(self, tmp_path):
         db = tmp_path / "test.db"

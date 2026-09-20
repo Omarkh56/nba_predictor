@@ -511,6 +511,7 @@ def check_predictions(predictions, actual_stats):
                 "p_market": pred.get("p_market"),  # de-vigged market prob at prediction time
                 "decimal_odds": pred.get("decimal_odds"),
                 "stake_pct": pred.get("stake_pct"),  # fractional-Kelly recommendation at pick time
+                **{field: pred.get(field) for field in pred_db.PROP_PROVENANCE_FIELDS},
             }
         )
 
@@ -927,6 +928,7 @@ def append_to_log(results, check_date):
                 "decimal_odds": decimal_odds if decimal_odds is not None else "",
                 "stake_pct": stake_pct if stake_pct is not None else "",
                 "realized_profit": realized_profit,
+                **{field: r.get(field, "") for field in pred_db.PROP_PROVENANCE_FIELDS},
             }
         )
 

@@ -228,3 +228,42 @@ class TestRankingChangesBehavior:
         # agrees, so A's "edge" was an illusion from the line, not the price).
         assert ranked.loc[0, "Player"] == "Player B"
         assert ranked.loc[0, "MktEdgePct"] > ranked.loc[1, "MktEdgePct"]
+
+
+class TestSpreadAndPickProvenance:
+    def test_book_spread_is_not_overwritten_by_model_margin(self, monkeypatch):
+        _nc.props_model.GAME_SPREADS.clear()
+        event = {"id": "event-1"}
+        monkeypatch.setattr(_nc.props_model, "get_all_odds_events", lambda: [event])
+        monkeypatch.setattr(_nc, "_match_odds_event", lambda *_a: event)
+        monkeypatch.setattr(_nc.props_model, "_auto_fetch_spread", lambda *_a: 4.5)
+        matchups = [{"home_abbr": "BOS", "away_abbr": "LAL", "home_name": "Boston Celtics"}]
+        team_map = {("LAL", "BOS"): {"expected_margin": 8.2}}
+        _nc._setup_odds_and_spreads(matchups, team_map)
+        assert _nc.props_model.GAME_SPREADS["LAL@BOS"] == pytest.approx(4.5)
+
+    def test_pick_export_keeps_book_spread_model_margin_and_history_separate(self, monkeypatch):
+        _nc.props_model.GAME_SPREADS["LAL@BOS"] = 4.5
+        monkeypatch.setattr(_nc, "_p_market", lambda *_a: 0.52)
+        monkeypatch.setattr(_nc, "_decimal_odds", lambda *_a: 1.91)
+        monkeypatch.setattr(_nc.props_model, "compute_stake_pct", lambda *_a: 0.01)
+        meta = {
+            "avg_min": 34.0, "usg_pct": 0.3, "rs_raw_count": 70, "rs_usable_count": 20,
+            "po_raw_count": 5, "po_usable_count": 4, "fetch_status": "rs=ok;po=ok;po_raw=ok",
+            "source_last_game_date": "2026-05-01", "data_as_of_utc": "2026-05-02T12:00:00+00:00",
+            "data_age_days": 1, "active_season": "2025-26", "season_mode": "playoffs",
+            "model_version": "v-test",
+        }
+        row = pd.Series({
+            "Player": "LeBron James", "Market": "PTS", "Pick": "OVER", "Line": 25.5,
+            "Projection": 28.0, "Confidence": 62.0, "Edge%": 9.8, "Flags": "",
+            "PO_Games": 4, "book_count": 5, "meta": meta, "total_penalty": 0.0,
+        })
+        pred = {"expected_margin": 8.2, "predicted_total": 225.0, "home_pace": 99.0,
+                "away_pace": 100.0, "fav_prob": 0.66}
+        out = _nc._pick_to_dict(row, "LAL@BOS", pred)
+        assert out["book_spread"] == pytest.approx(4.5)
+        assert out["model_margin"] == pytest.approx(8.2)
+        assert out["game_spread"] == pytest.approx(8.2)  # explicit legacy meaning
+        assert out["rs_raw_count"] == 70 and out["po_usable_count"] == 4
+        assert out["fetch_status"] == "rs=ok;po=ok;po_raw=ok"

@@ -14,6 +14,22 @@ from typing import List
 
 DB_PATH = Path(__file__).parent / "predictions.db"
 
+PROP_PROVENANCE_FIELDS = (
+    "rs_raw_count",
+    "rs_usable_count",
+    "po_raw_count",
+    "po_usable_count",
+    "fetch_status",
+    "source_last_game_date",
+    "data_as_of_utc",
+    "data_age_days",
+    "active_season",
+    "season_mode",
+    "model_version",
+    "book_spread",
+    "model_margin",
+)
+
 _CREATE_PROP = """
 CREATE TABLE IF NOT EXISTS prop_predictions (
     date        TEXT NOT NULL,
@@ -37,6 +53,19 @@ CREATE TABLE IF NOT EXISTS prop_predictions (
     p_market    REAL,
     decimal_odds REAL,
     stake_pct   REAL,
+    rs_raw_count INTEGER,
+    rs_usable_count INTEGER,
+    po_raw_count INTEGER,
+    po_usable_count INTEGER,
+    fetch_status TEXT,
+    source_last_game_date TEXT,
+    data_as_of_utc TEXT,
+    data_age_days INTEGER,
+    active_season TEXT,
+    season_mode TEXT,
+    model_version TEXT,
+    book_spread REAL,
+    model_margin REAL,
     PRIMARY KEY (date, player, market)
 )
 """
@@ -48,6 +77,19 @@ _MIGRATIONS = [
     ("prop_predictions", "p_market", "REAL"),
     ("prop_predictions", "decimal_odds", "REAL"),
     ("prop_predictions", "stake_pct", "REAL"),
+    ("prop_predictions", "rs_raw_count", "INTEGER"),
+    ("prop_predictions", "rs_usable_count", "INTEGER"),
+    ("prop_predictions", "po_raw_count", "INTEGER"),
+    ("prop_predictions", "po_usable_count", "INTEGER"),
+    ("prop_predictions", "fetch_status", "TEXT"),
+    ("prop_predictions", "source_last_game_date", "TEXT"),
+    ("prop_predictions", "data_as_of_utc", "TEXT"),
+    ("prop_predictions", "data_age_days", "INTEGER"),
+    ("prop_predictions", "active_season", "TEXT"),
+    ("prop_predictions", "season_mode", "TEXT"),
+    ("prop_predictions", "model_version", "TEXT"),
+    ("prop_predictions", "book_spread", "REAL"),
+    ("prop_predictions", "model_margin", "REAL"),
     ("game_predictions", "home_prob", "REAL"),
     ("game_predictions", "p_market", "REAL"),
     ("game_predictions", "decimal_odds", "REAL"),
@@ -97,8 +139,12 @@ def upsert_prop_predictions(rows: List[dict], game_date: date, path: Path = DB_P
                (date, game, player, market, line, pick, projection, confidence,
                 edge_pct, flags, po_count, avg_min, book_count, usg_pct,
                 game_spread, game_total, game_pace, fav_win_pct, p_market,
-                decimal_odds, stake_pct)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                decimal_odds, stake_pct, rs_raw_count, rs_usable_count,
+                po_raw_count, po_usable_count, fetch_status,
+                source_last_game_date, data_as_of_utc, data_age_days,
+                active_season, season_mode, model_version, book_spread,
+                model_margin)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             [
                 (
                     date_str,
@@ -122,6 +168,19 @@ def upsert_prop_predictions(rows: List[dict], game_date: date, path: Path = DB_P
                     r.get("p_market"),
                     r.get("decimal_odds"),
                     r.get("stake_pct"),
+                    r.get("rs_raw_count"),
+                    r.get("rs_usable_count"),
+                    r.get("po_raw_count"),
+                    r.get("po_usable_count"),
+                    r.get("fetch_status"),
+                    r.get("source_last_game_date"),
+                    r.get("data_as_of_utc"),
+                    r.get("data_age_days"),
+                    r.get("active_season"),
+                    r.get("season_mode"),
+                    r.get("model_version"),
+                    r.get("book_spread"),
+                    r.get("model_margin"),
                 )
                 for r in rows
             ],
@@ -174,7 +233,9 @@ def load_prop_predictions(target_date: date, path: Path = DB_PATH) -> List[dict]
     with _connect(path) as conn:
         cur = conn.execute(
             "SELECT player, market, line, pick, projection, flags, p_market, confidence, "
-            "decimal_odds, stake_pct "
+            "decimal_odds, stake_pct, rs_raw_count, rs_usable_count, po_raw_count, "
+            "po_usable_count, fetch_status, source_last_game_date, data_as_of_utc, "
+            "data_age_days, active_season, season_mode, model_version, book_spread, model_margin "
             "FROM prop_predictions WHERE date = ? ORDER BY confidence DESC",
             (date_str,),
         )
@@ -190,6 +251,19 @@ def load_prop_predictions(target_date: date, path: Path = DB_PATH) -> List[dict]
                 "confidence": float(row[7]) if row[7] is not None else None,
                 "decimal_odds": float(row[8]) if row[8] is not None else None,
                 "stake_pct": float(row[9]) if row[9] is not None else None,
+                "rs_raw_count": int(row[10]) if row[10] is not None else None,
+                "rs_usable_count": int(row[11]) if row[11] is not None else None,
+                "po_raw_count": int(row[12]) if row[12] is not None else None,
+                "po_usable_count": int(row[13]) if row[13] is not None else None,
+                "fetch_status": row[14],
+                "source_last_game_date": row[15],
+                "data_as_of_utc": row[16],
+                "data_age_days": int(row[17]) if row[17] is not None else None,
+                "active_season": row[18],
+                "season_mode": row[19],
+                "model_version": row[20],
+                "book_spread": float(row[21]) if row[21] is not None else None,
+                "model_margin": float(row[22]) if row[22] is not None else None,
             }
             for row in cur.fetchall()
         ]

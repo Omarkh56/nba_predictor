@@ -10,6 +10,7 @@ implementation imported by all of them.
 import json
 import logging
 import time
+from dataclasses import dataclass
 from typing import Callable, Optional, TypeVar
 
 import requests
@@ -17,6 +18,19 @@ import requests
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
+
+
+@dataclass
+class DataFrameCallResult:
+    """Outcome of a DataFrame API call without conflating failure and no rows."""
+
+    status: str  # "ok" | "ok_empty" | "failed"
+    frame: object
+    error: str = ""
+
+    @property
+    def ok(self) -> bool:
+        return self.status in {"ok", "ok_empty"}
 
 
 def api_call_with_retry(
@@ -80,3 +94,27 @@ def safe_dataframe_call(
     except RuntimeError as exc:
         logger.warning("Giving up after retries — %s", exc)
         return pd.DataFrame()
+
+
+def dataframe_call_result(
+    fn: Callable[[], T],
+    retries: int = 3,
+    label: str = "",
+) -> DataFrameCallResult:
+    """Run a DataFrame call and preserve whether an empty result was valid.
+
+    The older :func:`safe_dataframe_call` intentionally retains its legacy
+    empty-on-failure behavior for callers that have not migrated yet. New
+    model data paths should use this function so failures are never cached or
+    interpreted as a player having zero games.
+    """
+    import pandas as pd
+
+    try:
+        frame = api_call_with_retry(fn, retries=retries, label=label)
+        if not isinstance(frame, pd.DataFrame):
+            raise TypeError("NBA API call did not return a DataFrame")
+        return DataFrameCallResult("ok_empty" if frame.empty else "ok", frame)
+    except (RuntimeError, TypeError) as exc:
+        logger.warning("Giving up after retries — %s", exc)
+        return DataFrameCallResult("failed", None, error=f"{type(exc).__name__}: {exc}")

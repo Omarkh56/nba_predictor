@@ -96,9 +96,16 @@ def test_checkresults_append_path_is_idempotent(monkeypatch, tmp_path):
         "player": "Nikola Jokic", "market": "PTS", "line": 25.5, "pick": "OVER",
         "projection": 27.1, "actual": 30, "margin": 4.5, "result": "HIT ✓",
         "flags": "", "p_model": 0.61, "p_market": None,
+        "rs_raw_count": 70, "rs_usable_count": 20, "po_raw_count": 5,
+        "po_usable_count": 4, "fetch_status": "rs=ok;po=ok;po_raw=ok",
+        "source_last_game_date": "2026-04-30", "data_as_of_utc": "2026-05-01T12:00:00+00:00",
+        "data_age_days": 1, "active_season": "2025-26", "season_mode": "playoffs",
+        "model_version": "v-test", "book_spread": 4.5, "model_margin": 6.2,
     }]
     checkresults.append_to_log(graded, date(2026, 5, 1))
     checkresults.append_to_log(graded, date(2026, 5, 1))
     saved = pd.read_csv(path)
     assert len(saved) == 1
     assert saved.loc[0, "actual"] == 30
+    assert saved.loc[0, "po_raw_count"] == 5
+    assert saved.loc[0, "fetch_status"] == "rs=ok;po=ok;po_raw=ok"

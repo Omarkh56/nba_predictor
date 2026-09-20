@@ -66,7 +66,7 @@ import sys
 import time
 import unicodedata
 import warnings
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 
 from dotenv import load_dotenv
 
@@ -79,7 +79,7 @@ import urllib3
 
 from config import current_season
 from env_config import require_env
-from nba_api_utils import safe_dataframe_call
+from nba_api_utils import dataframe_call_result
 from player_regression import predict_player_stat  # noqa: E402
 
 logger = logging.getLogger(__name__)
@@ -374,6 +374,7 @@ def _flag_penalty(name: str, default: float) -> float:
 # =============================================================================
 _LEARNED_PLAYER_PARAMS: dict = {}  # stat → {"ewma_weight", "home_boost", "rest_coef", ...}
 _LEARNED_VARIANCE: dict = {}  # {"by_position": {G/F/C: {PTS/REB/...: std}}, ...}
+_LEARNED_PARAMS_VERSION = "unknown"
 
 _LEARNED_PARAMS_FILE = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "learned_params.json"
@@ -382,13 +383,15 @@ _LEARNED_PARAMS_FILE = os.path.join(
 
 def _load_learned_player_params() -> None:
     """Load player model params and variance estimates from learned_params.json."""
-    global _LEARNED_PLAYER_PARAMS, _LEARNED_VARIANCE, PROP_STD_DEV_PO, PROP_STD_DEV_RS
+    global _LEARNED_PLAYER_PARAMS, _LEARNED_VARIANCE, _LEARNED_PARAMS_VERSION
+    global PROP_STD_DEV_PO, PROP_STD_DEV_RS
     if not os.path.exists(_LEARNED_PARAMS_FILE):
         return
     try:
         with open(_LEARNED_PARAMS_FILE) as fh:
             data = json.load(fh)
         _LEARNED_PLAYER_PARAMS = data.get("player_models", {})
+        _LEARNED_PARAMS_VERSION = str(data.get("version", "unknown"))
         var_block = data.get("player_variance", {})
         _LEARNED_VARIANCE = var_block
 
@@ -506,6 +509,7 @@ IS_PLAYOFF_SEASON = False
 # CACHES
 # =============================================================================
 PLAYER_LOGS_CACHE = {}
+PLAYER_LOGS_FETCH_META = {}  # cache-key → successful fetch provenance; failures are never cached
 LEAGUE_GAMELOGS_CACHE = {}
 TEAM_DEF_CACHE = {}
 TEAM_STATS_CACHE = {}
@@ -514,6 +518,10 @@ PLAYER_USG_CACHE = {}  # {player_name: usg_pct float}  — leaguedashplayerbiost
 PLAYER_POS_CACHE = {}  # {player_name: "G"/"F"/"C"}    — built from team rosters
 TEAM_ROSTER_CACHE = {}  # {team_id: {player_name: pos_group}} — commonteamroster
 TEAM_DVP_CACHE = {}  # {(team_id, pos_group, stat_col): factor} — computed
+
+
+class NbaDataUnavailable(RuntimeError):
+    """A required NBA API request failed; the model must skip rather than guess."""
 
 
 # =============================================================================
@@ -844,7 +852,6 @@ def _fetch_team_roster(team_id):
         return result
     except (requests.exceptions.RequestException, json.JSONDecodeError, KeyError) as e:
         print(f"  Roster fetch error (team {team_id}): {e}")
-        TEAM_ROSTER_CACHE[team_id] = {}
         return {}
 
 
@@ -1106,6 +1113,8 @@ def _fetch_logs(
     if ck in PLAYER_LOGS_CACHE:
         return PLAYER_LOGS_CACHE[ck]
 
+    fetched = {}
+
     def _fetch() -> pd.DataFrame:
         df = playergamelog.PlayerGameLog(
             player_id=pid,
@@ -1114,20 +1123,38 @@ def _fetch_logs(
             timeout=30,
         ).get_data_frames()[0]
         api_sleep()
+        fetched["raw_count"] = int(len(df))
         if not df.empty:
             df["GAME_DATE"] = pd.to_datetime(df["GAME_DATE"], format="mixed")
             df = df.sort_values("GAME_DATE", ascending=False).reset_index(drop=True)
+            fetched["source_last_game_date"] = str(df["GAME_DATE"].max().date())
             if "MIN" in df.columns:
                 df["_MIN_F"] = df["MIN"].apply(_parse_minutes)
                 df = df[df["_MIN_F"] >= min_minutes].reset_index(drop=True)
                 df = df.drop(columns=["_MIN_F"])
         return df
 
-    result = safe_dataframe_call(
+    outcome = dataframe_call_result(
         _fetch,
         retries=retries,
         label=f"fetch_logs pid={pid} {season_type}",
     )
+    if not outcome.ok:
+        # v9: never cache or interpret a failed request as a zero-game history.
+        raise NbaDataUnavailable(
+            f"player logs unavailable pid={pid} season={season} type={season_type}: {outcome.error}"
+        )
+    result = outcome.frame
+    PLAYER_LOGS_FETCH_META[ck] = {
+        "status": outcome.status,
+        "fetched_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "raw_count": int(fetched.get("raw_count", len(result))),
+        "usable_count": int(len(result)),
+        "source_last_game_date": fetched.get("source_last_game_date"),
+        "season": season,
+        "season_type": season_type,
+        "min_minutes": float(min_minutes),
+    }
     PLAYER_LOGS_CACHE[ck] = result
     return result
 
@@ -1143,6 +1170,51 @@ def get_player_logs_blended(pid):
     using_playoffs = len(po_logs) >= PLAYOFF_GAMES_THRESHOLD
     # Return raw_po_count as 5th element for flag logic
     return po_logs, rs_logs, using_playoffs, len(po_logs), len(po_raw)
+
+
+def _player_fetch_provenance(pid, po_logs, rs_logs, po_raw_count) -> dict:
+    """Describe the exact player-history snapshot used by a live projection."""
+    keys = {
+        "po": (pid, SEASON, SEASON_TYPE_PO, MIN_MINUTES_PO),
+        "po_raw": (pid, SEASON, SEASON_TYPE_PO, 0),
+        "rs": (pid, SEASON, SEASON_TYPE_RS, MIN_MINUTES_RS),
+    }
+    meta = {name: PLAYER_LOGS_FETCH_META.get(key) for name, key in keys.items()}
+    available = [m for m in meta.values() if m]
+    if available:
+        fetch_status = ";".join(
+            f"{name}={meta[name]['status'] if meta[name] else 'unknown'}"
+            for name in ("rs", "po", "po_raw")
+        )
+        fetched_at = max(str(m.get("fetched_at_utc") or "") for m in available) or None
+        dates = [str(m.get("source_last_game_date")) for m in available if m.get("source_last_game_date")]
+        source_last = max(dates) if dates else None
+        rs_raw = int(meta["rs"].get("raw_count", len(rs_logs))) if meta["rs"] else len(rs_logs)
+    else:
+        # Replay workers inject strict as-of frames instead of making API calls.
+        fetch_status, fetched_at = "replay_asof", None
+        dates = []
+        for frame in (rs_logs, po_logs):
+            if frame is not None and not frame.empty and "GAME_DATE" in frame:
+                dates.append(str(pd.to_datetime(frame["GAME_DATE"]).max().date()))
+        source_last = max(dates) if dates else None
+        rs_raw = len(rs_logs)
+    age = None
+    if source_last:
+        age = max(0, (date.today() - date.fromisoformat(source_last)).days)
+    return {
+        "rs_raw_count": int(rs_raw),
+        "rs_usable_count": int(len(rs_logs)),
+        "po_raw_count": int(po_raw_count),
+        "po_usable_count": int(len(po_logs)),
+        "fetch_status": fetch_status,
+        "source_last_game_date": source_last,
+        "data_as_of_utc": fetched_at,
+        "data_age_days": age,
+        "active_season": SEASON,
+        "season_mode": "playoffs" if IS_PLAYOFF_SEASON else "regular",
+        "model_version": _LEARNED_PARAMS_VERSION,
+    }
 
 
 def _avg_minutes(logs, half_life=4):
@@ -1177,13 +1249,14 @@ def _std_minutes(logs):
 # =============================================================================
 # LEAGUE LOGS
 # =============================================================================
-def safe_lgf(retries: int = 3, **kw) -> pd.DataFrame:
+def _safe_lgf_result(retries: int = 3, **kw):
+    """Status-preserving LeagueGameFinder call for required model inputs."""
     def _call():
         df = leaguegamefinder.LeagueGameFinder(timeout=30, **kw).get_data_frames()[0]
         api_sleep()
         return df
 
-    return safe_dataframe_call(_call, retries=retries, label="safe_lgf")
+    return dataframe_call_result(_call, retries=retries, label="safe_lgf")
 
 
 def get_league_logs():
@@ -1192,16 +1265,23 @@ def get_league_logs():
     if ck in LEAGUE_GAMELOGS_CACHE:
         return LEAGUE_GAMELOGS_CACHE[ck]
     print("  Loading league game logs (Playoffs)...")
-    df = safe_lgf(
+    po_result = _safe_lgf_result(
         season_nullable=SEASON, season_type_nullable=SEASON_TYPE_PO, player_or_team_abbreviation="P"
     )
-    if df.empty:
+    if not po_result.ok:
+        raise NbaDataUnavailable(f"playoff league logs unavailable: {po_result.error}")
+    df = po_result.frame
+    IS_PLAYOFF_SEASON = False
+    if po_result.status == "ok_empty":
         print("  Playoff logs empty — falling back to regular season.")
-        df = safe_lgf(
+        rs_result = _safe_lgf_result(
             season_nullable=SEASON,
             season_type_nullable=SEASON_TYPE_RS,
             player_or_team_abbreviation="P",
         )
+        if not rs_result.ok:
+            raise NbaDataUnavailable(f"regular-season league logs unavailable: {rs_result.error}")
+        df = rs_result.frame
     else:
         IS_PLAYOFF_SEASON = True
         print("  Playoffs detected — rotation minute adjustments active.")
@@ -1237,7 +1317,6 @@ def get_team_season_stats():
         return result
     except (requests.exceptions.RequestException, json.JSONDecodeError, KeyError, ValueError) as e:
         print(f"  Team stats error: {e}")
-        TEAM_STATS_CACHE["stats"] = pd.DataFrame()
         return pd.DataFrame()
 
 
@@ -1933,6 +2012,7 @@ def _build_prop_metadata(
     self_inj_flag: str,
     proj_low,
     proj_high,
+    fetch_provenance,
 ) -> dict:
     """Assemble the metadata dict returned by project_prop()."""
     po_min = _avg_minutes(po_logs)
@@ -1960,7 +2040,7 @@ def _build_prop_metadata(
     road_b2b_penalty = _flag_penalty("ROAD_B2B", 3.0) if road_b2b else 0.0
     total_penalty = bench_penalty + mins_vol_penalty + road_b2b_penalty + self_inj_penalty
 
-    return {
+    metadata = {
         "avg_min": avg_min,
         "conf_penalty": total_penalty,
         "bench_penalty": bench_penalty,
@@ -1981,6 +2061,8 @@ def _build_prop_metadata(
         "proj_low": proj_low,
         "proj_high": proj_high,
     }
+    metadata.update(fetch_provenance)
+    return metadata
 
 
 def project_prop(
@@ -2074,6 +2156,7 @@ def project_prop(
         self_inj_flag,
         proj_low,
         proj_high,
+        _player_fetch_provenance(pid, po_logs, rs_logs, po_raw_count),
     )
 
     return round(total, 1), details, sd, metadata
@@ -2431,26 +2514,35 @@ def process_game(
     )
 
     results = []
+    failed_player_data = set()
     for _, row in cdf.iterrows():
         pl, mkt, line = row["player"], row["market"], row["consensus_line"]
         label = MARKET_LABELS.get(mkt, mkt)
         book_count = int(row.get("book_count", 0))
-        if pd.isna(line) or pl not in ctx:
+        if pd.isna(line) or pl not in ctx or pl in failed_player_data:
             continue
         c = ctx[pl]
 
-        proj, details, sd, meta = project_prop(
-            pl,
-            mkt,
-            c["opp_abbr"],
-            c["opp_tid"],
-            c["injuries"],
-            c["pos"],
-            c["is_home"],
-            c["team_abbr"],
-            spread=spread,
-            pace_factor=pace_factor,
-        )
+        try:
+            proj, details, sd, meta = project_prop(
+                pl,
+                mkt,
+                c["opp_abbr"],
+                c["opp_tid"],
+                c["injuries"],
+                c["pos"],
+                c["is_home"],
+                c["team_abbr"],
+                spread=spread,
+                pace_factor=pace_factor,
+            )
+        except NbaDataUnavailable as exc:
+            # v9: skip this player's remaining markets. A fetch failure is not
+            # evidence that the player has no history and must never trigger a
+            # regular-season/no-playoff fallback projection.
+            logger.warning("Skipping %s because required history failed: %s", pl, exc)
+            failed_player_data.add(pl)
+            continue
         if proj is None:
             continue
 

@@ -37,6 +37,7 @@ def _import_oddstracker():
     stub_nba_utils = types.ModuleType("nba_api_utils")
     stub_nba_utils.api_call_with_retry = mock.Mock(side_effect=lambda fn, **kw: fn())
     stub_nba_utils.safe_dataframe_call = mock.Mock(return_value=None)
+    stub_nba_utils.dataframe_call_result = mock.Mock(return_value=None)
 
     with mock.patch.dict("sys.modules", {
         "requests": stub_requests, "requests.exceptions": exc_stub,
