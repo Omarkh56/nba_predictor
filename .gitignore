@@ -50,3 +50,12 @@ tvp_state.json
 # Secrets / environment (.env.example is committed; .env is not)
 .env
 *.env.local
+
+# Replay engine (scripts/replay): local NBA API response cache and large per-row outputs.
+# Small summaries under scripts/replay/reports/ ARE committed.
+replay-cache/
+scripts/replay/output/
+
+# Local safety backups and simulated/backtest outputs (never mixed into bet_log.csv)
+backups/
+backtest_bets.csv
