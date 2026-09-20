@@ -1,0 +1,176 @@
+{
+  "backup": "backups/bet_log.pre_dedupe.20260921.csv (local, gitignored)",
+  "calibration_diagnostic": {
+    "deduped_diagnostic_sha256": "5b6a69e6c2401b1811cb03671ed7d8a938c6d189cd839c24bcfb2da7884b4005",
+    "deployed_file_restored": true,
+    "market_direction": {
+      "3PM_OVER": {
+        "new_conf_adj": 2.9,
+        "new_n": 81,
+        "new_raw_rate": 0.543,
+        "old_conf_adj": 2.7,
+        "old_n": 95,
+        "old_raw_rate": 0.537
+      },
+      "3PM_UNDER": {
+        "new_conf_adj": -11.5,
+        "new_n": 12,
+        "new_raw_rate": 0.25,
+        "old_conf_adj": -11.4,
+        "old_n": 12,
+        "old_raw_rate": 0.25
+      },
+      "AST_OVER": {
+        "new_conf_adj": 2.1,
+        "new_n": 169,
+        "new_raw_rate": 0.533,
+        "old_conf_adj": 2.7,
+        "old_n": 204,
+        "old_raw_rate": 0.534
+      },
+      "AST_UNDER": {
+        "new_conf_adj": 13.0,
+        "new_n": 66,
+        "new_raw_rate": 0.667,
+        "old_conf_adj": 13.3,
+        "old_n": 77,
+        "old_raw_rate": 0.662
+      },
+      "PRA_OVER": {
+        "new_conf_adj": -7.2,
+        "new_n": 64,
+        "new_raw_rate": 0.422,
+        "old_conf_adj": -7.0,
+        "old_n": 71,
+        "old_raw_rate": 0.423
+      },
+      "PRA_UNDER": {
+        "new_conf_adj": -2.5,
+        "new_n": 5,
+        "new_raw_rate": 0.4,
+        "old_conf_adj": -2.4,
+        "old_n": 5,
+        "old_raw_rate": 0.4
+      },
+      "PTS+AST_OVER": {
+        "new_conf_adj": -1.4,
+        "new_n": 85,
+        "new_raw_rate": 0.494,
+        "old_conf_adj": -0.5,
+        "old_n": 106,
+        "old_raw_rate": 0.5
+      },
+      "PTS+AST_UNDER": {
+        "new_conf_adj": 6.2,
+        "new_n": 7,
+        "new_raw_rate": 0.714,
+        "old_conf_adj": 10.0,
+        "old_n": 9,
+        "old_raw_rate": 0.778
+      },
+      "PTS+REB_OVER": {
+        "new_conf_adj": -7.0,
+        "new_n": 16,
+        "new_raw_rate": 0.375,
+        "old_conf_adj": -12.0,
+        "old_n": 20,
+        "old_raw_rate": 0.3
+      },
+      "PTS+REB_UNDER": {
+        "new_conf_adj": -6.8,
+        "new_n": 7,
+        "new_raw_rate": 0.286,
+        "old_conf_adj": -6.7,
+        "old_n": 7,
+        "old_raw_rate": 0.286
+      },
+      "PTS_OVER": {
+        "new_conf_adj": -6.9,
+        "new_n": 93,
+        "new_raw_rate": 0.43,
+        "old_conf_adj": -10.4,
+        "old_n": 113,
+        "old_raw_rate": 0.389
+      },
+      "PTS_UNDER": {
+        "new_conf_adj": -1.8,
+        "new_n": 31,
+        "new_raw_rate": 0.484,
+        "old_conf_adj": -2.4,
+        "old_n": 36,
+        "old_raw_rate": 0.472
+      },
+      "REB+AST_OVER": {
+        "new_conf_adj": -7.3,
+        "new_n": 55,
+        "new_raw_rate": 0.418,
+        "old_conf_adj": -5.0,
+        "old_n": 63,
+        "old_raw_rate": 0.444
+      },
+      "REB+AST_UNDER": {
+        "new_conf_adj": 9.9,
+        "new_n": 19,
+        "new_raw_rate": 0.684,
+        "old_conf_adj": 10.7,
+        "old_n": 22,
+        "old_raw_rate": 0.682
+      },
+      "REB_OVER": {
+        "new_conf_adj": 1.3,
+        "new_n": 214,
+        "new_raw_rate": 0.523,
+        "old_conf_adj": 1.0,
+        "old_n": 271,
+        "old_raw_rate": 0.517
+      },
+      "REB_UNDER": {
+        "new_conf_adj": 5.2,
+        "new_n": 45,
+        "new_raw_rate": 0.578,
+        "old_conf_adj": 5.6,
+        "old_n": 52,
+        "old_raw_rate": 0.577
+      }
+    },
+    "new_hit_rate": 0.51,
+    "new_total_bets": 969,
+    "old_hit_rate": 0.506,
+    "old_sha256": "3cd8a8f85963ff30753b7ed099049c3eae0d5d8891d503fa939a09182fb11ede",
+    "old_total_bets": 1163
+  },
+  "canonical_sha256": "71e8978fd183bd0541f8da6b2e2a7e0290b8655a1d775d947decd1e8fd964b43",
+  "date_range": [
+    "2026-04-18",
+    "2026-05-12"
+  ],
+  "destination": "bet_log.csv",
+  "p_model_coverage": {
+    "n": 969,
+    "total": 969
+  },
+  "pick_counts": {
+    "OVER": 777,
+    "UNDER": 192
+  },
+  "projection_coverage": {
+    "n": 969,
+    "total": 969
+  },
+  "result_counts": {
+    "HIT": 494,
+    "MISS": 475
+  },
+  "source": "bet_log_backfilled.csv",
+  "stats": {
+    "after_rows": 969,
+    "before_rows": 1163,
+    "conflicts": 0,
+    "duplicate_groups": 194,
+    "duplicates_removed": 194,
+    "incoming_rows": 0,
+    "inserted": 0,
+    "unchanged": 0,
+    "updated": 0
+  }
+}

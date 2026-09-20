@@ -33,6 +33,7 @@ from nba_api.stats.static import players
 
 import oddstracker
 import predictions_db as pred_db
+from bet_log_utils import upsert_bet_log
 from roi_analysis import american_to_decimal
 
 logger = logging.getLogger(__name__)
@@ -828,11 +829,15 @@ def _migrate_stake_columns():
 
 
 def append_to_log(results, check_date):
-    """Append graded bets to bet_log.csv for downstream calibration.
+    """Idempotently upsert graded bets into bet_log.csv for calibration.
 
     Each row: date, player, market, line, pick, projection, actual, result
     'projection' is written only when the PREDICTIONS entry has a 'projection' key.
     PUSH and DNP rows are skipped — only HIT/MISS are logged.
+
+    v9: identity is normalized date+player+market+line+pick. Re-grading a
+    date fills missing fields but cannot append a duplicate or silently
+    overwrite a conflicting result.
     """
     # v8 Fix: surface projection coverage so silent drops are visible
     graded = [r for r in results if r.get("result") in ("HIT ✓", "MISS ✗", "PUSH", "HIT", "MISS")]
@@ -845,24 +850,6 @@ def append_to_log(results, check_date):
             print(
                 "  ⚠ NO projections being written — check that check_predictions preserves the field"
             )
-
-    fieldnames = [
-        "date",
-        "player",
-        "market",
-        "line",
-        "pick",
-        "projection",
-        "actual",
-        "margin",
-        "result",
-        "flags",
-        "p_model",
-        "p_market",
-        "decimal_odds",
-        "stake_pct",
-        "realized_profit",
-    ]
 
     file_exists = os.path.isfile(LOG_FILE) and os.path.getsize(LOG_FILE) > 0
 
@@ -946,13 +933,12 @@ def append_to_log(results, check_date):
     if not new_rows:
         return
 
-    with open(LOG_FILE, "a", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
-        if not file_exists:
-            writer.writeheader()
-        writer.writerows(new_rows)
-
-    print(f"\n  Logged {len(new_rows)} bet(s) → {os.path.basename(LOG_FILE)}")
+    stats = upsert_bet_log(LOG_FILE, new_rows)
+    print(
+        f"\n  Upserted {len(new_rows)} graded bet(s) → {os.path.basename(LOG_FILE)} "
+        f"({stats.inserted} new, {stats.updated} enriched, {stats.unchanged} unchanged; "
+        f"{stats.duplicates_removed} duplicate row(s) removed)"
+    )
 
 
 # =============================================================================
