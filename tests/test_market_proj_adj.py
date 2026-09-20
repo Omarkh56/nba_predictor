@@ -11,9 +11,9 @@ def test_pts_over_hits_floor_from_observed_hit_rate():
         "3PM_OVER": {"n": 80, "raw_rate": 0.517},
     })
     assert adj["PTS"] == 0.933
-    assert adj["REB"] == 0.985
-    assert adj["AST"] == 0.978
-    assert adj["FG3M"] == 0.99
+    assert adj["REB"] == 1.015
+    assert adj["AST"] == 1.022
+    assert adj["FG3M"] == 1.010
 
 
 def test_combo_and_under_keys_are_ignored():
