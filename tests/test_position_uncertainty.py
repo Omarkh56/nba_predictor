@@ -106,8 +106,9 @@ def test_real_projection_threads_resolved_position_into_actual_sd(projection_set
     projection_setup({})  # Set projection factors to neutral; real project_stat still runs.
     monkeypatch.setattr(predictor, "PLAYER_POS_CACHE", {"Probe": "PG"})
     monkeypatch.setattr(predictor, "get_player_id", lambda _: 1)
-    monkeypatch.setattr(predictor, "get_player_logs_blended", lambda _: (
-        pd.DataFrame(), pd.DataFrame({"PTS": [20], "MIN": [20]}), False, 0, 0))
+    rs = pd.DataFrame({"PTS": [20], "MIN": [20]})
+    monkeypatch.setattr(predictor, "get_player_logs_blended", lambda _: predictor.PlayerLogHistory(
+        pd.DataFrame(), rs, pd.DataFrame(), rs, False, 0, 0))
     monkeypatch.setattr(predictor, "_compute_prop_range", lambda *_: (None, None))
     monkeypatch.setattr(predictor, "_apply_combo_and_usg", lambda total, *_: (total, 1, 1))
     monkeypatch.setattr(predictor, "_build_prop_metadata", lambda *_: {})

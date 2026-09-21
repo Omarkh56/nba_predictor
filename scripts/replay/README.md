@@ -47,7 +47,7 @@ change its projection, while changing earlier games does.
 
 | model input | replay source |
 |---|---|
-| player game history | player's prior games this season (RS and PO kept separate, same minute filters as live) |
+| player game history | player's prior games this season (RS and PO kept separate); rate samples keep the live minutes floors, while expected minutes use every played appearance with reduced leverage for extreme shorts |
 | league logs (team defense) | league logs strictly before *D* (playoff logs once a playoff game has happened, otherwise regular season: the live fall-back rule) |
 | DvP table | rebuilt each date from the same as-of league logs |
 | usage (USG) | recomputed from box scores. RS: season-to-date before *D*. PO: the completed regular season |
@@ -59,8 +59,8 @@ spread (0.0, so no blowout minute cut), matchup pace (1.0; live mean was 1.004),
 (no residual correction or pick-based multiplier is loaded).
 
 **Population.** A pre-game rule, independent of any model filter, so it is identical across model versions and
-paired comparisons stay valid: the player has at least 10 prior played games this season and averaged at least
-20 minutes over their last 10. The replay is conditional on the player having played (a DNP has no game-log row and
+paired comparisons stay valid: the player has at least 10 prior played games this season; low-minute roles remain
+eligible and are reported as their own stratum. The replay is conditional on the player having played (a DNP has no game-log row and
 sportsbooks void those props). Rows without minutes are dropped as DNPs and counted in the report.
 
 **Markets.** PTS, REB, AST, 3PM, PTS+REB, PTS+AST, REB+AST, PRA. The internal box-score column `FG3M`

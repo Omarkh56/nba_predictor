@@ -66,20 +66,19 @@ def test_player_fetch_provenance_reports_counts_freshness_and_versions(monkeypat
     monkeypatch.setattr(predictor, "_LEARNED_PARAMS_VERSION", "v-test")
     pid = 10
     common = {"status": "ok", "fetched_at_utc": "2026-05-02T12:00:00+00:00", "source_last_game_date": "2026-05-01"}
-    predictor.PLAYER_LOGS_FETCH_META[(pid, "2025-26", predictor.SEASON_TYPE_RS, predictor.MIN_MINUTES_RS)] = {
-        **common, "raw_count": 70, "usable_count": 20,
-    }
-    predictor.PLAYER_LOGS_FETCH_META[(pid, "2025-26", predictor.SEASON_TYPE_PO, predictor.MIN_MINUTES_PO)] = {
-        **common, "raw_count": 5, "usable_count": 4,
+    predictor.PLAYER_LOGS_FETCH_META[(pid, "2025-26", predictor.SEASON_TYPE_RS, 0)] = {
+        **common, "raw_count": 70, "usable_count": 70,
     }
     predictor.PLAYER_LOGS_FETCH_META[(pid, "2025-26", predictor.SEASON_TYPE_PO, 0)] = {
         **common, "raw_count": 5, "usable_count": 5,
     }
     po, rs = pd.DataFrame(index=range(4)), pd.DataFrame(index=range(20))
-    out = predictor._player_fetch_provenance(pid, po, rs, po_raw_count=5)
+    history = predictor.PlayerLogHistory(po, rs, pd.DataFrame(index=range(5)),
+                                         pd.DataFrame(index=range(20)), True, 4, 5)
+    out = predictor._player_fetch_provenance(pid, history)
     assert out["rs_raw_count"] == 70 and out["rs_usable_count"] == 20
     assert out["po_raw_count"] == 5 and out["po_usable_count"] == 4
-    assert out["fetch_status"] == "rs=ok;po=ok;po_raw=ok"
+    assert out["fetch_status"] == "rs=ok;po=ok"
     assert out["source_last_game_date"] == "2026-05-01"
     assert out["active_season"] == "2025-26" and out["season_mode"] == "playoffs"
     assert out["model_version"] == "v-test"

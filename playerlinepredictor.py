@@ -67,6 +67,7 @@ import time
 import unicodedata
 import warnings
 from datetime import date, datetime, timezone
+from typing import NamedTuple
 
 from dotenv import load_dotenv
 
@@ -214,6 +215,11 @@ MIN_MINUTES_RS = 15
 MIN_MINUTES_PO = (
     10  # lowered from 18 — rotation players with 10-17 min PO appearances were being excluded
 )
+# v9: rate estimates still require reliable-minute samples, while expected
+# minutes can use every played appearance so role collapses are not hidden.
+MINUTES_HISTORY_MODE = "robust"  # replay winner: every appearance, reduced leverage for extreme shorts
+SHORT_APPEARANCE_REFERENCE_MIN = 15.0
+SHORT_APPEARANCE_WEIGHT_FLOOR = 0.35
 BENCH_MIN_THRESHOLD = 20
 STARTER_MIN_THRESHOLD = 28
 
@@ -1159,54 +1165,82 @@ def _fetch_logs(
     return result
 
 
-def get_player_logs_blended(pid):
-    po_logs = _fetch_logs(pid, SEASON, SEASON_TYPE_PO, MIN_MINUTES_PO)
-    # Raw count (no minute filter) — used only for NO-PO flag so it fires only
-    # when the player has truly had zero playoff appearances, not just short ones.
-    po_raw = _fetch_logs(pid, SEASON, SEASON_TYPE_PO, 0)
-    rs_logs = _fetch_logs(pid, SEASON, SEASON_TYPE_RS, MIN_MINUTES_RS)
-    if not rs_logs.empty:
-        rs_logs = rs_logs.head(20)
-    using_playoffs = len(po_logs) >= PLAYOFF_GAMES_THRESHOLD
-    # Return raw_po_count as 5th element for flag logic
-    return po_logs, rs_logs, using_playoffs, len(po_logs), len(po_raw)
+class PlayerLogHistory(NamedTuple):
+    """Separate production-rate samples from expected-minutes samples."""
+
+    po_rates: pd.DataFrame
+    rs_rates: pd.DataFrame
+    po_minutes: pd.DataFrame
+    rs_minutes: pd.DataFrame
+    using_playoffs: bool
+    po_rate_count: int
+    po_raw_count: int
 
 
-def _player_fetch_provenance(pid, po_logs, rs_logs, po_raw_count) -> dict:
+def _minute_filter(logs: pd.DataFrame, minimum: float) -> pd.DataFrame:
+    if logs.empty or "MIN" not in logs.columns:
+        return logs.copy()
+    keep = logs["MIN"].apply(_parse_minutes) >= minimum
+    return logs.loc[keep].reset_index(drop=True)
+
+
+def get_player_logs_blended(pid) -> PlayerLogHistory:
+    """Fetch once without a minutes floor, then build rate and minutes histories.
+
+    Short played appearances remain available to the minutes model. The old
+    filters still protect per-minute rate estimates from tiny denominators.
+    """
+    po_all = _fetch_logs(pid, SEASON, SEASON_TYPE_PO, 0)
+    rs_all = _fetch_logs(pid, SEASON, SEASON_TYPE_RS, 0)
+    po_rates = _minute_filter(po_all, MIN_MINUTES_PO)
+    rs_rates = _minute_filter(rs_all, MIN_MINUTES_RS).head(20)
+    po_minutes = po_all.reset_index(drop=True)
+    rs_minutes = rs_all.head(20).reset_index(drop=True)
+    return PlayerLogHistory(
+        po_rates=po_rates,
+        rs_rates=rs_rates,
+        po_minutes=po_minutes,
+        rs_minutes=rs_minutes,
+        using_playoffs=len(po_rates) >= PLAYOFF_GAMES_THRESHOLD,
+        po_rate_count=len(po_rates),
+        po_raw_count=len(po_all),
+    )
+
+
+def _player_fetch_provenance(pid, history: PlayerLogHistory) -> dict:
     """Describe the exact player-history snapshot used by a live projection."""
     keys = {
-        "po": (pid, SEASON, SEASON_TYPE_PO, MIN_MINUTES_PO),
-        "po_raw": (pid, SEASON, SEASON_TYPE_PO, 0),
-        "rs": (pid, SEASON, SEASON_TYPE_RS, MIN_MINUTES_RS),
+        "po": (pid, SEASON, SEASON_TYPE_PO, 0),
+        "rs": (pid, SEASON, SEASON_TYPE_RS, 0),
     }
     meta = {name: PLAYER_LOGS_FETCH_META.get(key) for name, key in keys.items()}
     available = [m for m in meta.values() if m]
     if available:
         fetch_status = ";".join(
             f"{name}={meta[name]['status'] if meta[name] else 'unknown'}"
-            for name in ("rs", "po", "po_raw")
+            for name in ("rs", "po")
         )
         fetched_at = max(str(m.get("fetched_at_utc") or "") for m in available) or None
         dates = [str(m.get("source_last_game_date")) for m in available if m.get("source_last_game_date")]
         source_last = max(dates) if dates else None
-        rs_raw = int(meta["rs"].get("raw_count", len(rs_logs))) if meta["rs"] else len(rs_logs)
+        rs_raw = int(meta["rs"].get("raw_count", len(history.rs_minutes))) if meta["rs"] else len(history.rs_minutes)
     else:
         # Replay workers inject strict as-of frames instead of making API calls.
         fetch_status, fetched_at = "replay_asof", None
         dates = []
-        for frame in (rs_logs, po_logs):
+        for frame in (history.rs_minutes, history.po_minutes):
             if frame is not None and not frame.empty and "GAME_DATE" in frame:
                 dates.append(str(pd.to_datetime(frame["GAME_DATE"]).max().date()))
         source_last = max(dates) if dates else None
-        rs_raw = len(rs_logs)
+        rs_raw = len(history.rs_minutes)
     age = None
     if source_last:
         age = max(0, (date.today() - date.fromisoformat(source_last)).days)
     return {
         "rs_raw_count": int(rs_raw),
-        "rs_usable_count": int(len(rs_logs)),
-        "po_raw_count": int(po_raw_count),
-        "po_usable_count": int(len(po_logs)),
+        "rs_usable_count": int(len(history.rs_rates)),
+        "po_raw_count": int(history.po_raw_count),
+        "po_usable_count": int(len(history.po_rates)),
         "fetch_status": fetch_status,
         "source_last_game_date": source_last,
         "data_as_of_utc": fetched_at,
@@ -1227,6 +1261,33 @@ def _avg_minutes(logs, half_life=4):
         return 0.0
     w = np.array([0.5 ** (i / half_life) for i in range(len(mins))])
     return float(np.average(mins, weights=w))
+
+
+def _robust_avg_minutes(logs, half_life=4):
+    """EWM minutes where extreme short appearances count with lower leverage."""
+    if logs.empty or "MIN" not in logs.columns:
+        return 0.0
+    mins = logs["MIN"].apply(_parse_minutes).to_numpy(dtype=float)
+    if len(mins) == 0:
+        return 0.0
+    recency = np.array([0.5 ** (i / half_life) for i in range(len(mins))])
+    reliability = np.clip(
+        mins / SHORT_APPEARANCE_REFERENCE_MIN,
+        SHORT_APPEARANCE_WEIGHT_FLOOR,
+        1.0,
+    )
+    return float(np.average(mins, weights=recency * reliability))
+
+
+def _minutes_average(rate_logs: pd.DataFrame, played_logs: pd.DataFrame) -> float:
+    """Select the replay-validated source used for expected minutes."""
+    if MINUTES_HISTORY_MODE == "filtered":
+        return _avg_minutes(rate_logs)
+    if MINUTES_HISTORY_MODE == "all_played":
+        return _avg_minutes(played_logs)
+    if MINUTES_HISTORY_MODE == "robust":
+        return _robust_avg_minutes(played_logs)
+    raise ValueError("unknown MINUTES_HISTORY_MODE: %s" % MINUTES_HISTORY_MODE)
 
 
 def _playoff_rotation_adj(rs_min: float) -> float:
@@ -1439,10 +1500,10 @@ def _get_injured_player_recent_stat(injured_name: str, inj_field: str, n_games: 
     if not pid:
         return None
     try:
-        po_logs, rs_logs, _, _, _ = get_player_logs_blended(pid)
+        history = get_player_logs_blended(pid)
     except (requests.exceptions.RequestException, json.JSONDecodeError, KeyError, ValueError):
         return None
-    logs = po_logs if not po_logs.empty else rs_logs
+    logs = history.po_rates if not history.po_rates.empty else history.rs_rates
     if logs.empty:
         return None
     stat_col_map = {"ppg": "PTS", "rpg": "REB", "apg": "AST"}
@@ -1792,13 +1853,21 @@ def project_stat(
     po_count,
     spread=0.0,
     pace_factor=None,
+    po_minute_logs=None,
+    rs_minute_logs=None,
+    po_minute_count=None,
 ):
-    po_rate, po_min = _per_min_rate(po_logs, stat_col) if not po_logs.empty else (None, None)
-    rs_rate, rs_min = _per_min_rate(rs_logs, stat_col) if not rs_logs.empty else (None, None)
+    po_minute_logs = po_logs if po_minute_logs is None else po_minute_logs
+    rs_minute_logs = rs_logs if rs_minute_logs is None else rs_minute_logs
+    po_minute_count = po_count if po_minute_count is None else po_minute_count
+    po_rate, _ = _per_min_rate(po_logs, stat_col) if not po_logs.empty else (None, None)
+    rs_rate, _ = _per_min_rate(rs_logs, stat_col) if not rs_logs.empty else (None, None)
+    po_min = _minutes_average(po_logs, po_minute_logs)
+    rs_min = _minutes_average(rs_logs, rs_minute_logs)
 
     # Fix 3: thread matchup-specific pace_factor through rate and minute blending
     rate = _blend_rate(po_rate, rs_rate, po_count, pace_factor=pace_factor)
-    avg_min = _blend_minutes(po_min, rs_min, po_count, pace_factor=pace_factor)
+    avg_min = _blend_minutes(po_min, rs_min, po_minute_count, pace_factor=pace_factor)
 
     if rate is None or avg_min is None:
         return None, {}
@@ -2013,10 +2082,14 @@ def _build_prop_metadata(
     proj_low,
     proj_high,
     fetch_provenance,
+    po_minute_logs=None,
+    rs_minute_logs=None,
 ) -> dict:
     """Assemble the metadata dict returned by project_prop()."""
-    po_min = _avg_minutes(po_logs)
-    rs_min = _avg_minutes(rs_logs)
+    po_minute_logs = po_logs if po_minute_logs is None else po_minute_logs
+    rs_minute_logs = rs_logs if rs_minute_logs is None else rs_minute_logs
+    po_min = _minutes_average(po_logs, po_minute_logs)
+    rs_min = _minutes_average(rs_logs, rs_minute_logs)
 
     po_min_adj_mult = 1.0
     if IS_PLAYOFF_SEASON and po_count < PLAYOFF_GAMES_THRESHOLD and rs_min > 0:
@@ -2030,13 +2103,13 @@ def _build_prop_metadata(
     bench_penalty = max(0.0, (BENCH_MIN_THRESHOLD - avg_min) * 1.5) if avg_min > 0 else 0.0
     mins_vol_penalty = 0.0
     mins_vol_flag = False
-    if not po_logs.empty and len(po_logs) >= 3:
-        cv = _std_minutes(po_logs) / po_min if po_min > 0 else 0.0
+    if not po_minute_logs.empty and len(po_minute_logs) >= 3:
+        cv = _std_minutes(po_minute_logs) / po_min if po_min > 0 else 0.0
         if cv > 0.25:
             mins_vol_penalty = min(8.0, (cv - 0.20) * 25)
             mins_vol_flag = True
 
-    road_b2b = _is_road_b2b(po_logs, is_home)
+    road_b2b = _is_road_b2b(po_minute_logs, is_home)
     road_b2b_penalty = _flag_penalty("ROAD_B2B", 3.0) if road_b2b else 0.0
     total_penalty = bench_penalty + mins_vol_penalty + road_b2b_penalty + self_inj_penalty
 
@@ -2090,11 +2163,17 @@ def project_prop(
     if not pid:
         return None, None, None, None
 
-    po_logs, rs_logs, using_playoffs, po_count, po_raw_count = get_player_logs_blended(pid)
+    history = get_player_logs_blended(pid)
+    po_logs, rs_logs = history.po_rates, history.rs_rates
+    po_minute_logs, rs_minute_logs = history.po_minutes, history.rs_minutes
+    using_playoffs = history.using_playoffs
+    po_count, po_raw_count = history.po_rate_count, history.po_raw_count
     if po_logs.empty and rs_logs.empty:
         return None, None, None, None
 
-    proj_low, proj_high = _compute_prop_range(market_key, po_logs, rs_logs, po_count)
+    proj_low, proj_high = _compute_prop_range(
+        market_key, po_minute_logs, rs_minute_logs, po_raw_count
+    )
 
     total = 0.0
     details = {}
@@ -2114,6 +2193,9 @@ def project_prop(
             po_count,
             spread=spread,
             pace_factor=pace_factor,
+            po_minute_logs=po_minute_logs,
+            rs_minute_logs=rs_minute_logs,
+            po_minute_count=(po_count if MINUTES_HISTORY_MODE == "filtered" else po_raw_count),
         )
         if p is None:
             return None, None, None, None
@@ -2124,7 +2206,7 @@ def project_prop(
         total, details, stat_cols, market_key, player_name
     )
 
-    sd = get_player_std(pid, po_logs, rs_logs, market_key, stat_cols, po_count,
+    sd = get_player_std(pid, po_minute_logs, rs_minute_logs, market_key, stat_cols, po_raw_count,
                         pos_group=details[stat_cols[0]].get("pos_group"))
     raw_total = sum(d.get("rate", 0.0) * d.get("min", 0.0) for d in details.values())
     if raw_total > 0 and total > 0 and sd and sd > 0:
@@ -2137,8 +2219,8 @@ def project_prop(
     if calib_proj_adj != 0.0:
         total += calib_proj_adj
 
-    po_min = _avg_minutes(po_logs)
-    rs_min = _avg_minutes(rs_logs)
+    po_min = _minutes_average(po_logs, po_minute_logs)
+    rs_min = _minutes_average(rs_logs, rs_minute_logs)
     avg_min = po_min if po_min > 0 else rs_min
 
     metadata = _build_prop_metadata(
@@ -2156,7 +2238,9 @@ def project_prop(
         self_inj_flag,
         proj_low,
         proj_high,
-        _player_fetch_provenance(pid, po_logs, rs_logs, po_raw_count),
+        _player_fetch_provenance(pid, history),
+        po_minute_logs,
+        rs_minute_logs,
     )
 
     return round(total, 1), details, sd, metadata
@@ -2331,8 +2415,8 @@ def _build_player_context(
         pid = get_player_id(pl)
         if not pid:
             continue
-        po_logs, rs_logs, _, _, _ = get_player_logs_blended(pid)
-        ti = determine_team(po_logs, rs_logs, home_abbr, away_abbr)
+        history = get_player_logs_blended(pid)
+        ti = determine_team(history.po_minutes, history.rs_minutes, home_abbr, away_abbr)
         if ti is None:
             continue
         ih = ti["is_home"]
