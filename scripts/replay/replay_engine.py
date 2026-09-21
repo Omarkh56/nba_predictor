@@ -108,6 +108,10 @@ def init_worker(bundle: SeasonBundle, overrides: Dict[str, Any], project_root: s
     _W["by_date"] = {d: list(zip(g["PLAYER_ID"].tolist(), g["_i"].tolist())) for d, g in pl_players.groupby("GAME_DATE")}
 
     pl.SEASON = bundle.season  # the model's notion of "current season" must be the replayed season
+    # Always reconstruct the raw historical model first. Applying the FINAL
+    # 2025-26 artifact to 2025-26 would leak future outcomes. The correction
+    # evaluator fits each date using prior dates only in a separate pass.
+    pl.RESIDUAL_CORRECTIONS = {}
     for name, value in (overrides or {}).items():
         if not hasattr(pl, name):
             raise AttributeError("override target %s does not exist on playerlinepredictor" % name)

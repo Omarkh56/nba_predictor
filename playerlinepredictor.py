@@ -82,6 +82,7 @@ from config import current_season
 from env_config import require_env
 from nba_api_utils import dataframe_call_result
 from player_regression import predict_player_stat  # noqa: E402
+from residual_correction import apply_correction, load_artifact  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -483,8 +484,13 @@ def _load_kalman_player_state() -> None:
 
 _load_kalman_player_state()
 
-MARKET_PROJ_ADJ = {}  # v7 Fix 1a: per-stat projection multiplier derived from calibration hit rates
-PLAYER_PROJ_ADJ = {}  # v8 Fix 3: per-player per-stat additive residual nudges from player_market calib
+# v9: fit on unconditional as-of replay outcomes, not chosen sportsbook bets.
+RESIDUAL_CORRECTIONS = load_artifact()
+if RESIDUAL_CORRECTIONS and date(int(SEASON[:4]), 10, 1) <= date.fromisoformat(
+    RESIDUAL_CORRECTIONS["training_cutoff"]
+):
+    # NBA_SEASON backtests cannot see a correction trained on their own future.
+    RESIDUAL_CORRECTIONS = {}
 NULL_POS_PLAYERS = set()  # v8 Fix 6: players whose position lookup failed (DvP=1.0 for these)
 
 # v8 Fix 5: manual position overrides for players missing from the auto-detect roster fetch.
@@ -502,14 +508,13 @@ MANUAL_POSITIONS = {
     "Jaxson Hayes": "C",
 }
 
-# Optional extra haircut on top of MARKET_PROJ_ADJ / PLAYER_PROJ_ADJ.
-# Kept empty: a 10-name 0.85x list cannot cover a market-wide PTS OVER miss
-# rate, and stacking it on the PTS market multiplier double-penalizes those names.
-MANUAL_PLAYER_PENALTIES = {}
-
 # Set to True by get_league_logs() when playoff game logs are available.
 # Used by _blend_minutes() to apply rotation adjustments for early playoff games.
 IS_PLAYOFF_SEASON = False
+
+# TODO(v9): re-evaluate thin-sample playoff-rate weighting and the analogous
+# early regular-season low-games regime using chronological as-of validation.
+# Leave _adaptive_po_weight unchanged in this phase.
 
 # =============================================================================
 # CACHES
@@ -533,40 +538,13 @@ class NbaDataUnavailable(RuntimeError):
 # =============================================================================
 # CALIBRATION
 # =============================================================================
-_STAT_TO_MKT = {"PTS": "PTS", "REB": "REB", "AST": "AST", "FG3M": "3PM"}
-_MARKET_ADJ_MIN_N = 20
-_MARKET_ADJ_CLAMP = (0.92, 1.08)
-
-
-def _build_market_proj_adj(market_direction: dict) -> dict:
-    """Map OVER hit rates to per-stat projection multipliers, including PTS.
-
-    bias = (0.5 - over_rate) * 0.6, then clamp to ±8%. Combo markets inherit
-    the PTS/REB/AST factors inside project_stat() because they are applied
-    per stat-column before summing.
-    """
-    out = {}
-    lo, hi = _MARKET_ADJ_CLAMP
-    for key, info in market_direction.items():
-        if "_OVER" not in key or info.get("n", 0) < _MARKET_ADJ_MIN_N:
-            continue
-        mkt_label = key.replace("_OVER", "")
-        stat_key = next((s for s, m in _STAT_TO_MKT.items() if m == mkt_label), None)
-        if stat_key is None:
-            continue
-        over_rate = info["raw_rate"]
-        bias = (0.5 - over_rate) * 0.6
-        out[stat_key] = round(max(lo, min(hi, 1.0 - bias)), 3)
-    return out
-
-
 def _load_calibration():
     """Load calibration.json into the CALIB global (no-op if file is absent).
 
     calibration.json is produced by calibrate.py after graded bets accumulate
     in bet_log.csv.  The file is optional — if absent, all adjustments are 0.
     """
-    global CALIB, MARKET_PROJ_ADJ, PLAYER_PROJ_ADJ
+    global CALIB
     if not os.path.isfile(CALIB_FILE):
         return
     try:
@@ -581,32 +559,10 @@ def _load_calibration():
             f"{md} market-direction, {pm} player-market, {fp} flag-penalty adjustments)"
         )
 
-        # Projection multipliers from OVER hit rates (PTS included). A 38.9%
-        # PTS_OVER hit rate is market-wide, not a 10-player problem; combo
-        # markets inherit the PTS column factor in project_stat().
-        MARKET_PROJ_ADJ.clear()
-        MARKET_PROJ_ADJ.update(_build_market_proj_adj(CALIB.get("market_direction", {})))
-        if MARKET_PROJ_ADJ:
-            print(f"  Projection multipliers: {MARKET_PROJ_ADJ}")
-
-        # v8 Fix 3: load per-player per-stat residual adjustments from player_market.
-        # Keys: (player_name, stat_col); values: shrinkage-weighted mean residual
-        # (actual − projection) in stat units. Applied as additive nudge in project_stat.
-        # Only applied when n >= 3 graded bets exist for that player-market pair.
-        _MARKET_TO_STAT = {"PTS": "PTS", "REB": "REB", "AST": "AST", "3PM": "FG3M"}
-        PLAYER_PROJ_ADJ.clear()
-        for key, info in CALIB.get("player_market", {}).items():
-            if "|" not in key or info.get("n", 0) < 3:
-                continue
-            player, market_label = key.split("|", 1)
-            stat_col = _MARKET_TO_STAT.get(market_label)
-            if stat_col is None:
-                continue
-            adj = info.get("adj", 0.0)
-            if adj != 0.0:
-                PLAYER_PROJ_ADJ[(player, stat_col)] = round(adj, 2)
-        if PLAYER_PROJ_ADJ:
-            print(f"  Player-stat nudges loaded: {len(PLAYER_PROJ_ADJ)} adjustments")
+        # v9: calibration.json may still provide confidence/probability terms,
+        # but selected-bet hit rates or player residuals never alter projections.
+        # Exact-market projection correction is loaded separately from the
+        # unconditional replay artifact and applied once in project_prop().
     except (OSError, json.JSONDecodeError, KeyError, ValueError) as e:
         print(f"  Warning: could not load calibration.json — {e}")
         CALIB = {}
@@ -1911,23 +1867,6 @@ def project_stat(
     base_proj = rate * avg_min * combined_mult
     final_proj = base_proj
 
-    # v7 Fix 1c: apply calibration-based market projection correction
-    proj_mult = MARKET_PROJ_ADJ.get(stat_col, 1.0)
-    final_proj = final_proj * proj_mult
-
-    # v8 Fix 2: apply player-specific projection penalty for confirmed bad-projection
-    # players (overrides if more restrictive than market-level). Suppresses at the
-    # player level so the rest of the market flows through normally.
-    player_penalty = MANUAL_PLAYER_PENALTIES.get((player_name, stat_col), 1.0)
-    final_proj = final_proj * player_penalty
-
-    # v8 Fix 3: apply data-driven per-player per-stat residual nudge from bet_log.
-    # Additive in stat units (actual − projection mean residual, shrinkage-weighted).
-    # Positive → model historically under-projects → nudge up; negative → nudge down.
-    data_adj = PLAYER_PROJ_ADJ.get((player_name, stat_col), 0.0)
-    if data_adj != 0.0:
-        final_proj = max(0.0, final_proj + data_adj)
-
     # Blend with a regression model: prefer Kalman (adaptive) if active,
     # otherwise fall back to static learned params from learned_params.json.
     # Either way we blend lightly (15%) to preserve existing feature engineering.
@@ -1982,9 +1921,9 @@ def project_stat(
         "combined_mult_uncapped": round(combined_mult_uncapped, 3),  # v9 Fix 1
         "trend_mult": 1.0,  # v9 Fix 2: removed
         "trend": "n/a (EWM)",  # v9 Fix 2: removed
-        "proj_mult": round(proj_mult, 3),
-        "player_penalty": round(player_penalty, 3),  # v8 Fix 2
-        "data_adj": round(data_adj, 2),  # v8 Fix 3
+        "proj_mult": 1.0,  # v9: retired selected-bet projection multipliers
+        "player_penalty": 1.0,  # v9: retired manual per-player projection penalties
+        "data_adj": 0.0,  # v9: retired selected-bet per-player residual nudge
         "learned_adj": round(learned_proj_adj, 2),  # from train_model.py
         "rust_discount": round(rust_discount, 3),   # return-from-injury ramp
         "games_since_return": games_since_return,
@@ -2187,18 +2126,18 @@ def project_prop(
         total, details, stat_cols, market_key, player_name
     )
 
+    # v9: one exact-market correction after combo/USG math, before probability.
+    # Its training observations are unconditional and strictly earlier than
+    # the 2026-27 season. It never stacks with bet_log-derived adjustments.
+    raw_total_projection = total
+    calib_label = MARKET_LABELS.get(market_key, market_key)
+    total = apply_correction(total, calib_label, RESIDUAL_CORRECTIONS)
+
     sd = get_player_std(pid, po_minute_logs, rs_minute_logs, market_key, stat_cols, po_raw_count,
                         pos_group=details[stat_cols[0]].get("pos_group"))
     raw_total = sum(d.get("rate", 0.0) * d.get("min", 0.0) for d in details.values())
     if raw_total > 0 and total > 0 and sd and sd > 0:
         sd = sd * ((total / raw_total) ** 0.5)
-
-    calib_label = MARKET_LABELS.get(market_key, market_key)
-    calib_proj_adj = (
-        CALIB.get("player_market", {}).get(f"{player_name}|{calib_label}", {}).get("adj", 0.0)
-    )
-    if calib_proj_adj != 0.0:
-        total += calib_proj_adj
 
     po_min = _minutes_average(po_logs, po_minute_logs)
     rs_min = _minutes_average(rs_logs, rs_minute_logs)
@@ -2223,6 +2162,8 @@ def project_prop(
         po_minute_logs,
         rs_minute_logs,
     )
+    metadata["residual_correction"] = round(total - raw_total_projection, 3)
+    metadata["residual_correction_version"] = RESIDUAL_CORRECTIONS.get("version", "none")
 
     return round(total, 1), details, sd, metadata
 

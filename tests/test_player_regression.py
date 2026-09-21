@@ -96,8 +96,7 @@ def neutral_projection(monkeypatch):
     for name, value in returns.items():
         monkeypatch.setattr(predictor, name, mock.Mock(return_value=value))
     monkeypatch.setattr(predictor.dvp_engine, "get_dvp_factor", mock.Mock(return_value=1.0))
-    for name in ("MARKET_PROJ_ADJ", "MANUAL_PLAYER_PENALTIES", "PLAYER_PROJ_ADJ"):
-        monkeypatch.setattr(predictor, name, {})
+    monkeypatch.setattr(predictor, "RESIDUAL_CORRECTIONS", {})
     monkeypatch.setattr(predictor, "USE_KALMAN_PLAYER_MODEL", False)
 
     def run(params):

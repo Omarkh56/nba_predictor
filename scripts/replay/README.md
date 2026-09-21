@@ -27,6 +27,11 @@ python3 scripts/replay/replay_props.py run --label warm-check --season-type both
 
 # try a model variant without editing code: override any playerlinepredictor module attribute
 python3 scripts/replay/replay_props.py run --label variant --set SOME_FLAG=True --compare baseline
+
+# after the model-history fixes, select additive vs multiplicative corrections
+# on chronological validation (the test period is held out for reporting)
+python3 scripts/replay/evaluate_corrections.py \
+  --input scripts/replay/output/after-correction-raw_2025-26.csv.gz
 ```
 
 Outputs
@@ -77,6 +82,17 @@ regime, frozen in `splits.json`).
 **Comparing versions.** `--compare <label>` pairs observations on `(date, player_id, market)` and reports the change
 in % bias, MAE and RMSE, with a paired bootstrap 95% CI that resamples whole game dates (a slate's observations are
 correlated). Prefer the simpler model when a difference is within that interval.
+
+**v9 correction.** `evaluate_corrections.py` compares per-exact-market additive residual
+`n/(n+k) × mean(actual − raw projection)` against a multiplicative residual fraction
+`n/(n+k) × sum(actual − raw projection)/sum(raw projection)`. Same-date outcomes
+never contribute to that date's estimate. The validation period chooses the form
+and k; final-test dates are used only to report performance. The full 2025-26
+season then fits `residual_corrections.json` for future-season live use. Replay
+workers explicitly disable this final artifact and project the raw model first:
+applying it to its own training dates would leak future results. The corrected
+chronological per-row output is `output/corrected-chronological_2025-26.csv.gz`.
+Selected-bet projection multipliers and player residual nudges are retired.
 
 ## API cache
 
