@@ -54,7 +54,8 @@ change its projection, while changing earlier games does.
 | positions | current team rosters (positions are static labels; not an injury/result input) |
 | learned-parameter artifact | `learned_params.json`, trained on 2020-21..2022-23 (validated/tested on later seasons before 2025-26): out-of-sample for 2025-26. Its hash is recorded in every report |
 
-**Not reproducible, held neutral and recorded as limitations:** live injury status (the usage boost is 1.0), the book
+**Not reproducible, held neutral and recorded as limitations:** historical injury-status and team-schedule evidence
+(the return-from-injury ramp now fails closed; same-day injury reports and usage boosts are unavailable), the book
 spread (0.0, so no blowout minute cut), matchup pace (1.0; live mean was 1.004), calibration state at the time
 (no residual correction or pick-based multiplier is loaded).
 

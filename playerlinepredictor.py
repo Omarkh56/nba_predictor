@@ -681,53 +681,33 @@ _INJURY_RAMP_GAMES = 8
 _INJURY_MAX_DISCOUNT = 0.22
 
 
-def detect_injury_return(logs: pd.DataFrame) -> int:
-    """
-    Detect how many games ago the player returned from a real absence
-    (≥ _INJURY_GAP_THRESHOLD consecutive missed games).
+def detect_injury_return(
+    logs: pd.DataFrame, team_game_dates=None, injury_absence_dates=None
+) -> int:
+    """Count played games since a confirmed injury absence, across RS and PO.
 
-    logs: player game log DataFrame, most-recent-first (as returned by
-          _fetch_logs / get_player_logs_blended), must have GAME_DATE column.
-
-    Returns:
-        0 if the player shows no recent return (≥ _INJURY_RAMP_GAMES games back
-          or no gap found).
-        1 if the most recent game in logs is their FIRST game back.
-        2 if their second game back, etc.
-    None if logs are empty or undatable.
+    A calendar gap is never sufficient. Both the player's missed scheduled
+    team games and historical injury-status evidence for the gap are required.
+    Without either source (the current live/replay data situation), return 0.
+    The schedule must describe the player's team at the time of the absence.
     """
-    if logs is None or logs.empty:
+    if logs is None or logs.empty or team_game_dates is None or injury_absence_dates is None:
         return 0
-
     try:
-        df = logs.copy()
-        df["GAME_DATE"] = pd.to_datetime(df["GAME_DATE"], errors="coerce")
-        df = df.sort_values("GAME_DATE", ascending=False).reset_index(drop=True)
-    except (KeyError, ValueError, TypeError):
+        dates = sorted(set(pd.to_datetime(logs["GAME_DATE"], errors="coerce").dropna().dt.normalize()))
+        scheduled = set(pd.to_datetime(list(team_game_dates), errors="coerce").dropna().normalize())
+        injured = set(pd.to_datetime(list(injury_absence_dates), errors="coerce").dropna().normalize())
+    except (KeyError, ValueError, TypeError, OverflowError):
         return 0
-
-    # Walk forward in time (oldest first for gap detection)
-    df_asc = df.sort_values("GAME_DATE").reset_index(drop=True)
-    dates  = df_asc["GAME_DATE"].tolist()
-
-    # Find the most recent gap of ≥ threshold calendar days between consecutive games.
-    gap_idx = None   # index in df_asc of the game AFTER the gap (first game back)
+    gap_idx = None
     for i in range(1, len(dates)):
-        if pd.isna(dates[i]) or pd.isna(dates[i - 1]):
-            continue
-        delta = (dates[i] - dates[i - 1]).days
-        # A season-to-season gap (off-season) should not count; cap at 30 days.
-        if _INJURY_GAP_THRESHOLD * 1.3 <= delta <= 30:
+        missed = {d for d in scheduled if dates[i - 1] < d < dates[i] and d not in dates}
+        if len(missed) >= _INJURY_GAP_THRESHOLD and missed.intersection(injured):
             gap_idx = i
-
     if gap_idx is None:
         return 0
-
-    # How many games have been played since the return (game_idx = 1 on first game back)?
-    games_since = len(df_asc) - gap_idx   # 1 = most recent game was their first back
-    if games_since > _INJURY_RAMP_GAMES:
-        return 0   # fully ramped; no discount
-    return max(0, games_since)
+    games_since = len(dates) - gap_idx
+    return games_since if games_since <= _INJURY_RAMP_GAMES else 0
 
 
 def injury_rust_discount(games_since_return: int) -> float:
@@ -1872,10 +1852,11 @@ def project_stat(
     if rate is None or avg_min is None:
         return None, {}
 
-    # Return-from-injury ramp: detect recent real absence (≥3 missed games) and
-    # apply a tapering discount to both minutes and rate for the first ~8 games
-    # back.  Separate from _self_injury_check's same-day GTD/Probable penalty.
-    games_since_return = detect_injury_return(rs_logs)
+    # v9: historical injury ramp requires scheduled team games AND status at
+    # the time of the absence. We have neither in this path, so fail closed.
+    # Count RS+PO appearances together when those inputs become available.
+    played_history = pd.concat([rs_minute_logs, po_minute_logs], ignore_index=True)
+    games_since_return = detect_injury_return(played_history)
     rust_discount      = injury_rust_discount(games_since_return)
     if rust_discount > 0:
         avg_min  = avg_min  * (1.0 - rust_discount)
