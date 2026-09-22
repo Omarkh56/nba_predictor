@@ -259,7 +259,7 @@ def _decimal_odds(player: str, market: str, pick: str):
         return None
 
 
-def _market_edge_pct(player: str, market: str, pick: str, confidence: float):
+def _market_edge_pct(player: str, market: str, pick: str, model_prob_pct: float):
     """True edge vs. the de-vigged market, in percentage points:
     model_probability − devig_market_probability (for the picked side).
 
@@ -269,7 +269,7 @@ def _market_edge_pct(player: str, market: str, pick: str, confidence: float):
     p_mkt = _p_market(player, market, pick)
     if p_mkt is None:
         return None
-    model_prob = confidence / 100.0
+    model_prob = model_prob_pct / 100.0
     return (model_prob - p_mkt) * 100.0
 
 
@@ -285,7 +285,10 @@ def _enrich_with_market_edge(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     mkt_edges, flags_out = [], []
     for _, r in df.iterrows():
-        me = _market_edge_pct(str(r["Player"]), str(r["Market"]), str(r["Pick"]), float(r["Confidence"]))
+        # v9: market edge compares probabilities, not the penalty-adjusted
+        # ranking confidence. Older manually assembled frames still fall back.
+        model_prob_pct = float(r["P_Model"]) * 100 if pd.notna(r.get("P_Model")) else float(r["Confidence"])
+        me = _market_edge_pct(str(r["Player"]), str(r["Market"]), str(r["Pick"]), model_prob_pct)
         mkt_edges.append(me)
         f = str(r.get("Flags", "")).strip()
         if me is None and NO_MARKET_FLAG not in f:

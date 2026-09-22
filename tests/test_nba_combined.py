@@ -231,6 +231,13 @@ class TestRankingChangesBehavior:
 
 
 class TestSpreadAndPickProvenance:
+    def test_market_edge_uses_model_probability_not_ranking_confidence(self, monkeypatch):
+        monkeypatch.setattr(_nc, "_p_market", lambda *_a: .55)
+        row = pd.DataFrame([{"Player": "Test Player", "Market": "PTS", "Pick": "OVER",
+                             "Confidence": 54.0, "P_Model": .70, "Flags": ""}])
+        enriched = _nc._enrich_with_market_edge(row)
+        assert enriched.loc[0, "MktEdgePct"] == pytest.approx(15.0)
+
     def test_book_spread_is_not_overwritten_by_model_margin(self, monkeypatch):
         _nc.props_model.GAME_SPREADS.clear()
         event = {"id": "event-1"}
