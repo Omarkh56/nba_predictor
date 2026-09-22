@@ -2,8 +2,8 @@
 calibrate.py — NBA Props Calibration Engine
 =============================================
 Reads bet_log.csv (appended by checkresults.py after each grading run) and
-produces calibration.json, which playerlinepredictor.py loads at startup to
-apply data-driven confidence and projection adjustments.
+produces calibration.json, which playerlinepredictor.py loads at startup for
+historical confidence/risk diagnostics and direction penalties.
 
 Two types of calibration are computed:
 
@@ -13,10 +13,12 @@ Two types of calibration are computed:
      point-penalty adjustment relative to the population baseline.
      → Applied in process_game() as direction_penalty correction.
 
-  2. Player-market projection bias
+  2. Player-market projection bias (v9 diagnostic only)
      For each (player, market) pair we compute the mean signed residual
      (actual − projection) with shrinkage toward 0.
-     → Applied in project_prop() as a projection nudge.
+     → No longer applied in project_prop(): selected bets are a biased
+       training population. The separate unconditional replay artifact
+       residual_corrections.json provides the live projection correction.
      (Requires "projection" column in bet_log.csv, which checkresults.py
      writes when the PREDICTIONS dict includes a "projection" key.)
 
@@ -322,6 +324,8 @@ def calibrate(verbose=False):
 
     market_dir = _calibrate_market_direction(graded, prior)
     margin_stats = _calibrate_margins(graded)
+    # v9: retain these numbers for historical comparison only; do not
+    # double-correct a projection using selected-bet residuals.
     player_market = _calibrate_player_market(graded)
     flag_penalties = _calibrate_flag_penalties(graded)
 

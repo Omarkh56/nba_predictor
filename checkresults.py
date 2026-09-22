@@ -425,6 +425,10 @@ def build_actual_stats(check_date):
         pid = row.get("PLAYER_ID")
         if pd.isna(pid):
             continue
+        if _played_minutes(row.get("MIN")) <= 0:
+            # v9: box scores may include roster rows with null/zero MIN.
+            # Their props are void, never zero-stat MISS observations.
+            continue
         stats[int(pid)] = {
             "name": row.get("PLAYER_NAME", ""),
             "PTS": float(row.get("PTS", 0) or 0),
@@ -435,6 +439,19 @@ def build_actual_stats(check_date):
         }
     print(f"  Loaded stats for {len(stats)} players.\n")
     return stats
+
+
+def _played_minutes(value):
+    """Interpret NBA box-score minutes; null/DNP is not a played game."""
+    try:
+        if pd.isna(value):
+            return 0.0
+        if isinstance(value, str) and ":" in value:
+            m, s = value.split(":", 1)
+            return float(m) + float(s) / 60.0
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.0
 
 
 # =============================================================================
@@ -463,7 +480,7 @@ def check_predictions(predictions, actual_stats):
             continue
 
         player_data = actual_stats.get(pid)
-        if player_data is None:
+        if player_data is None or ("MIN" in player_data and _played_minutes(player_data["MIN"]) <= 0):
             results.append({**pred, "actual": None, "result": "DID NOT PLAY"})
             continue
 
@@ -500,13 +517,11 @@ def check_predictions(predictions, actual_stats):
                 "result": outcome,
                 "minutes": player_data.get("MIN", "?"),
                 "flags": pred.get("flags", ""),  # risk flags at prediction time, for calibrate.py
-                # p_model as a 0-1 probability, matching load_all_prop_model_confidence()'s
-                # convention — pred["confidence"] (0-100) when live, already-converted
-                # pred["p_model"] when replaying a manually-built PREDICTIONS entry.
+                # v9: calibrated probability takes precedence over the separate
+                # penalty-adjusted ranking confidence; old rows retain fallback.
                 "p_model": (
-                    pred["confidence"] / 100.0
-                    if pred.get("confidence") is not None
-                    else pred.get("p_model")
+                    pred.get("p_model") if pred.get("p_model") is not None
+                    else pred["confidence"] / 100.0 if pred.get("confidence") is not None else None
                 ),
                 "p_market": pred.get("p_market"),  # de-vigged market prob at prediction time
                 "decimal_odds": pred.get("decimal_odds"),

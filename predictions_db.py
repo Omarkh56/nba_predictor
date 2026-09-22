@@ -28,6 +28,8 @@ PROP_PROVENANCE_FIELDS = (
     "model_version",
     "book_spread",
     "model_margin",
+    "residual_correction_version",
+    "probability_calibration_version",
 )
 
 _CREATE_PROP = """
@@ -40,6 +42,7 @@ CREATE TABLE IF NOT EXISTS prop_predictions (
     pick        TEXT,
     projection  REAL,
     confidence  REAL,
+    p_model     REAL,
     edge_pct    REAL,
     flags       TEXT,
     po_count    INTEGER,
@@ -66,6 +69,8 @@ CREATE TABLE IF NOT EXISTS prop_predictions (
     model_version TEXT,
     book_spread REAL,
     model_margin REAL,
+    residual_correction_version TEXT,
+    probability_calibration_version TEXT,
     PRIMARY KEY (date, player, market)
 )
 """
@@ -74,6 +79,7 @@ CREATE TABLE IF NOT EXISTS prop_predictions (
 # EXISTS is a no-op on an already-existing table, so a real DB created before
 # a given column existed needs an explicit ALTER TABLE. Add new columns here.
 _MIGRATIONS = [
+    ("prop_predictions", "p_model", "REAL"),
     ("prop_predictions", "p_market", "REAL"),
     ("prop_predictions", "decimal_odds", "REAL"),
     ("prop_predictions", "stake_pct", "REAL"),
@@ -90,6 +96,8 @@ _MIGRATIONS = [
     ("prop_predictions", "model_version", "TEXT"),
     ("prop_predictions", "book_spread", "REAL"),
     ("prop_predictions", "model_margin", "REAL"),
+    ("prop_predictions", "residual_correction_version", "TEXT"),
+    ("prop_predictions", "probability_calibration_version", "TEXT"),
     ("game_predictions", "home_prob", "REAL"),
     ("game_predictions", "p_market", "REAL"),
     ("game_predictions", "decimal_odds", "REAL"),
@@ -136,15 +144,15 @@ def upsert_prop_predictions(rows: List[dict], game_date: date, path: Path = DB_P
     with _connect(path) as conn:
         conn.executemany(
             """INSERT OR REPLACE INTO prop_predictions
-               (date, game, player, market, line, pick, projection, confidence,
+               (date, game, player, market, line, pick, projection, confidence, p_model,
                 edge_pct, flags, po_count, avg_min, book_count, usg_pct,
                 game_spread, game_total, game_pace, fav_win_pct, p_market,
                 decimal_odds, stake_pct, rs_raw_count, rs_usable_count,
                 po_raw_count, po_usable_count, fetch_status,
                 source_last_game_date, data_as_of_utc, data_age_days,
                 active_season, season_mode, model_version, book_spread,
-                model_margin)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                model_margin, residual_correction_version, probability_calibration_version)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             [
                 (
                     date_str,
@@ -155,6 +163,7 @@ def upsert_prop_predictions(rows: List[dict], game_date: date, path: Path = DB_P
                     r.get("pick"),
                     r.get("projection"),
                     r.get("confidence"),
+                    r.get("p_model"),
                     r.get("edge_pct"),
                     r.get("flags", ""),
                     r.get("po_count"),
@@ -181,6 +190,8 @@ def upsert_prop_predictions(rows: List[dict], game_date: date, path: Path = DB_P
                     r.get("model_version"),
                     r.get("book_spread"),
                     r.get("model_margin"),
+                    r.get("residual_correction_version"),
+                    r.get("probability_calibration_version"),
                 )
                 for r in rows
             ],
@@ -235,7 +246,8 @@ def load_prop_predictions(target_date: date, path: Path = DB_PATH) -> List[dict]
             "SELECT player, market, line, pick, projection, flags, p_market, confidence, "
             "decimal_odds, stake_pct, rs_raw_count, rs_usable_count, po_raw_count, "
             "po_usable_count, fetch_status, source_last_game_date, data_as_of_utc, "
-            "data_age_days, active_season, season_mode, model_version, book_spread, model_margin "
+            "data_age_days, active_season, season_mode, model_version, book_spread, model_margin, p_model, "
+            "residual_correction_version, probability_calibration_version "
             "FROM prop_predictions WHERE date = ? ORDER BY confidence DESC",
             (date_str,),
         )
@@ -264,6 +276,9 @@ def load_prop_predictions(target_date: date, path: Path = DB_PATH) -> List[dict]
                 "model_version": row[20],
                 "book_spread": float(row[21]) if row[21] is not None else None,
                 "model_margin": float(row[22]) if row[22] is not None else None,
+                "p_model": float(row[23]) if row[23] is not None else None,
+                "residual_correction_version": row[24],
+                "probability_calibration_version": row[25],
             }
             for row in cur.fetchall()
         ]
@@ -285,17 +300,15 @@ def load_all_prop_flags(path: Path = DB_PATH) -> dict:
 
 
 def load_all_prop_model_confidence(path: Path = DB_PATH) -> dict:
-    """Return {(date, player, market, pick): p_model} for every stored prop
-    prediction — p_model is confidence/100 (a 0-1 probability the picked
-    side hits). Used to backfill p_model into bet_log.csv for already-graded
-    rows, the same way load_all_prop_flags() backfills Flags."""
+    """Return stored selected-side p_model, falling back to historical confidence/100."""
     if not Path(path).exists():
         return {}
     with _connect(path) as conn:
-        cur = conn.execute("SELECT date, player, market, pick, confidence FROM prop_predictions")
+        cur = conn.execute("SELECT date, player, market, pick, confidence, p_model FROM prop_predictions")
         return {
             (row[0], row[1].strip(), row[2].strip(), (row[3] or "").strip().upper()):
-                (float(row[4]) / 100.0 if row[4] is not None else None)
+                (float(row[5]) if row[5] is not None else
+                 float(row[4]) / 100.0 if row[4] is not None else None)
             for row in cur.fetchall()
         }
 

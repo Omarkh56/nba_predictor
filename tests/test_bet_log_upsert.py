@@ -109,3 +109,35 @@ def test_checkresults_append_path_is_idempotent(monkeypatch, tmp_path):
     assert saved.loc[0, "actual"] == 30
     assert saved.loc[0, "po_raw_count"] == 5
     assert saved.loc[0, "fetch_status"] == "rs=ok;po=ok;po_raw=ok"
+
+
+def test_box_score_zero_minutes_is_dnp_and_not_logged(monkeypatch, tmp_path):
+    import sys
+
+    monkeypatch.setattr(sys, "argv", ["checkresults.py"])
+    import checkresults
+
+    assert checkresults._played_minutes(None) == 0
+    assert checkresults._played_minutes("DNP") == 0
+    assert checkresults._played_minutes("00:00") == 0
+    assert checkresults._played_minutes("12:30") == 12.5
+    monkeypatch.setattr(checkresults, "get_player_id", lambda _: 1)
+    path = tmp_path / "bet_log.csv"
+    monkeypatch.setattr(checkresults, "LOG_FILE", str(path))
+    pred = {"player": "Known Player", "market": "PTS", "line": 10.5,
+            "pick": "OVER", "projection": 15.0}
+    graded = checkresults.check_predictions([pred], {1: {"PTS": 0, "MIN": "0:00"}})
+    assert graded[0]["result"] == "DID NOT PLAY"
+    checkresults.append_to_log(graded, date(2026, 5, 1))
+    assert not path.exists()
+
+
+def test_grading_preserves_calibrated_probability_over_ranking_confidence(monkeypatch):
+    import sys
+    monkeypatch.setattr(sys, "argv", ["checkresults.py"])
+    import checkresults
+    monkeypatch.setattr(checkresults, "get_player_id", lambda _: 1)
+    pred = {"player": "Known Player", "market": "PTS", "line": 10.5,
+            "pick": "OVER", "confidence": 53.0, "p_model": .72}
+    graded = checkresults.check_predictions([pred], {1: {"PTS": 20, "MIN": "35:00"}})
+    assert graded[0]["p_model"] == pytest.approx(.72)

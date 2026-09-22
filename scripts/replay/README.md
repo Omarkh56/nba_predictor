@@ -32,6 +32,17 @@ python3 scripts/replay/replay_props.py run --label variant --set SOME_FLAG=True 
 # on chronological validation (the test period is held out for reporting)
 python3 scripts/replay/evaluate_corrections.py \
   --input scripts/replay/output/after-correction-raw_2025-26.csv.gz
+
+# v9: pre-game, schedule-based opportunities including DNP/voids, then
+# independent L10 (primary) and L5 rolling-average half-point proxy lines
+python3 scripts/replay/backtest_bets.py opportunities --workers 8
+python3 scripts/replay/backtest_bets.py build
+
+# Regenerate logged real-line probabilities from the fixed model, fit L10
+# proxy probabilities as-of, and apply the held-out real-line deployment gate
+python3 scripts/replay/clean_invalid_bets.py
+python3 calibrate.py
+python3 scripts/replay/calibrate_probabilities.py
 ```
 
 Outputs
@@ -93,6 +104,29 @@ workers explicitly disable this final artifact and project the raw model first:
 applying it to its own training dates would leak future results. The corrected
 chronological per-row output is `output/corrected-chronological_2025-26.csv.gz`.
 Selected-bet projection multipliers and player residual nudges are retired.
+
+**v9 synthetic probability check.** `backtest_bets.py opportunities` infers a
+pre-game candidate roster from each player's last prior played team and the
+day's schedule. A DNP is retained as `DNP_VOID` and excluded from calibration.
+Historical transactions/injury eligibility are not fully observable; the
+candidate rules and gaps are reported in `reports/opportunity-coverage.md`.
+The L10 primary proxy line is the mean of the last 10 played games before the
+game date, rounded down to the previous integer plus 0.5; L5 repeats the
+same method as a sensitivity check. Per-market proxy calibration uses weekly
+expanding fits from strictly earlier game dates. The final
+`probability_calibration.json` is trained on the full completed season for
+2026-27 use only. The real-line check regenerates model probabilities at
+the original logged lines and compares identity with Platt on later real
+dates using a paired date bootstrap. A failed non-inferiority gate deploys
+identity. See `reports/probability-calibration.md` for metrics and the JSON
+for reliability bins by exact market and both directions. Synthetic lines
+are **calibration only**; no ROI, edge or profit can be inferred from them.
+
+Large per-row `backtest_bets.csv` and `output/` files are gitignored.
+Never write simulated bets into `bet_log.csv`; that file contains only real
+logged picks. `clean_invalid_bets.py` backs up the local log and moves
+historical DNPs misgraded as misses into an ignored void file before
+rerunning the older `calibrate.py` diagnostic.
 
 ## API cache
 

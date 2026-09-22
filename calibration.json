@@ -1,159 +1,204 @@
 {
-  "generated": "2026-09-18",
-  "total_bets": 1163,
-  "overall_hit_rate": 0.506,
-  "prior_hit_rate": 0.506,
+  "generated": "2026-09-21",
+  "total_bets": 956,
+  "overall_hit_rate": 0.517,
+  "prior_hit_rate": 0.517,
   "prior_source": "empirical",
   "market_direction": {
     "3PM_OVER": {
-      "n": 95,
-      "hits": 51,
-      "raw_rate": 0.537,
-      "rate": 0.533,
-      "conf_adj": 2.7,
-      "mean_margin": 0.17,
-      "near_miss_rate": 0.529
+      "n": 79,
+      "hits": 44,
+      "raw_rate": 0.557,
+      "rate": 0.551,
+      "conf_adj": 3.4,
+      "mean_margin": 0.25,
+      "near_miss_rate": 0.519
     },
     "3PM_UNDER": {
       "n": 12,
       "hits": 3,
       "raw_rate": 0.25,
-      "rate": 0.392,
-      "conf_adj": -11.4,
+      "rate": 0.398,
+      "conf_adj": -11.9,
       "mean_margin": -0.17,
       "near_miss_rate": 1.0
     },
     "AST_OVER": {
-      "n": 204,
-      "hits": 109,
-      "raw_rate": 0.534,
-      "rate": 0.533,
-      "conf_adj": 2.7,
-      "mean_margin": 0.46,
-      "near_miss_rate": 0.493
+      "n": 168,
+      "hits": 90,
+      "raw_rate": 0.536,
+      "rate": 0.534,
+      "conf_adj": 1.8,
+      "mean_margin": 0.45,
+      "near_miss_rate": 0.5
     },
     "AST_UNDER": {
-      "n": 77,
-      "hits": 51,
-      "raw_rate": 0.662,
-      "rate": 0.639,
-      "conf_adj": 13.3,
+      "n": 66,
+      "hits": 44,
+      "raw_rate": 0.667,
+      "rate": 0.641,
+      "conf_adj": 12.4,
       "mean_margin": 0.35,
-      "near_miss_rate": 0.391
+      "near_miss_rate": 0.421
     },
     "PRA_OVER": {
-      "n": 71,
-      "hits": 30,
-      "raw_rate": 0.423,
-      "rate": 0.436,
-      "conf_adj": -7.0,
-      "mean_margin": 0.58,
-      "near_miss_rate": 0.097
+      "n": 61,
+      "hits": 27,
+      "raw_rate": 0.443,
+      "rate": 0.456,
+      "conf_adj": -6.0,
+      "mean_margin": 0.37,
+      "near_miss_rate": 0.071
     },
     "PRA_UNDER": {
       "n": 5,
       "hits": 2,
       "raw_rate": 0.4,
-      "rate": 0.482,
-      "conf_adj": -2.4,
+      "rate": 0.49,
+      "conf_adj": -2.6,
       "mean_margin": -2.5,
       "near_miss_rate": 0.0
     },
     "PTS_OVER": {
-      "n": 113,
-      "hits": 44,
-      "raw_rate": 0.389,
-      "rate": 0.402,
-      "conf_adj": -10.4,
-      "mean_margin": 0.29,
-      "near_miss_rate": 0.298
+      "n": 93,
+      "hits": 40,
+      "raw_rate": 0.43,
+      "rate": 0.441,
+      "conf_adj": -7.6,
+      "mean_margin": 0.53,
+      "near_miss_rate": 0.286
     },
     "PTS_UNDER": {
-      "n": 36,
-      "hits": 17,
-      "raw_rate": 0.472,
-      "rate": 0.482,
-      "conf_adj": -2.4,
-      "mean_margin": -0.17,
-      "near_miss_rate": 0.3
+      "n": 31,
+      "hits": 15,
+      "raw_rate": 0.484,
+      "rate": 0.494,
+      "conf_adj": -2.3,
+      "mean_margin": -0.24,
+      "near_miss_rate": 0.222
     },
     "PTS+AST_OVER": {
-      "n": 106,
-      "hits": 53,
-      "raw_rate": 0.5,
-      "rate": 0.501,
-      "conf_adj": -0.5,
-      "mean_margin": -0.39,
-      "near_miss_rate": 0.079
+      "n": 82,
+      "hits": 42,
+      "raw_rate": 0.512,
+      "rate": 0.513,
+      "conf_adj": -0.4,
+      "mean_margin": -0.62,
+      "near_miss_rate": 0.1
     },
     "PTS+AST_UNDER": {
-      "n": 9,
-      "hits": 7,
-      "raw_rate": 0.778,
-      "rate": 0.606,
-      "conf_adj": 10.0,
-      "mean_margin": 2.72,
+      "n": 7,
+      "hits": 5,
+      "raw_rate": 0.714,
+      "rate": 0.577,
+      "conf_adj": 6.0,
+      "mean_margin": 2.21,
       "near_miss_rate": 0.0
     },
     "PTS+REB_OVER": {
-      "n": 20,
+      "n": 16,
       "hits": 6,
-      "raw_rate": 0.3,
-      "rate": 0.386,
-      "conf_adj": -12.0,
-      "mean_margin": -2.43,
-      "near_miss_rate": 0.182
+      "raw_rate": 0.375,
+      "rate": 0.443,
+      "conf_adj": -7.4,
+      "mean_margin": -1.95,
+      "near_miss_rate": 0.143
     },
     "PTS+REB_UNDER": {
-      "n": 7,
+      "n": 6,
       "hits": 2,
-      "raw_rate": 0.286,
-      "rate": 0.439,
-      "conf_adj": -6.7,
+      "raw_rate": 0.333,
+      "rate": 0.468,
+      "conf_adj": -4.9,
       "mean_margin": -4.17,
       "near_miss_rate": 0.0
     },
     "REB_OVER": {
-      "n": 271,
-      "hits": 140,
-      "raw_rate": 0.517,
-      "rate": 0.516,
-      "conf_adj": 1.0,
-      "mean_margin": 0.17,
-      "near_miss_rate": 0.286
+      "n": 211,
+      "hits": 112,
+      "raw_rate": 0.531,
+      "rate": 0.53,
+      "conf_adj": 1.3,
+      "mean_margin": 0.22,
+      "near_miss_rate": 0.308
     },
     "REB_UNDER": {
-      "n": 52,
-      "hits": 30,
-      "raw_rate": 0.577,
-      "rate": 0.562,
-      "conf_adj": 5.6,
-      "mean_margin": 0.58,
-      "near_miss_rate": 0.385
+      "n": 45,
+      "hits": 26,
+      "raw_rate": 0.578,
+      "rate": 0.563,
+      "conf_adj": 4.7,
+      "mean_margin": 0.6,
+      "near_miss_rate": 0.364
     },
     "REB+AST_OVER": {
-      "n": 63,
-      "hits": 28,
-      "raw_rate": 0.444,
-      "rate": 0.455,
-      "conf_adj": -5.0,
-      "mean_margin": -0.02,
-      "near_miss_rate": 0.31
+      "n": 55,
+      "hits": 23,
+      "raw_rate": 0.418,
+      "rate": 0.438,
+      "conf_adj": -7.9,
+      "mean_margin": -0.26,
+      "near_miss_rate": 0.269
     },
     "REB+AST_UNDER": {
-      "n": 22,
-      "hits": 15,
-      "raw_rate": 0.682,
+      "n": 19,
+      "hits": 13,
+      "raw_rate": 0.684,
       "rate": 0.612,
-      "conf_adj": 10.7,
-      "mean_margin": 1.22,
+      "conf_adj": 9.5,
+      "mean_margin": 1.32,
       "near_miss_rate": 0.0
     }
   },
   "player_market": {
-    "Ajay Mitchell|AST": {
+    "Aaron Gordon|AST": {
+      "n": 3,
+      "mean_residual": -1.26,
+      "adj": -0.25
+    },
+    "Aaron Gordon|PTS": {
       "n": 1,
-      "mean_residual": -1.91,
+      "mean_residual": 5.5,
+      "adj": 0.0
+    },
+    "Aaron Gordon|REB+AST": {
+      "n": 2,
+      "mean_residual": -3.28,
+      "adj": -0.47
+    },
+    "Aaron Holiday|PRA": {
+      "n": 1,
+      "mean_residual": -2.0,
+      "adj": 0.0
+    },
+    "Adem Bona|REB": {
+      "n": 1,
+      "mean_residual": 2.62,
+      "adj": 0.0
+    },
+    "Ajay Mitchell|3PM": {
+      "n": 1,
+      "mean_residual": 2.0,
+      "adj": 0.0
+    },
+    "Ajay Mitchell|AST": {
+      "n": 3,
+      "mean_residual": 1.69,
+      "adj": 0.34
+    },
+    "Ajay Mitchell|PTS": {
+      "n": 1,
+      "mean_residual": 3.4,
+      "adj": 0.0
+    },
+    "Ajay Mitchell|PTS+AST": {
+      "n": 2,
+      "mean_residual": 5.34,
+      "adj": 0.76
+    },
+    "Ajay Mitchell|REB": {
+      "n": 1,
+      "mean_residual": -0.29,
       "adj": 0.0
     },
     "Ajay Mitchell|REB+AST": {
@@ -161,60 +206,435 @@
       "mean_residual": -2.52,
       "adj": 0.0
     },
-    "Alex Caruso|REB": {
+    "Alex Caruso|3PM": {
       "n": 1,
-      "mean_residual": 0.88,
+      "mean_residual": 0.32,
       "adj": 0.0
+    },
+    "Alex Caruso|AST": {
+      "n": 1,
+      "mean_residual": -1.12,
+      "adj": 0.0
+    },
+    "Alex Caruso|REB": {
+      "n": 3,
+      "mean_residual": -0.71,
+      "adj": -0.14
+    },
+    "Alperen Sengun|3PM": {
+      "n": 1,
+      "mean_residual": 0.59,
+      "adj": 0.0
+    },
+    "Alperen Sengun|REB": {
+      "n": 1,
+      "mean_residual": -5.35,
+      "adj": 0.0
+    },
+    "Amen Thompson|3PM": {
+      "n": 1,
+      "mean_residual": -0.1,
+      "adj": 0.0
+    },
+    "Amen Thompson|AST": {
+      "n": 1,
+      "mean_residual": 3.36,
+      "adj": 0.0
+    },
+    "Amen Thompson|PTS+AST": {
+      "n": 3,
+      "mean_residual": -2.59,
+      "adj": -0.52
+    },
+    "Andre Drummond|3PM": {
+      "n": 1,
+      "mean_residual": -0.68,
+      "adj": 0.0
+    },
+    "Andre Drummond|AST": {
+      "n": 2,
+      "mean_residual": -1.45,
+      "adj": -0.21
+    },
+    "Andre Drummond|PRA": {
+      "n": 2,
+      "mean_residual": -10.56,
+      "adj": -1.51
+    },
+    "Andre Drummond|REB": {
+      "n": 1,
+      "mean_residual": -6.19,
+      "adj": 0.0
+    },
+    "Andre Drummond|REB+AST": {
+      "n": 1,
+      "mean_residual": -0.96,
+      "adj": 0.0
+    },
+    "Anthony Black|AST": {
+      "n": 4,
+      "mean_residual": -0.59,
+      "adj": -0.15
+    },
+    "Anthony Black|PTS": {
+      "n": 2,
+      "mean_residual": -4.9,
+      "adj": -0.7
+    },
+    "Anthony Black|REB": {
+      "n": 3,
+      "mean_residual": -0.84,
+      "adj": -0.17
     },
     "Anthony Edwards|AST": {
       "n": 3,
-      "mean_residual": -1.0,
-      "adj": -0.2
+      "mean_residual": 0.52,
+      "adj": 0.1
+    },
+    "Anthony Edwards|PTS+AST": {
+      "n": 1,
+      "mean_residual": -2.22,
+      "adj": 0.0
+    },
+    "Anthony Edwards|REB": {
+      "n": 3,
+      "mean_residual": 3.57,
+      "adj": 0.71
+    },
+    "Anthony Edwards|REB+AST": {
+      "n": 2,
+      "mean_residual": 1.52,
+      "adj": 0.22
     },
     "Ausar Thompson|AST": {
+      "n": 6,
+      "mean_residual": -2.0,
+      "adj": -0.67
+    },
+    "Ausar Thompson|PTS+AST": {
       "n": 1,
-      "mean_residual": -2.97,
+      "mean_residual": 0.52,
+      "adj": 0.0
+    },
+    "Ausar Thompson|REB": {
+      "n": 5,
+      "mean_residual": -0.08,
+      "adj": -0.02
+    },
+    "Ausar Thompson|REB+AST": {
+      "n": 1,
+      "mean_residual": -0.85,
+      "adj": 0.0
+    },
+    "Austin Reaves|PTS": {
+      "n": 1,
+      "mean_residual": -4.45,
+      "adj": 0.0
+    },
+    "Austin Reaves|PTS+AST": {
+      "n": 1,
+      "mean_residual": -0.8,
       "adj": 0.0
     },
     "Austin Reaves|REB": {
+      "n": 2,
+      "mean_residual": 1.56,
+      "adj": 0.22
+    },
+    "Ayo Dosunmu|PRA": {
       "n": 1,
-      "mean_residual": 3.29,
+      "mean_residual": 12.99,
+      "adj": 0.0
+    },
+    "Ayo Dosunmu|PTS": {
+      "n": 2,
+      "mean_residual": -5.4,
+      "adj": -0.77
+    },
+    "Ayo Dosunmu|PTS+AST": {
+      "n": 2,
+      "mean_residual": 9.53,
+      "adj": 1.36
+    },
+    "Ayo Dosunmu|REB": {
+      "n": 5,
+      "mean_residual": -2.14,
+      "adj": -0.63
+    },
+    "Baylor Scheierman|3PM": {
+      "n": 1,
+      "mean_residual": -1.35,
+      "adj": 0.0
+    },
+    "Baylor Scheierman|AST": {
+      "n": 1,
+      "mean_residual": -2.4,
+      "adj": 0.0
+    },
+    "Baylor Scheierman|PRA": {
+      "n": 3,
+      "mean_residual": -4.72,
+      "adj": -0.94
+    },
+    "Bones Hyland|3PM": {
+      "n": 1,
+      "mean_residual": -3.12,
+      "adj": 0.0
+    },
+    "Bones Hyland|PTS+AST": {
+      "n": 1,
+      "mean_residual": -1.46,
+      "adj": 0.0
+    },
+    "Bones Hyland|PTS+REB": {
+      "n": 1,
+      "mean_residual": -0.72,
+      "adj": 0.0
+    },
+    "Bones Hyland|REB+AST": {
+      "n": 1,
+      "mean_residual": -3.91,
+      "adj": 0.0
+    },
+    "Brandon Ingram|PTS+AST": {
+      "n": 1,
+      "mean_residual": -12.82,
+      "adj": 0.0
+    },
+    "Bronny James|PTS": {
+      "n": 1,
+      "mean_residual": -0.2,
+      "adj": 0.0
+    },
+    "Bruce Brown|3PM": {
+      "n": 2,
+      "mean_residual": -0.24,
+      "adj": -0.03
+    },
+    "Bruce Brown|AST": {
+      "n": 2,
+      "mean_residual": -1.4,
+      "adj": -0.2
+    },
+    "Bruce Brown|PRA": {
+      "n": 1,
+      "mean_residual": -0.2,
+      "adj": 0.0
+    },
+    "Bruce Brown|PTS": {
+      "n": 4,
+      "mean_residual": -1.49,
+      "adj": -0.37
+    },
+    "Bruce Brown|REB": {
+      "n": 3,
+      "mean_residual": -2.13,
+      "adj": -0.43
+    },
+    "Cade Cunningham|AST": {
+      "n": 2,
+      "mean_residual": -2.76,
+      "adj": -0.39
+    },
+    "Cade Cunningham|PTS": {
+      "n": 4,
+      "mean_residual": 12.72,
+      "adj": 3.18
+    },
+    "Cade Cunningham|PTS+REB": {
+      "n": 1,
+      "mean_residual": 10.0,
       "adj": 0.0
     },
     "Cade Cunningham|REB": {
-      "n": 1,
-      "mean_residual": -3.29,
-      "adj": 0.0
+      "n": 3,
+      "mean_residual": -1.12,
+      "adj": -0.22
     },
     "Cade Cunningham|REB+AST": {
       "n": 1,
       "mean_residual": -7.08,
       "adj": 0.0
     },
-    "Cason Wallace|AST": {
+    "Cameron Johnson|3PM": {
       "n": 1,
-      "mean_residual": -2.38,
+      "mean_residual": 0.0,
       "adj": 0.0
+    },
+    "Cameron Johnson|AST": {
+      "n": 2,
+      "mean_residual": -0.66,
+      "adj": -0.09
+    },
+    "Cameron Johnson|PTS": {
+      "n": 1,
+      "mean_residual": -8.32,
+      "adj": 0.0
+    },
+    "Cameron Johnson|PTS+AST": {
+      "n": 2,
+      "mean_residual": -6.76,
+      "adj": -0.97
+    },
+    "Cameron Johnson|REB": {
+      "n": 3,
+      "mean_residual": 2.57,
+      "adj": 0.51
+    },
+    "Caris LeVert|PRA": {
+      "n": 2,
+      "mean_residual": -8.05,
+      "adj": -1.15
+    },
+    "Caris LeVert|REB": {
+      "n": 2,
+      "mean_residual": -1.16,
+      "adj": -0.17
+    },
+    "Cason Wallace|3PM": {
+      "n": 2,
+      "mean_residual": -0.29,
+      "adj": -0.04
+    },
+    "Cason Wallace|AST": {
+      "n": 2,
+      "mean_residual": -1.97,
+      "adj": -0.28
     },
     "Cason Wallace|PRA": {
       "n": 1,
       "mean_residual": -8.79,
       "adj": 0.0
     },
-    "Daniss Jenkins|AST": {
+    "Cason Wallace|REB": {
+      "n": 2,
+      "mean_residual": 1.88,
+      "adj": 0.27
+    },
+    "Cason Wallace|REB+AST": {
       "n": 1,
-      "mean_residual": -0.85,
+      "mean_residual": -3.73,
       "adj": 0.0
     },
-    "Daniss Jenkins|PTS": {
+    "Chet Holmgren|3PM": {
       "n": 1,
-      "mean_residual": -5.74,
+      "mean_residual": -1.85,
+      "adj": 0.0
+    },
+    "Chet Holmgren|REB": {
+      "n": 1,
+      "mean_residual": -0.56,
+      "adj": 0.0
+    },
+    "Christian Braun|3PM": {
+      "n": 1,
+      "mean_residual": 1.1,
+      "adj": 0.0
+    },
+    "Christian Braun|AST": {
+      "n": 4,
+      "mean_residual": -0.61,
+      "adj": -0.15
+    },
+    "Christian Braun|PTS": {
+      "n": 2,
+      "mean_residual": -5.27,
+      "adj": -0.75
+    },
+    "Christian Braun|PTS+AST": {
+      "n": 2,
+      "mean_residual": -5.14,
+      "adj": -0.73
+    },
+    "Collin Gillespie|AST": {
+      "n": 1,
+      "mean_residual": 1.88,
+      "adj": 0.0
+    },
+    "Collin Gillespie|REB": {
+      "n": 2,
+      "mean_residual": 1.4,
+      "adj": 0.2
+    },
+    "Collin Gillespie|REB+AST": {
+      "n": 1,
+      "mean_residual": -5.05,
+      "adj": 0.0
+    },
+    "Collin Murray-Boyles|AST": {
+      "n": 3,
+      "mean_residual": 0.18,
+      "adj": 0.04
+    },
+    "Collin Murray-Boyles|PTS": {
+      "n": 3,
+      "mean_residual": 5.92,
+      "adj": 1.18
+    },
+    "Collin Murray-Boyles|PTS+AST": {
+      "n": 2,
+      "mean_residual": 6.04,
+      "adj": 0.86
+    },
+    "Collin Murray-Boyles|PTS+REB": {
+      "n": 2,
+      "mean_residual": -3.95,
+      "adj": -0.56
+    },
+    "Collin Murray-Boyles|REB": {
+      "n": 1,
+      "mean_residual": 1.88,
+      "adj": 0.0
+    },
+    "Corey Kispert|PRA": {
+      "n": 2,
+      "mean_residual": -4.81,
+      "adj": -0.69
+    },
+    "Daniss Jenkins|AST": {
+      "n": 7,
+      "mean_residual": -2.02,
+      "adj": -0.75
+    },
+    "Daniss Jenkins|PTS": {
+      "n": 2,
+      "mean_residual": -5.98,
+      "adj": -0.85
+    },
+    "Daniss Jenkins|REB": {
+      "n": 5,
+      "mean_residual": -2.61,
+      "adj": -0.77
+    },
+    "Daniss Jenkins|REB+AST": {
+      "n": 1,
+      "mean_residual": -8.16,
       "adj": 0.0
     },
     "De'Aaron Fox|AST": {
+      "n": 3,
+      "mean_residual": -2.95,
+      "adj": -0.59
+    },
+    "De'Aaron Fox|PTS+AST": {
+      "n": 2,
+      "mean_residual": -0.84,
+      "adj": -0.12
+    },
+    "De'Aaron Fox|REB": {
       "n": 1,
-      "mean_residual": -3.2,
+      "mean_residual": 0.15,
       "adj": 0.0
+    },
+    "Dean Wade|3PM": {
+      "n": 1,
+      "mean_residual": -0.1,
+      "adj": 0.0
+    },
+    "Dean Wade|AST": {
+      "n": 2,
+      "mean_residual": -0.96,
+      "adj": -0.14
     },
     "Dean Wade|PRA": {
       "n": 1,
@@ -222,108 +642,1043 @@
       "adj": 0.0
     },
     "Dean Wade|PTS": {
-      "n": 1,
-      "mean_residual": -4.91,
-      "adj": 0.0
+      "n": 2,
+      "mean_residual": -0.04,
+      "adj": -0.01
+    },
+    "Dean Wade|REB": {
+      "n": 5,
+      "mean_residual": -0.66,
+      "adj": -0.2
     },
     "Deandre Ayton|AST": {
+      "n": 7,
+      "mean_residual": 0.06,
+      "adj": 0.02
+    },
+    "Deandre Ayton|REB": {
       "n": 1,
-      "mean_residual": 0.32,
+      "mean_residual": 1.68,
       "adj": 0.0
     },
     "Deandre Ayton|REB+AST": {
+      "n": 4,
+      "mean_residual": -2.71,
+      "adj": -0.68
+    },
+    "Deni Avdija|PTS+AST": {
+      "n": 2,
+      "mean_residual": -10.1,
+      "adj": -1.44
+    },
+    "Dennis Schroder|AST": {
+      "n": 3,
+      "mean_residual": -2.16,
+      "adj": -0.43
+    },
+    "Dennis Schroder|PRA": {
       "n": 1,
-      "mean_residual": -6.0,
+      "mean_residual": 10.68,
       "adj": 0.0
+    },
+    "Dennis Schroder|PTS": {
+      "n": 2,
+      "mean_residual": -1.95,
+      "adj": -0.28
+    },
+    "Derrick White|AST": {
+      "n": 1,
+      "mean_residual": -0.8,
+      "adj": 0.0
+    },
+    "Derrick White|PTS": {
+      "n": 1,
+      "mean_residual": 2.05,
+      "adj": 0.0
+    },
+    "Derrick White|REB": {
+      "n": 2,
+      "mean_residual": -0.75,
+      "adj": -0.11
+    },
+    "Derrick White|REB+AST": {
+      "n": 1,
+      "mean_residual": 3.91,
+      "adj": 0.0
+    },
+    "Desmond Bane|3PM": {
+      "n": 1,
+      "mean_residual": 2.15,
+      "adj": 0.0
+    },
+    "Desmond Bane|AST": {
+      "n": 1,
+      "mean_residual": -1.97,
+      "adj": 0.0
+    },
+    "Desmond Bane|PTS": {
+      "n": 1,
+      "mean_residual": 1.9,
+      "adj": 0.0
+    },
+    "Desmond Bane|REB": {
+      "n": 3,
+      "mean_residual": -0.65,
+      "adj": -0.13
+    },
+    "Devin Booker|3PM": {
+      "n": 1,
+      "mean_residual": -0.03,
+      "adj": 0.0
+    },
+    "Devin Booker|PTS": {
+      "n": 3,
+      "mean_residual": -10.21,
+      "adj": -2.04
+    },
+    "Devin Booker|PTS+AST": {
+      "n": 3,
+      "mean_residual": -9.87,
+      "adj": -1.97
     },
     "Devin Vassell|AST": {
       "n": 3,
-      "mean_residual": -0.67,
-      "adj": -0.13
+      "mean_residual": -0.42,
+      "adj": -0.08
     },
     "Devin Vassell|REB": {
+      "n": 7,
+      "mean_residual": -0.28,
+      "adj": -0.1
+    },
+    "Devin Vassell|REB+AST": {
+      "n": 3,
+      "mean_residual": 1.85,
+      "adj": 0.37
+    },
+    "Dillon Brooks|AST": {
+      "n": 2,
+      "mean_residual": -0.43,
+      "adj": -0.06
+    },
+    "Dillon Brooks|PTS": {
       "n": 1,
-      "mean_residual": -4.76,
+      "mean_residual": 0.04,
       "adj": 0.0
+    },
+    "Dillon Brooks|PTS+AST": {
+      "n": 1,
+      "mean_residual": 11.77,
+      "adj": 0.0
+    },
+    "Dillon Brooks|REB": {
+      "n": 2,
+      "mean_residual": 0.21,
+      "adj": 0.03
+    },
+    "Dominick Barlow|PRA": {
+      "n": 1,
+      "mean_residual": -3.3,
+      "adj": 0.0
+    },
+    "Dominick Barlow|REB": {
+      "n": 1,
+      "mean_residual": -1.7,
+      "adj": 0.0
+    },
+    "Donovan Clingan|3PM": {
+      "n": 1,
+      "mean_residual": 1.06,
+      "adj": 0.0
+    },
+    "Donovan Clingan|PTS+AST": {
+      "n": 1,
+      "mean_residual": -2.67,
+      "adj": 0.0
+    },
+    "Donovan Clingan|REB": {
+      "n": 2,
+      "mean_residual": -2.04,
+      "adj": -0.29
+    },
+    "Donovan Mitchell|3PM": {
+      "n": 2,
+      "mean_residual": -0.57,
+      "adj": -0.08
     },
     "Donovan Mitchell|AST": {
+      "n": 2,
+      "mean_residual": -1.22,
+      "adj": -0.17
+    },
+    "Donovan Mitchell|PTS+AST": {
       "n": 1,
-      "mean_residual": -1.27,
+      "mean_residual": -1.31,
       "adj": 0.0
     },
-    "Duncan Robinson|3PM": {
+    "Donovan Mitchell|REB": {
       "n": 1,
-      "mean_residual": -2.64,
+      "mean_residual": 5.27,
       "adj": 0.0
+    },
+    "Donovan Mitchell|REB+AST": {
+      "n": 1,
+      "mean_residual": -6.35,
+      "adj": 0.0
+    },
+    "Donte DiVincenzo|3PM": {
+      "n": 3,
+      "mean_residual": -0.93,
+      "adj": -0.19
+    },
+    "Donte DiVincenzo|AST": {
+      "n": 1,
+      "mean_residual": 0.0,
+      "adj": 0.0
+    },
+    "Donte DiVincenzo|PTS": {
+      "n": 1,
+      "mean_residual": 3.0,
+      "adj": 0.0
+    },
+    "Donte DiVincenzo|PTS+AST": {
+      "n": 1,
+      "mean_residual": -17.02,
+      "adj": 0.0
+    },
+    "Donte DiVincenzo|REB+AST": {
+      "n": 1,
+      "mean_residual": 7.64,
+      "adj": 0.0
+    },
+    "Dorian Finney-Smith|REB": {
+      "n": 2,
+      "mean_residual": -0.46,
+      "adj": -0.07
+    },
+    "Duncan Robinson|3PM": {
+      "n": 2,
+      "mean_residual": -1.01,
+      "adj": -0.14
+    },
+    "Duncan Robinson|AST": {
+      "n": 6,
+      "mean_residual": 0.95,
+      "adj": 0.32
     },
     "Duncan Robinson|PRA": {
       "n": 1,
       "mean_residual": -13.23,
       "adj": 0.0
     },
+    "Duncan Robinson|PTS+AST": {
+      "n": 1,
+      "mean_residual": -1.96,
+      "adj": 0.0
+    },
+    "Duncan Robinson|REB": {
+      "n": 1,
+      "mean_residual": -2.76,
+      "adj": 0.0
+    },
+    "Duncan Robinson|REB+AST": {
+      "n": 1,
+      "mean_residual": -3.73,
+      "adj": 0.0
+    },
+    "Dylan Harper|3PM": {
+      "n": 1,
+      "mean_residual": -1.3,
+      "adj": 0.0
+    },
     "Dylan Harper|AST": {
+      "n": 4,
+      "mean_residual": 0.1,
+      "adj": 0.03
+    },
+    "Dylan Harper|PRA": {
       "n": 3,
-      "mean_residual": -1.25,
-      "adj": -0.25
+      "mean_residual": 1.62,
+      "adj": 0.32
+    },
+    "Dylan Harper|PTS": {
+      "n": 1,
+      "mean_residual": 13.95,
+      "adj": 0.0
+    },
+    "Dylan Harper|PTS+AST": {
+      "n": 1,
+      "mean_residual": 1.8,
+      "adj": 0.0
     },
     "Dylan Harper|REB": {
-      "n": 3,
-      "mean_residual": 4.33,
-      "adj": 0.87
+      "n": 6,
+      "mean_residual": 0.57,
+      "adj": 0.19
+    },
+    "Dylan Harper|REB+AST": {
+      "n": 1,
+      "mean_residual": -2.82,
+      "adj": 0.0
+    },
+    "Dyson Daniels|3PM": {
+      "n": 1,
+      "mean_residual": -0.7,
+      "adj": 0.0
+    },
+    "Dyson Daniels|AST": {
+      "n": 2,
+      "mean_residual": -1.95,
+      "adj": -0.28
+    },
+    "Dyson Daniels|REB": {
+      "n": 5,
+      "mean_residual": -1.3,
+      "adj": -0.38
+    },
+    "Dyson Daniels|REB+AST": {
+      "n": 1,
+      "mean_residual": -8.44,
+      "adj": 0.0
     },
     "Evan Mobley|AST": {
+      "n": 4,
+      "mean_residual": 0.8,
+      "adj": 0.2
+    },
+    "Evan Mobley|PTS+AST": {
+      "n": 3,
+      "mean_residual": 1.75,
+      "adj": 0.35
+    },
+    "Franz Wagner|AST": {
+      "n": 2,
+      "mean_residual": -0.01,
+      "adj": -0.0
+    },
+    "Franz Wagner|PTS+AST": {
+      "n": 1,
+      "mean_residual": -4.43,
+      "adj": 0.0
+    },
+    "Franz Wagner|REB": {
+      "n": 1,
+      "mean_residual": 1.2,
+      "adj": 0.0
+    },
+    "Gabe Vincent|3PM": {
+      "n": 2,
+      "mean_residual": 0.15,
+      "adj": 0.02
+    },
+    "Gabe Vincent|PTS": {
+      "n": 1,
+      "mean_residual": 6.53,
+      "adj": 0.0
+    },
+    "Goga Bitadze|PTS": {
+      "n": 2,
+      "mean_residual": -3.57,
+      "adj": -0.51
+    },
+    "Goga Bitadze|REB": {
+      "n": 4,
+      "mean_residual": -2.56,
+      "adj": -0.64
+    },
+    "Grayson Allen|PTS": {
+      "n": 1,
+      "mean_residual": -0.75,
+      "adj": 0.0
+    },
+    "Harrison Barnes|3PM": {
+      "n": 1,
+      "mean_residual": -1.5,
+      "adj": 0.0
+    },
+    "Harrison Barnes|PRA": {
+      "n": 1,
+      "mean_residual": -5.0,
+      "adj": 0.0
+    },
+    "Isaiah Hartenstein|AST": {
+      "n": 1,
+      "mean_residual": -2.2,
+      "adj": 0.0
+    },
+    "Isaiah Hartenstein|PTS": {
+      "n": 2,
+      "mean_residual": 3.07,
+      "adj": 0.44
+    },
+    "Isaiah Hartenstein|REB": {
+      "n": 1,
+      "mean_residual": -0.47,
+      "adj": 0.0
+    },
+    "Isaiah Joe|3PM": {
+      "n": 1,
+      "mean_residual": -1.52,
+      "adj": 0.0
+    },
+    "Isaiah Joe|PTS": {
+      "n": 5,
+      "mean_residual": -4.66,
+      "adj": -1.37
+    },
+    "Ja'Kobe Walter|3PM": {
+      "n": 1,
+      "mean_residual": -1.5,
+      "adj": 0.0
+    },
+    "Ja'Kobe Walter|PTS": {
+      "n": 3,
+      "mean_residual": 3.49,
+      "adj": 0.7
+    },
+    "Ja'Kobe Walter|REB+AST": {
+      "n": 2,
+      "mean_residual": 0.13,
+      "adj": 0.02
+    },
+    "Jabari Smith Jr|3PM": {
+      "n": 4,
+      "mean_residual": -0.02,
+      "adj": -0.0
+    },
+    "Jabari Smith Jr|AST": {
       "n": 1,
       "mean_residual": 1.15,
       "adj": 0.0
     },
-    "Isaiah Joe|PTS": {
+    "Jabari Smith Jr|PTS": {
       "n": 1,
-      "mean_residual": -8.32,
+      "mean_residual": 0.77,
       "adj": 0.0
     },
     "Jaden McDaniels|AST": {
+      "n": 2,
+      "mean_residual": -1.98,
+      "adj": -0.28
+    },
+    "Jaden McDaniels|PTS": {
       "n": 1,
-      "mean_residual": -2.94,
+      "mean_residual": 16.67,
       "adj": 0.0
     },
     "Jaden McDaniels|REB": {
+      "n": 7,
+      "mean_residual": 0.65,
+      "adj": 0.24
+    },
+    "Jake LaRavia|PRA": {
       "n": 1,
-      "mean_residual": 0.09,
+      "mean_residual": 0.96,
+      "adj": 0.0
+    },
+    "Jake LaRavia|PTS": {
+      "n": 2,
+      "mean_residual": -1.66,
+      "adj": -0.24
+    },
+    "Jake LaRavia|REB": {
+      "n": 2,
+      "mean_residual": -2.1,
+      "adj": -0.3
+    },
+    "Jakob Poeltl|REB": {
+      "n": 3,
+      "mean_residual": 1.41,
+      "adj": 0.28
+    },
+    "Jalen Brunson|AST": {
+      "n": 2,
+      "mean_residual": -2.73,
+      "adj": -0.39
+    },
+    "Jalen Brunson|REB": {
+      "n": 4,
+      "mean_residual": 1.24,
+      "adj": 0.31
+    },
+    "Jalen Brunson|REB+AST": {
+      "n": 3,
+      "mean_residual": -2.71,
+      "adj": -0.54
+    },
+    "Jalen Duren|AST": {
+      "n": 6,
+      "mean_residual": -0.82,
+      "adj": -0.27
+    },
+    "Jalen Duren|PRA": {
+      "n": 1,
+      "mean_residual": 1.72,
+      "adj": 0.0
+    },
+    "Jalen Duren|PTS": {
+      "n": 1,
+      "mean_residual": -1.8,
+      "adj": 0.0
+    },
+    "Jalen Duren|PTS+AST": {
+      "n": 3,
+      "mean_residual": -8.46,
+      "adj": -1.69
+    },
+    "Jalen Green|AST": {
+      "n": 2,
+      "mean_residual": 1.47,
+      "adj": 0.21
+    },
+    "Jalen Green|PRA": {
+      "n": 1,
+      "mean_residual": -8.9,
+      "adj": 0.0
+    },
+    "Jalen Green|PTS": {
+      "n": 1,
+      "mean_residual": -6.4,
+      "adj": 0.0
+    },
+    "Jalen Green|PTS+AST": {
+      "n": 2,
+      "mean_residual": -0.9,
+      "adj": -0.13
+    },
+    "Jalen Johnson|3PM": {
+      "n": 1,
+      "mean_residual": -0.85,
+      "adj": 0.0
+    },
+    "Jalen Johnson|AST": {
+      "n": 1,
+      "mean_residual": -2.9,
+      "adj": 0.0
+    },
+    "Jalen Johnson|REB": {
+      "n": 1,
+      "mean_residual": -2.47,
+      "adj": 0.0
+    },
+    "Jalen Suggs|3PM": {
+      "n": 4,
+      "mean_residual": -2.23,
+      "adj": -0.56
+    },
+    "Jalen Suggs|AST": {
+      "n": 3,
+      "mean_residual": -2.36,
+      "adj": -0.47
+    },
+    "Jalen Suggs|PTS+AST": {
+      "n": 1,
+      "mean_residual": 1.42,
+      "adj": 0.0
+    },
+    "Jalen Williams|AST": {
+      "n": 1,
+      "mean_residual": 0.5,
+      "adj": 0.0
+    },
+    "Jamal Cain|PRA": {
+      "n": 1,
+      "mean_residual": 6.6,
+      "adj": 0.0
+    },
+    "Jamal Murray|3PM": {
+      "n": 2,
+      "mean_residual": 0.94,
+      "adj": 0.13
+    },
+    "Jamal Murray|AST": {
+      "n": 1,
+      "mean_residual": -3.47,
+      "adj": 0.0
+    },
+    "Jamal Murray|REB": {
+      "n": 2,
+      "mean_residual": -0.07,
+      "adj": -0.01
+    },
+    "Jamal Shead|3PM": {
+      "n": 1,
+      "mean_residual": 4.2,
+      "adj": 0.0
+    },
+    "Jamal Shead|REB": {
+      "n": 2,
+      "mean_residual": 0.56,
+      "adj": 0.08
+    },
+    "Jamal Shead|REB+AST": {
+      "n": 1,
+      "mean_residual": 3.79,
+      "adj": 0.0
+    },
+    "James Harden|3PM": {
+      "n": 3,
+      "mean_residual": -0.83,
+      "adj": -0.17
+    },
+    "James Harden|PTS": {
+      "n": 1,
+      "mean_residual": 3.92,
+      "adj": 0.0
+    },
+    "James Harden|PTS+AST": {
+      "n": 1,
+      "mean_residual": 0.36,
       "adj": 0.0
     },
     "James Harden|REB": {
+      "n": 2,
+      "mean_residual": -2.32,
+      "adj": -0.33
+    },
+    "James Harden|REB+AST": {
       "n": 1,
-      "mean_residual": -5.12,
+      "mean_residual": 2.8,
       "adj": 0.0
+    },
+    "Jamison Battle|PRA": {
+      "n": 1,
+      "mean_residual": 3.6,
+      "adj": 0.0
+    },
+    "Jared McCain|PRA": {
+      "n": 1,
+      "mean_residual": -7.49,
+      "adj": 0.0
+    },
+    "Jarred Vanderbilt|3PM": {
+      "n": 1,
+      "mean_residual": 0.8,
+      "adj": 0.0
+    },
+    "Jarred Vanderbilt|REB": {
+      "n": 2,
+      "mean_residual": 0.65,
+      "adj": 0.09
+    },
+    "Jarrett Allen|AST": {
+      "n": 6,
+      "mean_residual": 0.09,
+      "adj": 0.03
+    },
+    "Jarrett Allen|PTS": {
+      "n": 1,
+      "mean_residual": -5.34,
+      "adj": 0.0
+    },
+    "Jarrett Allen|PTS+AST": {
+      "n": 1,
+      "mean_residual": -6.49,
+      "adj": 0.0
+    },
+    "Javonte Green|3PM": {
+      "n": 1,
+      "mean_residual": -0.29,
+      "adj": 0.0
+    },
+    "Javonte Green|PRA": {
+      "n": 3,
+      "mean_residual": -7.11,
+      "adj": -1.42
+    },
+    "Javonte Green|PTS+REB": {
+      "n": 2,
+      "mean_residual": -3.43,
+      "adj": -0.49
+    },
+    "Jaxson Hayes|PTS": {
+      "n": 5,
+      "mean_residual": -4.37,
+      "adj": -1.29
+    },
+    "Jaxson Hayes|PTS+REB": {
+      "n": 1,
+      "mean_residual": -13.31,
+      "adj": 0.0
+    },
+    "Jaxson Hayes|REB": {
+      "n": 5,
+      "mean_residual": -0.52,
+      "adj": -0.15
+    },
+    "Jaylen Brown|AST": {
+      "n": 1,
+      "mean_residual": 0.29,
+      "adj": 0.0
+    },
+    "Jaylen Brown|PTS+AST": {
+      "n": 3,
+      "mean_residual": -5.1,
+      "adj": -1.02
+    },
+    "Jaylin Williams|3PM": {
+      "n": 1,
+      "mean_residual": -1.26,
+      "adj": 0.0
+    },
+    "Jaylin Williams|REB": {
+      "n": 2,
+      "mean_residual": -1.79,
+      "adj": -0.26
     },
     "Jaylon Tyson|3PM": {
       "n": 1,
       "mean_residual": -0.94,
       "adj": 0.0
     },
-    "Julian Champagnie|REB": {
+    "Jaylon Tyson|AST": {
+      "n": 1,
+      "mean_residual": 0.15,
+      "adj": 0.0
+    },
+    "Jaylon Tyson|PTS": {
+      "n": 1,
+      "mean_residual": -2.74,
+      "adj": 0.0
+    },
+    "Jaylon Tyson|PTS+REB": {
+      "n": 1,
+      "mean_residual": -6.92,
+      "adj": 0.0
+    },
+    "Jaylon Tyson|REB": {
       "n": 3,
+      "mean_residual": -0.75,
+      "adj": -0.15
+    },
+    "Jayson Tatum|3PM": {
+      "n": 3,
+      "mean_residual": 1.4,
+      "adj": 0.28
+    },
+    "Jayson Tatum|AST": {
+      "n": 1,
+      "mean_residual": 0.36,
+      "adj": 0.0
+    },
+    "Jayson Tatum|PRA": {
+      "n": 1,
+      "mean_residual": -16.13,
+      "adj": 0.0
+    },
+    "Jerami Grant|3PM": {
+      "n": 1,
+      "mean_residual": -1.9,
+      "adj": 0.0
+    },
+    "Jerami Grant|AST": {
+      "n": 1,
+      "mean_residual": 0.29,
+      "adj": 0.0
+    },
+    "Jerami Grant|PTS": {
+      "n": 2,
+      "mean_residual": -7.91,
+      "adj": -1.13
+    },
+    "Jerami Grant|PTS+REB": {
+      "n": 1,
+      "mean_residual": -17.9,
+      "adj": 0.0
+    },
+    "Jerami Grant|REB+AST": {
+      "n": 1,
+      "mean_residual": -0.92,
+      "adj": 0.0
+    },
+    "Joel Embiid|3PM": {
+      "n": 2,
+      "mean_residual": -0.84,
+      "adj": -0.12
+    },
+    "Joel Embiid|AST": {
+      "n": 1,
+      "mean_residual": -0.03,
+      "adj": 0.0
+    },
+    "Joel Embiid|PTS+AST": {
+      "n": 1,
+      "mean_residual": 6.45,
+      "adj": 0.0
+    },
+    "Joel Embiid|REB": {
+      "n": 2,
+      "mean_residual": -2.24,
+      "adj": -0.32
+    },
+    "Jonathan Kuminga|3PM": {
+      "n": 2,
+      "mean_residual": -0.03,
+      "adj": -0.0
+    },
+    "Jonathan Kuminga|AST": {
+      "n": 1,
+      "mean_residual": -1.76,
+      "adj": 0.0
+    },
+    "Jonathan Kuminga|PRA": {
+      "n": 2,
+      "mean_residual": -7.98,
+      "adj": -1.14
+    },
+    "Jonathan Kuminga|PTS": {
+      "n": 2,
+      "mean_residual": -4.55,
+      "adj": -0.65
+    },
+    "Jonathan Kuminga|PTS+AST": {
+      "n": 1,
+      "mean_residual": -2.58,
+      "adj": 0.0
+    },
+    "Jonathan Kuminga|REB": {
+      "n": 1,
+      "mean_residual": -0.27,
+      "adj": 0.0
+    },
+    "Jordan Clarkson|3PM": {
+      "n": 1,
+      "mean_residual": -0.24,
+      "adj": 0.0
+    },
+    "Jordan Clarkson|AST": {
+      "n": 1,
+      "mean_residual": -0.24,
+      "adj": 0.0
+    },
+    "Jordan Clarkson|PTS": {
+      "n": 1,
+      "mean_residual": 2.0,
+      "adj": 0.0
+    },
+    "Jordan Walsh|PRA": {
+      "n": 4,
+      "mean_residual": -4.9,
+      "adj": -1.22
+    },
+    "Jose Alvarado|PRA": {
+      "n": 2,
+      "mean_residual": -11.9,
+      "adj": -1.7
+    },
+    "Josh Hart|AST": {
+      "n": 2,
+      "mean_residual": 2.0,
+      "adj": 0.29
+    },
+    "Josh Hart|PTS": {
+      "n": 1,
+      "mean_residual": 2.58,
+      "adj": 0.0
+    },
+    "Josh Hart|PTS+AST": {
+      "n": 2,
+      "mean_residual": -0.69,
+      "adj": -0.1
+    },
+    "Josh Hart|REB": {
+      "n": 2,
+      "mean_residual": -2.69,
+      "adj": -0.38
+    },
+    "Josh Hart|REB+AST": {
+      "n": 1,
+      "mean_residual": 3.79,
+      "adj": 0.0
+    },
+    "Josh Okogie|PTS": {
+      "n": 1,
+      "mean_residual": 0.56,
+      "adj": 0.0
+    },
+    "Josh Okogie|REB": {
+      "n": 3,
+      "mean_residual": -0.58,
+      "adj": -0.12
+    },
+    "Jrue Holiday|PTS+AST": {
+      "n": 1,
+      "mean_residual": -11.9,
+      "adj": 0.0
+    },
+    "Jrue Holiday|REB": {
+      "n": 3,
+      "mean_residual": -0.58,
+      "adj": -0.12
+    },
+    "Julian Champagnie|AST": {
+      "n": 1,
+      "mean_residual": 1.85,
+      "adj": 0.0
+    },
+    "Julian Champagnie|PTS+AST": {
+      "n": 2,
+      "mean_residual": -0.33,
+      "adj": -0.05
+    },
+    "Julian Champagnie|REB": {
+      "n": 2,
       "mean_residual": -1.63,
-      "adj": -0.33
+      "adj": -0.23
     },
     "Julian Champagnie|REB+AST": {
+      "n": 2,
+      "mean_residual": -1.85,
+      "adj": -0.26
+    },
+    "Julius Randle|PTS": {
       "n": 1,
-      "mean_residual": -0.44,
+      "mean_residual": -1.98,
       "adj": 0.0
     },
     "Julius Randle|REB": {
+      "n": 4,
+      "mean_residual": 1.16,
+      "adj": 0.29
+    },
+    "Justin Edwards|PRA": {
+      "n": 1,
+      "mean_residual": -11.39,
+      "adj": 0.0
+    },
+    "Justin Edwards|PTS": {
+      "n": 1,
+      "mean_residual": -8.81,
+      "adj": 0.0
+    },
+    "Karl-Anthony Towns|3PM": {
+      "n": 1,
+      "mean_residual": 2.0,
+      "adj": 0.0
+    },
+    "Karl-Anthony Towns|AST": {
+      "n": 7,
+      "mean_residual": 0.76,
+      "adj": 0.28
+    },
+    "Karl-Anthony Towns|PTS+AST": {
+      "n": 4,
+      "mean_residual": -3.57,
+      "adj": -0.89
+    },
+    "Karl-Anthony Towns|REB": {
       "n": 2,
-      "mean_residual": 2.8,
-      "adj": 0.4
+      "mean_residual": -1.32,
+      "adj": -0.19
+    },
+    "Karl-Anthony Towns|REB+AST": {
+      "n": 1,
+      "mean_residual": 3.04,
+      "adj": 0.0
+    },
+    "Keldon Johnson|AST": {
+      "n": 1,
+      "mean_residual": -0.2,
+      "adj": 0.0
+    },
+    "Keldon Johnson|PTS": {
+      "n": 3,
+      "mean_residual": -8.86,
+      "adj": -1.77
+    },
+    "Keldon Johnson|PTS+REB": {
+      "n": 1,
+      "mean_residual": -8.6,
+      "adj": 0.0
     },
     "Keldon Johnson|REB": {
+      "n": 5,
+      "mean_residual": -1.25,
+      "adj": -0.37
+    },
+    "Keldon Johnson|REB+AST": {
+      "n": 1,
+      "mean_residual": -3.17,
+      "adj": 0.0
+    },
+    "Kelly Oubre Jr|AST": {
+      "n": 5,
+      "mean_residual": 0.02,
+      "adj": 0.0
+    },
+    "Kelly Oubre Jr|PTS": {
+      "n": 1,
+      "mean_residual": 9.34,
+      "adj": 0.0
+    },
+    "Kelly Oubre Jr|PTS+AST": {
+      "n": 2,
+      "mean_residual": 5.1,
+      "adj": 0.73
+    },
+    "Kelly Oubre Jr|PTS+REB": {
+      "n": 1,
+      "mean_residual": -13.58,
+      "adj": 0.0
+    },
+    "Kelly Oubre Jr|REB": {
       "n": 3,
-      "mean_residual": -2.08,
-      "adj": -0.42
+      "mean_residual": 0.11,
+      "adj": 0.02
+    },
+    "Kelly Oubre Jr|REB+AST": {
+      "n": 1,
+      "mean_residual": 1.62,
+      "adj": 0.0
+    },
+    "Keon Ellis|PTS": {
+      "n": 2,
+      "mean_residual": -5.64,
+      "adj": -0.81
+    },
+    "Kevin Durant|AST": {
+      "n": 1,
+      "mean_residual": -2.26,
+      "adj": 0.0
+    },
+    "Kevin Durant|REB": {
+      "n": 1,
+      "mean_residual": 0.09,
+      "adj": 0.0
+    },
+    "Kevin Huerter|PRA": {
+      "n": 1,
+      "mean_residual": -14.04,
+      "adj": 0.0
+    },
+    "Kevin Huerter|PTS": {
+      "n": 1,
+      "mean_residual": -6.52,
+      "adj": 0.0
+    },
+    "Landry Shamet|PTS": {
+      "n": 1,
+      "mean_residual": -6.12,
+      "adj": 0.0
+    },
+    "LeBron James|3PM": {
+      "n": 1,
+      "mean_residual": 0.0,
+      "adj": 0.0
     },
     "LeBron James|AST": {
+      "n": 5,
+      "mean_residual": -2.9,
+      "adj": -0.85
+    },
+    "LeBron James|PTS": {
       "n": 1,
-      "mean_residual": -5.64,
+      "mean_residual": -0.9,
+      "adj": 0.0
+    },
+    "LeBron James|PTS+AST": {
+      "n": 1,
+      "mean_residual": -18.84,
       "adj": 0.0
     },
     "Luguentz Dort|3PM": {
@@ -332,112 +1687,847 @@
       "adj": 0.0
     },
     "Luguentz Dort|AST": {
+      "n": 4,
+      "mean_residual": 0.22,
+      "adj": 0.05
+    },
+    "Luguentz Dort|PRA": {
       "n": 1,
-      "mean_residual": -1.38,
+      "mean_residual": 4.6,
+      "adj": 0.0
+    },
+    "Luguentz Dort|PTS": {
+      "n": 1,
+      "mean_residual": 3.44,
+      "adj": 0.0
+    },
+    "Luguentz Dort|PTS+REB": {
+      "n": 1,
+      "mean_residual": 5.08,
+      "adj": 0.0
+    },
+    "Luguentz Dort|REB": {
+      "n": 1,
+      "mean_residual": 3.56,
+      "adj": 0.0
+    },
+    "Luka Garza|PRA": {
+      "n": 2,
+      "mean_residual": -8.59,
+      "adj": -1.23
+    },
+    "Luke Kennard|3PM": {
+      "n": 1,
+      "mean_residual": 3.9,
+      "adj": 0.0
+    },
+    "Luke Kennard|AST": {
+      "n": 3,
+      "mean_residual": -2.76,
+      "adj": -0.55
+    },
+    "Luke Kennard|PRA": {
+      "n": 1,
+      "mean_residual": -14.34,
+      "adj": 0.0
+    },
+    "Luke Kennard|PTS+AST": {
+      "n": 2,
+      "mean_residual": -12.28,
+      "adj": -1.75
+    },
+    "Luke Kennard|PTS+REB": {
+      "n": 1,
+      "mean_residual": 5.49,
       "adj": 0.0
     },
     "Luke Kennard|REB": {
+      "n": 3,
+      "mean_residual": 0.41,
+      "adj": 0.08
+    },
+    "Luke Kennard|REB+AST": {
+      "n": 2,
+      "mean_residual": -1.36,
+      "adj": -0.19
+    },
+    "Luke Kornet|PRA": {
+      "n": 1,
+      "mean_residual": -3.87,
+      "adj": 0.0
+    },
+    "Luke Kornet|PTS": {
+      "n": 1,
+      "mean_residual": -4.7,
+      "adj": 0.0
+    },
+    "Luke Kornet|REB": {
+      "n": 4,
+      "mean_residual": -4.33,
+      "adj": -1.08
+    },
+    "Marcus Smart|AST": {
+      "n": 6,
+      "mean_residual": -2.29,
+      "adj": -0.76
+    },
+    "Marcus Smart|PRA": {
+      "n": 1,
+      "mean_residual": 19.02,
+      "adj": 0.0
+    },
+    "Marcus Smart|PTS": {
+      "n": 2,
+      "mean_residual": 12.67,
+      "adj": 1.81
+    },
+    "Marcus Smart|PTS+AST": {
+      "n": 2,
+      "mean_residual": -7.78,
+      "adj": -1.11
+    },
+    "Marcus Smart|PTS+REB": {
+      "n": 1,
+      "mean_residual": 13.58,
+      "adj": 0.0
+    },
+    "Marcus Smart|REB+AST": {
+      "n": 4,
+      "mean_residual": -1.82,
+      "adj": -0.45
+    },
+    "Matisse Thybulle|PRA": {
+      "n": 1,
+      "mean_residual": -1.1,
+      "adj": 0.0
+    },
+    "Max Strus|3PM": {
+      "n": 1,
+      "mean_residual": 1.8,
+      "adj": 0.0
+    },
+    "Max Strus|AST": {
+      "n": 2,
+      "mean_residual": 2.16,
+      "adj": 0.31
+    },
+    "Max Strus|PTS": {
+      "n": 1,
+      "mean_residual": 4.3,
+      "adj": 0.0
+    },
+    "Max Strus|REB": {
+      "n": 7,
+      "mean_residual": -0.39,
+      "adj": -0.14
+    },
+    "Max Strus|REB+AST": {
+      "n": 1,
+      "mean_residual": -0.7,
+      "adj": 0.0
+    },
+    "Mikal Bridges|AST": {
+      "n": 3,
+      "mean_residual": 1.12,
+      "adj": 0.22
+    },
+    "Mikal Bridges|REB": {
+      "n": 2,
+      "mean_residual": -1.14,
+      "adj": -0.16
+    },
+    "Mikal Bridges|REB+AST": {
+      "n": 5,
+      "mean_residual": -1.04,
+      "adj": -0.31
+    },
+    "Mike Conley|AST": {
+      "n": 3,
+      "mean_residual": 0.3,
+      "adj": 0.06
+    },
+    "Mike Conley|PRA": {
+      "n": 1,
+      "mean_residual": 0.02,
+      "adj": 0.0
+    },
+    "Mike Conley|PTS": {
+      "n": 1,
+      "mean_residual": -0.67,
+      "adj": 0.0
+    },
+    "Mike Conley|REB": {
+      "n": 2,
+      "mean_residual": 0.0,
+      "adj": 0.0
+    },
+    "Mike Conley|REB+AST": {
+      "n": 1,
+      "mean_residual": -1.73,
+      "adj": 0.0
+    },
+    "Miles McBride|3PM": {
+      "n": 1,
+      "mean_residual": -0.3,
+      "adj": 0.0
+    },
+    "Miles McBride|AST": {
+      "n": 1,
+      "mean_residual": -0.24,
+      "adj": 0.0
+    },
+    "Miles McBride|PRA": {
+      "n": 3,
+      "mean_residual": -5.43,
+      "adj": -1.09
+    },
+    "Miles McBride|PTS": {
+      "n": 3,
+      "mean_residual": -2.28,
+      "adj": -0.46
+    },
+    "Miles McBride|PTS+AST": {
+      "n": 3,
+      "mean_residual": -4.82,
+      "adj": -0.96
+    },
+    "Miles McBride|REB": {
+      "n": 5,
+      "mean_residual": -0.98,
+      "adj": -0.29
+    },
+    "Mitchell Robinson|AST": {
+      "n": 2,
+      "mean_residual": -0.41,
+      "adj": -0.06
+    },
+    "Mitchell Robinson|PTS": {
+      "n": 3,
+      "mean_residual": -0.27,
+      "adj": -0.05
+    },
+    "Mitchell Robinson|REB": {
+      "n": 1,
+      "mean_residual": -2.18,
+      "adj": 0.0
+    },
+    "Mouhamed Gueye|PRA": {
+      "n": 1,
+      "mean_residual": -7.76,
+      "adj": 0.0
+    },
+    "Naz Reid|AST": {
+      "n": 4,
+      "mean_residual": -0.07,
+      "adj": -0.02
+    },
+    "Naz Reid|REB": {
+      "n": 5,
+      "mean_residual": 1.89,
+      "adj": 0.55
+    },
+    "Naz Reid|REB+AST": {
+      "n": 1,
+      "mean_residual": -2.23,
+      "adj": 0.0
+    },
+    "Neemias Queta|AST": {
+      "n": 4,
+      "mean_residual": -1.45,
+      "adj": -0.36
+    },
+    "Neemias Queta|PTS+AST": {
+      "n": 3,
+      "mean_residual": -5.98,
+      "adj": -1.2
+    },
+    "Neemias Queta|REB": {
+      "n": 2,
+      "mean_residual": 0.59,
+      "adj": 0.08
+    },
+    "Neemias Queta|REB+AST": {
+      "n": 2,
+      "mean_residual": 2.23,
+      "adj": 0.32
+    },
+    "Nickeil Alexander-Walker|3PM": {
+      "n": 1,
+      "mean_residual": -2.94,
+      "adj": 0.0
+    },
+    "Nickeil Alexander-Walker|PTS": {
+      "n": 3,
+      "mean_residual": -10.32,
+      "adj": -2.06
+    },
+    "Nickeil Alexander-Walker|PTS+AST": {
+      "n": 3,
+      "mean_residual": -11.46,
+      "adj": -2.29
+    },
+    "Nickeil Alexander-Walker|REB": {
+      "n": 1,
+      "mean_residual": -1.97,
+      "adj": 0.0
+    },
+    "Nikola Jokic|3PM": {
+      "n": 1,
+      "mean_residual": 1.0,
+      "adj": 0.0
+    },
+    "Nikola Jokic|REB": {
+      "n": 1,
+      "mean_residual": -0.08,
+      "adj": 0.0
+    },
+    "Nikola Vucevic|3PM": {
+      "n": 3,
+      "mean_residual": -0.45,
+      "adj": -0.09
+    },
+    "Nikola Vucevic|AST": {
+      "n": 1,
+      "mean_residual": 1.71,
+      "adj": 0.0
+    },
+    "Nikola Vucevic|PTS": {
+      "n": 1,
+      "mean_residual": -1.67,
+      "adj": 0.0
+    },
+    "Nikola Vucevic|REB": {
+      "n": 2,
+      "mean_residual": -4.22,
+      "adj": -0.6
+    },
+    "Nikola Vucevic|REB+AST": {
+      "n": 1,
+      "mean_residual": -3.05,
+      "adj": 0.0
+    },
+    "OG Anunoby|AST": {
+      "n": 3,
+      "mean_residual": -1.14,
+      "adj": -0.23
+    },
+    "OG Anunoby|REB": {
+      "n": 6,
+      "mean_residual": 0.04,
+      "adj": 0.01
+    },
+    "OG Anunoby|REB+AST": {
+      "n": 1,
+      "mean_residual": 1.36,
+      "adj": 0.0
+    },
+    "Onyeka Okongwu|3PM": {
+      "n": 1,
+      "mean_residual": -0.76,
+      "adj": 0.0
+    },
+    "Onyeka Okongwu|AST": {
+      "n": 1,
+      "mean_residual": 1.94,
+      "adj": 0.0
+    },
+    "Oso Ighodaro|PTS": {
+      "n": 2,
+      "mean_residual": 4.0,
+      "adj": 0.57
+    },
+    "Oso Ighodaro|REB": {
+      "n": 1,
+      "mean_residual": 0.09,
+      "adj": 0.0
+    },
+    "Paolo Banchero|AST": {
+      "n": 5,
+      "mean_residual": -0.11,
+      "adj": -0.03
+    },
+    "Paolo Banchero|REB": {
+      "n": 3,
+      "mean_residual": -1.23,
+      "adj": -0.25
+    },
+    "Paolo Banchero|REB+AST": {
+      "n": 2,
+      "mean_residual": -3.56,
+      "adj": -0.51
+    },
+    "Paul George|3PM": {
+      "n": 3,
+      "mean_residual": 0.98,
+      "adj": 0.2
+    },
+    "Paul George|AST": {
+      "n": 2,
+      "mean_residual": 3.16,
+      "adj": 0.45
+    },
+    "Payton Pritchard|3PM": {
+      "n": 5,
+      "mean_residual": -0.38,
+      "adj": -0.11
+    },
+    "Payton Pritchard|AST": {
+      "n": 2,
+      "mean_residual": 0.36,
+      "adj": 0.05
+    },
+    "Payton Pritchard|PTS": {
+      "n": 1,
+      "mean_residual": -12.49,
+      "adj": 0.0
+    },
+    "Payton Pritchard|PTS+AST": {
+      "n": 1,
+      "mean_residual": -4.37,
+      "adj": 0.0
+    },
+    "Quentin Grimes|AST": {
+      "n": 4,
+      "mean_residual": -0.24,
+      "adj": -0.06
+    },
+    "Quentin Grimes|PTS": {
+      "n": 2,
+      "mean_residual": -6.26,
+      "adj": -0.89
+    },
+    "Quentin Grimes|PTS+AST": {
+      "n": 1,
+      "mean_residual": -8.32,
+      "adj": 0.0
+    },
+    "Quentin Grimes|PTS+REB": {
+      "n": 1,
+      "mean_residual": 0.92,
+      "adj": 0.0
+    },
+    "Quentin Grimes|REB": {
+      "n": 5,
+      "mean_residual": 0.29,
+      "adj": 0.08
+    },
+    "Quentin Grimes|REB+AST": {
+      "n": 2,
+      "mean_residual": -0.69,
+      "adj": -0.1
+    },
+    "Reed Sheppard|3PM": {
+      "n": 3,
+      "mean_residual": -1.31,
+      "adj": -0.26
+    },
+    "Reed Sheppard|AST": {
+      "n": 1,
+      "mean_residual": -0.8,
+      "adj": 0.0
+    },
+    "Reed Sheppard|PTS": {
+      "n": 1,
+      "mean_residual": 5.3,
+      "adj": 0.0
+    },
+    "Reed Sheppard|PTS+REB": {
+      "n": 1,
+      "mean_residual": 0.72,
+      "adj": 0.0
+    },
+    "Robert Williams|REB": {
+      "n": 1,
+      "mean_residual": -2.82,
+      "adj": 0.0
+    },
+    "Royce O'Neale|3PM": {
+      "n": 1,
+      "mean_residual": -1.29,
+      "adj": 0.0
+    },
+    "Royce O'Neale|PTS": {
+      "n": 1,
+      "mean_residual": 0.56,
+      "adj": 0.0
+    },
+    "Rudy Gobert|AST": {
+      "n": 8,
+      "mean_residual": 0.41,
+      "adj": 0.17
+    },
+    "Rudy Gobert|PTS": {
+      "n": 3,
+      "mean_residual": 1.57,
+      "adj": 0.31
+    },
+    "Rudy Gobert|REB": {
+      "n": 3,
+      "mean_residual": -3.72,
+      "adj": -0.74
+    },
+    "Rudy Gobert|REB+AST": {
+      "n": 4,
+      "mean_residual": -1.61,
+      "adj": -0.4
+    },
+    "Rui Hachimura|3PM": {
+      "n": 3,
+      "mean_residual": 1.85,
+      "adj": 0.37
+    },
+    "Rui Hachimura|AST": {
+      "n": 6,
+      "mean_residual": 0.28,
+      "adj": 0.09
+    },
+    "Rui Hachimura|PRA": {
+      "n": 1,
+      "mean_residual": 4.28,
+      "adj": 0.0
+    },
+    "Rui Hachimura|PTS": {
+      "n": 1,
+      "mean_residual": 1.4,
+      "adj": 0.0
+    },
+    "Rui Hachimura|PTS+AST": {
+      "n": 1,
+      "mean_residual": -4.32,
+      "adj": 0.0
+    },
+    "Rui Hachimura|REB": {
+      "n": 2,
+      "mean_residual": -2.1,
+      "adj": -0.3
+    },
+    "Sam Hauser|AST": {
+      "n": 1,
+      "mean_residual": -1.29,
+      "adj": 0.0
+    },
+    "Sam Hauser|PTS+AST": {
+      "n": 2,
+      "mean_residual": -0.24,
+      "adj": -0.03
+    },
+    "Sam Hauser|REB": {
+      "n": 3,
+      "mean_residual": -1.16,
+      "adj": -0.23
+    },
+    "Sam Hauser|REB+AST": {
+      "n": 1,
+      "mean_residual": -2.91,
+      "adj": 0.0
+    },
+    "Sam Merrill|AST": {
+      "n": 3,
+      "mean_residual": -0.39,
+      "adj": -0.08
+    },
+    "Sam Merrill|PRA": {
+      "n": 2,
+      "mean_residual": -3.81,
+      "adj": -0.54
+    },
+    "Sam Merrill|PTS": {
+      "n": 1,
+      "mean_residual": -8.2,
+      "adj": 0.0
+    },
+    "Sam Merrill|REB": {
+      "n": 2,
+      "mean_residual": -0.15,
+      "adj": -0.02
+    },
+    "Sandro Mamukelashvili|AST": {
       "n": 1,
       "mean_residual": -1.03,
       "adj": 0.0
     },
-    "Luke Kornet|REB": {
+    "Sandro Mamukelashvili|PRA": {
       "n": 2,
-      "mean_residual": -4.91,
-      "adj": -0.7
+      "mean_residual": -5.97,
+      "adj": -0.85
     },
-    "Marcus Smart|AST": {
-      "n": 1,
-      "mean_residual": -2.0,
-      "adj": 0.0
-    },
-    "Marcus Smart|REB+AST": {
-      "n": 1,
-      "mean_residual": -3.56,
-      "adj": 0.0
-    },
-    "Max Strus|REB": {
-      "n": 1,
-      "mean_residual": -0.82,
-      "adj": 0.0
-    },
-    "Mike Conley|PTS": {
-      "n": 2,
-      "mean_residual": -0.67,
-      "adj": -0.1
-    },
-    "Naz Reid|AST": {
+    "Sandro Mamukelashvili|REB": {
       "n": 3,
-      "mean_residual": 0.59,
-      "adj": 0.12
+      "mean_residual": 0.32,
+      "adj": 0.06
     },
-    "Naz Reid|REB": {
+    "Sandro Mamukelashvili|REB+AST": {
       "n": 1,
-      "mean_residual": 1.44,
+      "mean_residual": 3.1,
       "adj": 0.0
     },
-    "Rudy Gobert|AST": {
+    "Scoot Henderson|PTS": {
       "n": 3,
-      "mean_residual": -1.13,
-      "adj": -0.23
+      "mean_residual": -1.75,
+      "adj": -0.35
     },
-    "Rudy Gobert|REB": {
-      "n": 2,
-      "mean_residual": -5.56,
-      "adj": -0.79
+    "Scoot Henderson|PTS+AST": {
+      "n": 3,
+      "mean_residual": -0.95,
+      "adj": -0.19
     },
-    "Rui Hachimura|3PM": {
+    "Scoot Henderson|PTS+REB": {
       "n": 1,
-      "mean_residual": 0.53,
+      "mean_residual": 4.9,
       "adj": 0.0
     },
-    "Rui Hachimura|AST": {
+    "Scottie Barnes|AST": {
+      "n": 4,
+      "mean_residual": 1.43,
+      "adj": 0.36
+    },
+    "Scottie Barnes|PTS": {
+      "n": 2,
+      "mean_residual": 6.96,
+      "adj": 0.99
+    },
+    "Scottie Barnes|PTS+AST": {
       "n": 1,
-      "mean_residual": 0.06,
+      "mean_residual": -5.19,
+      "adj": 0.0
+    },
+    "Scottie Barnes|REB": {
+      "n": 1,
+      "mean_residual": -0.39,
+      "adj": 0.0
+    },
+    "Shaedon Sharpe|PRA": {
+      "n": 2,
+      "mean_residual": -15.91,
+      "adj": -2.27
+    },
+    "Shaedon Sharpe|PTS": {
+      "n": 2,
+      "mean_residual": -8.66,
+      "adj": -1.24
+    },
+    "Shaedon Sharpe|PTS+REB": {
+      "n": 2,
+      "mean_residual": -17.36,
+      "adj": -2.48
+    },
+    "Shai Gilgeous-Alexander|PTS+AST": {
+      "n": 1,
+      "mean_residual": -5.84,
       "adj": 0.0
     },
     "Shai Gilgeous-Alexander|REB": {
+      "n": 6,
+      "mean_residual": -0.11,
+      "adj": -0.04
+    },
+    "Spencer Jones|REB": {
       "n": 1,
-      "mean_residual": -2.27,
+      "mean_residual": -2.2,
+      "adj": 0.0
+    },
+    "Stephon Castle|3PM": {
+      "n": 1,
+      "mean_residual": -2.03,
       "adj": 0.0
     },
     "Stephon Castle|AST": {
+      "n": 2,
+      "mean_residual": -3.72,
+      "adj": -0.53
+    },
+    "Stephon Castle|REB": {
+      "n": 2,
+      "mean_residual": -0.62,
+      "adj": -0.09
+    },
+    "Stephon Castle|REB+AST": {
       "n": 1,
-      "mean_residual": -3.91,
+      "mean_residual": -4.99,
       "adj": 0.0
+    },
+    "Tari Eason|3PM": {
+      "n": 1,
+      "mean_residual": 1.2,
+      "adj": 0.0
+    },
+    "Tari Eason|REB": {
+      "n": 3,
+      "mean_residual": -0.8,
+      "adj": -0.16
+    },
+    "Terrence Shannon Jr.|PRA": {
+      "n": 2,
+      "mean_residual": -7.04,
+      "adj": -1.01
     },
     "Terrence Shannon Jr.|PTS": {
       "n": 3,
-      "mean_residual": -9.25,
-      "adj": -1.85
+      "mean_residual": -9.18,
+      "adj": -1.84
     },
     "Terrence Shannon Jr.|REB": {
+      "n": 2,
+      "mean_residual": -2.07,
+      "adj": -0.3
+    },
+    "Tim Hardaway Jr|PTS": {
+      "n": 1,
+      "mean_residual": -2.08,
+      "adj": 0.0
+    },
+    "Tim Hardaway Jr|PTS+REB": {
+      "n": 1,
+      "mean_residual": 0.95,
+      "adj": 0.0
+    },
+    "Tim Hardaway Jr|REB": {
       "n": 3,
-      "mean_residual": -2.36,
-      "adj": -0.47
+      "mean_residual": -0.2,
+      "adj": -0.04
     },
     "Tobias Harris|AST": {
-      "n": 1,
-      "mean_residual": 3.76,
-      "adj": 0.0
+      "n": 2,
+      "mean_residual": 1.69,
+      "adj": 0.24
     },
     "Tobias Harris|PTS+AST": {
       "n": 1,
       "mean_residual": -2.05,
       "adj": 0.0
     },
-    "Victor Wembanyama|AST": {
+    "Tobias Harris|PTS+REB": {
+      "n": 1,
+      "mean_residual": 20.57,
+      "adj": 0.0
+    },
+    "Tobias Harris|REB": {
+      "n": 4,
+      "mean_residual": -0.53,
+      "adj": -0.13
+    },
+    "Tobias Harris|REB+AST": {
+      "n": 1,
+      "mean_residual": -4.61,
+      "adj": 0.0
+    },
+    "Toumani Camara|3PM": {
+      "n": 1,
+      "mean_residual": -1.47,
+      "adj": 0.0
+    },
+    "Toumani Camara|PRA": {
+      "n": 1,
+      "mean_residual": -3.75,
+      "adj": 0.0
+    },
+    "Toumani Camara|PTS": {
+      "n": 1,
+      "mean_residual": -6.92,
+      "adj": 0.0
+    },
+    "Toumani Camara|PTS+AST": {
+      "n": 2,
+      "mean_residual": -12.02,
+      "adj": -1.72
+    },
+    "Tristan da Silva|PRA": {
       "n": 3,
-      "mean_residual": 0.99,
-      "adj": 0.2
+      "mean_residual": -1.75,
+      "adj": -0.35
+    },
+    "Tristan da Silva|PTS": {
+      "n": 2,
+      "mean_residual": -5.07,
+      "adj": -0.72
+    },
+    "Tristan da Silva|REB": {
+      "n": 4,
+      "mean_residual": -1.2,
+      "adj": -0.3
+    },
+    "Tristan da Silva|REB+AST": {
+      "n": 1,
+      "mean_residual": -3.14,
+      "adj": 0.0
+    },
+    "Tyrese Maxey|3PM": {
+      "n": 1,
+      "mean_residual": -1.29,
+      "adj": 0.0
+    },
+    "Tyrese Maxey|AST": {
+      "n": 2,
+      "mean_residual": 2.32,
+      "adj": 0.33
+    },
+    "Tyrese Maxey|PTS+REB": {
+      "n": 1,
+      "mean_residual": -10.7,
+      "adj": 0.0
+    },
+    "Tyrese Maxey|REB": {
+      "n": 4,
+      "mean_residual": -1.81,
+      "adj": -0.45
+    },
+    "VJ Edgecombe|AST": {
+      "n": 5,
+      "mean_residual": -2.81,
+      "adj": -0.83
+    },
+    "VJ Edgecombe|PTS+AST": {
+      "n": 2,
+      "mean_residual": -6.71,
+      "adj": -0.96
+    },
+    "VJ Edgecombe|REB": {
+      "n": 3,
+      "mean_residual": -0.88,
+      "adj": -0.18
+    },
+    "VJ Edgecombe|REB+AST": {
+      "n": 1,
+      "mean_residual": 0.62,
+      "adj": 0.0
+    },
+    "Victor Wembanyama|AST": {
+      "n": 2,
+      "mean_residual": 0.29,
+      "adj": 0.04
+    },
+    "Victor Wembanyama|PTS+AST": {
+      "n": 1,
+      "mean_residual": -30.52,
+      "adj": 0.0
+    },
+    "Victor Wembanyama|REB+AST": {
+      "n": 1,
+      "mean_residual": 3.83,
+      "adj": 0.0
+    },
+    "Wendell Carter Jr|AST": {
+      "n": 2,
+      "mean_residual": 0.71,
+      "adj": 0.1
+    },
+    "Wendell Carter Jr|REB": {
+      "n": 3,
+      "mean_residual": -0.57,
+      "adj": -0.11
+    },
+    "Wendell Carter Jr|REB+AST": {
+      "n": 2,
+      "mean_residual": -1.48,
+      "adj": -0.21
     }
   },
   "flag_penalties": {
     "UNDER_PICK": {
-      "n": 220,
-      "fitted_pp": 9.25,
+      "n": 191,
+      "fitted_pp": 8.11,
       "hand_tuned_pp": -2.0,
-      "pp": 7.52,
+      "pp": 6.36,
       "source": "UNDER_CONF_PENALTY (applies to every UNDER pick)"
     },
     "STAR_UNDER": {
@@ -448,59 +2538,59 @@
       "source": "STAR_UNDER_PENALTY (UNDER + proj >= STAR_PROJ_THRESHOLD=28)"
     },
     "LOW_LINE": {
-      "n": 152,
-      "fitted_pp": 2.56,
+      "n": 125,
+      "fitted_pp": 2.44,
       "hand_tuned_pp": -5.0,
-      "pp": 0.99,
+      "pp": 0.64,
       "source": "LOW_LINE_CONF_PENALTY (line <= 1.5)"
     },
     "NO_PO": {
-      "n": 208,
-      "fitted_pp": -2.33,
+      "n": 186,
+      "fitted_pp": -2.88,
       "hand_tuned_pp": -8.0,
-      "pp": -3.25,
+      "pp": -3.79,
       "source": "PLAYOFF_NO_PO_PENALTY (playoff season, po_raw_count == 0)"
     },
     "PTS_REB_OVER": {
-      "n": 20,
-      "fitted_pp": 0.78,
+      "n": 16,
+      "fitted_pp": 1.95,
       "hand_tuned_pp": -5.0,
-      "pp": -3.07,
+      "pp": -3.01,
       "source": "PTS_REB_OVER_PENALTY"
     },
     "ONE_BOOK": {
-      "n": 83,
-      "fitted_pp": 14.24,
+      "n": 68,
+      "fitted_pp": 14.7,
       "hand_tuned_pp": -4.0,
-      "pp": 8.31,
+      "pp": 7.77,
       "source": "book_penalty (book_count == 1)"
     },
     "TWO_BOOK": {
-      "n": 53,
-      "fitted_pp": 3.97,
+      "n": 46,
+      "fitted_pp": 7.27,
       "hand_tuned_pp": -2.0,
-      "pp": 1.4,
+      "pp": 2.96,
       "source": "book_penalty (book_count == 2)"
     },
     "ROAD_B2B": {
-      "n": 4,
-      "fitted_pp": 15.67,
+      "n": 3,
+      "fitted_pp": 8.66,
       "hand_tuned_pp": -3.0,
-      "pp": -1.3,
+      "pp": -2.19,
       "source": "road_b2b_penalty (fixed 3.0; underlying road_b2b is boolean)"
     },
     "SUSPICIOUS_EDGE": {
-      "n": 276,
-      "fitted_pp": -2.33,
+      "n": 221,
+      "fitted_pp": -1.25,
       "hand_tuned_pp": -20.0,
-      "pp": -4.57,
+      "pp": -4.13,
       "source": "SUSPICIOUS_EDGE_PCT dock (edge_pct > 40)"
     },
     "TREND_DOWN_OVER": {
-      "n": 13,
-      "fitted_pp": -13.8,
+      "n": 8,
+      "fitted_pp": -6.07,
       "hand_tuned_pp": -3.0,
-      "pp": -5.65,
+      "pp": -3.51,
       "source": "inline trend penalty (declining trend + OVER only)"
     },
     "GTD": {
@@ -518,775 +2608,88 @@
       "source": "_self_injury_check (Probable)"
     },
     "BENCH": {
-      "n": 83,
-      "fitted_pp": 8.32,
+      "n": 67,
+      "fitted_pp": 8.03,
       "hand_tuned_pp": null,
-      "pp": 8.32,
+      "pp": 8.03,
       "source": "bench_penalty \u2014 continuous: max(0, (20 - avg_min) * 1.5), not a fixed constant"
     },
     "MINS_VOL": {
-      "n": 61,
-      "fitted_pp": -7.91,
+      "n": 49,
+      "fitted_pp": -4.39,
       "hand_tuned_pp": null,
-      "pp": -7.91,
+      "pp": -4.39,
       "source": "mins_vol_penalty \u2014 continuous: min(8, (CV-0.20)*25), not a fixed constant"
     },
     "LOW_PO": {
-      "n": 232,
-      "fitted_pp": 3.23,
+      "n": 184,
+      "fitted_pp": 4.11,
       "hand_tuned_pp": null,
-      "pp": 3.23,
+      "pp": 4.11,
       "source": "no fixed constant today \u2014 informational only"
     },
     "PO_ROLE": {
-      "n": 97,
-      "fitted_pp": 12.12,
+      "n": 76,
+      "fitted_pp": 14.56,
       "hand_tuned_pp": null,
-      "pp": 12.12,
+      "pp": 14.56,
       "source": "no fixed constant today \u2014 overlaps NO-PO"
     },
     "ROT_RISK": {
-      "n": 87,
-      "fitted_pp": -5.3,
+      "n": 65,
+      "fitted_pp": -6.79,
       "hand_tuned_pp": null,
-      "pp": -5.3,
+      "pp": -6.79,
       "source": "no fixed constant today \u2014 informational only"
     },
     "TREND_DOWN_UNDER": {
-      "n": 12,
-      "fitted_pp": -5.38,
+      "n": 11,
+      "fitted_pp": -9.31,
       "hand_tuned_pp": null,
-      "pp": -5.38,
+      "pp": -9.31,
       "source": "declining trend currently only penalized for OVER picks"
     },
     "TREND_UP": {
-      "n": 39,
-      "fitted_pp": -25.68,
+      "n": 30,
+      "fitted_pp": -21.95,
       "hand_tuned_pp": null,
-      "pp": -25.68,
+      "pp": -21.95,
       "source": "no fixed constant today \u2014 informational only"
     },
     "STRONG": {
-      "n": 209,
-      "fitted_pp": 0.17,
+      "n": 171,
+      "fitted_pp": -0.74,
       "hand_tuned_pp": null,
-      "pp": 0.17,
+      "pp": -0.74,
       "source": "no fixed constant today \u2014 informational only"
     },
     "HI_USG": {
-      "n": 23,
-      "fitted_pp": -4.8,
+      "n": 18,
+      "fitted_pp": -4.25,
       "hand_tuned_pp": null,
-      "pp": -4.8,
+      "pp": -4.25,
       "source": "no fixed constant today \u2014 informational only"
     },
     "LO_USG": {
-      "n": 44,
-      "fitted_pp": 10.23,
+      "n": 36,
+      "fitted_pp": 9.18,
       "hand_tuned_pp": null,
-      "pp": 10.23,
+      "pp": 9.18,
       "source": "no fixed constant today \u2014 informational only"
     },
     "DVP_HIGH": {
-      "n": 133,
-      "fitted_pp": -3.07,
+      "n": 101,
+      "fitted_pp": -1.58,
       "hand_tuned_pp": null,
-      "pp": -3.07,
+      "pp": -1.58,
       "source": "no fixed constant today \u2014 informational only"
     },
     "DVP_LOW": {
-      "n": 110,
-      "fitted_pp": -0.81,
+      "n": 96,
+      "fitted_pp": -0.26,
       "hand_tuned_pp": null,
-      "pp": -0.81,
+      "pp": -0.26,
       "source": "no fixed constant today \u2014 informational only"
-    }
-  },
-  "market_calibration": {
-    "n_graded": 1163,
-    "n_with_p_market": 147,
-    "n_with_p_model": 1163,
-    "market_calib_adj": {
-      "50-55": {
-        "n": 38,
-        "avg_p": 0.5259,
-        "hit_rate": 0.5,
-        "raw_gap": -0.0259,
-        "adj": -0.0145
-      },
-      "55-60": {
-        "n": 31,
-        "avg_p": 0.5739,
-        "hit_rate": 0.6774,
-        "raw_gap": 0.1035,
-        "adj": 0.0526
-      },
-      "45-50": {
-        "n": 22,
-        "avg_p": 0.4735,
-        "hit_rate": 0.5,
-        "raw_gap": 0.0265,
-        "adj": 0.0112
-      },
-      "40-45": {
-        "n": 17,
-        "avg_p": 0.4228,
-        "hit_rate": 0.4118,
-        "raw_gap": -0.0111,
-        "adj": -0.004
-      },
-      "60-65": {
-        "n": 11,
-        "avg_p": 0.6179,
-        "hit_rate": 0.5455,
-        "raw_gap": -0.0725,
-        "adj": -0.0195
-      },
-      "35-40": {
-        "n": 10,
-        "avg_p": 0.3761,
-        "hit_rate": 0.4,
-        "raw_gap": 0.0239,
-        "adj": 0.006
-      },
-      "30-35": {
-        "n": 4,
-        "avg_p": 0.3191,
-        "hit_rate": 0.5,
-        "raw_gap": 0.1809,
-        "adj": 0.0213
-      },
-      "0-5": {
-        "n": 3,
-        "avg_p": 0.0384,
-        "hit_rate": 0.3333,
-        "raw_gap": 0.2949,
-        "adj": 0.0
-      },
-      "10-15": {
-        "n": 3,
-        "avg_p": 0.1376,
-        "hit_rate": 0.3333,
-        "raw_gap": 0.1957,
-        "adj": 0.0
-      },
-      "25-30": {
-        "n": 2,
-        "avg_p": 0.2875,
-        "hit_rate": 0.5,
-        "raw_gap": 0.2125,
-        "adj": 0.0
-      },
-      "5-10": {
-        "n": 2,
-        "avg_p": 0.0566,
-        "hit_rate": 0.0,
-        "raw_gap": -0.0566,
-        "adj": 0.0
-      },
-      "15-20": {
-        "n": 1,
-        "avg_p": 0.177,
-        "hit_rate": 0.0,
-        "raw_gap": -0.177,
-        "adj": 0.0
-      },
-      "20-25": {
-        "n": 1,
-        "avg_p": 0.2066,
-        "hit_rate": 0.0,
-        "raw_gap": -0.2066,
-        "adj": 0.0
-      },
-      "65-70": {
-        "n": 1,
-        "avg_p": 0.6747,
-        "hit_rate": 1.0,
-        "raw_gap": 0.3253,
-        "adj": 0.0
-      },
-      "70-75": {
-        "n": 1,
-        "avg_p": 0.7179,
-        "hit_rate": 1.0,
-        "raw_gap": 0.2821,
-        "adj": 0.0
-      }
-    },
-    "market_calib_adj_by_market": {
-      "AST_OVER|55-60": {
-        "n": 11,
-        "avg_p": 0.5718,
-        "hit_rate": 0.9091,
-        "raw_gap": 0.3372,
-        "adj": 0.0905
-      },
-      "REB_OVER|50-55": {
-        "n": 9,
-        "avg_p": 0.534,
-        "hit_rate": 0.6667,
-        "raw_gap": 0.1327,
-        "adj": 0.0306
-      },
-      "PTS_OVER|50-55": {
-        "n": 8,
-        "avg_p": 0.5129,
-        "hit_rate": 0.375,
-        "raw_gap": -0.1379,
-        "adj": -0.029
-      },
-      "REB_OVER|45-50": {
-        "n": 8,
-        "avg_p": 0.4676,
-        "hit_rate": 0.25,
-        "raw_gap": -0.2176,
-        "adj": -0.0458
-      },
-      "AST_UNDER|55-60": {
-        "n": 8,
-        "avg_p": 0.5821,
-        "hit_rate": 0.5,
-        "raw_gap": -0.0821,
-        "adj": -0.0173
-      },
-      "PRA_OVER|50-55": {
-        "n": 6,
-        "avg_p": 0.5237,
-        "hit_rate": 0.3333,
-        "raw_gap": -0.1904,
-        "adj": -0.0317
-      },
-      "REB_OVER|40-45": {
-        "n": 6,
-        "avg_p": 0.4248,
-        "hit_rate": 0.3333,
-        "raw_gap": -0.0915,
-        "adj": -0.0152
-      },
-      "REB_OVER|55-60": {
-        "n": 4,
-        "avg_p": 0.5829,
-        "hit_rate": 0.5,
-        "raw_gap": -0.0829,
-        "adj": -0.0098
-      },
-      "AST_OVER|40-45": {
-        "n": 4,
-        "avg_p": 0.412,
-        "hit_rate": 0.5,
-        "raw_gap": 0.088,
-        "adj": 0.0104
-      },
-      "AST_OVER|50-55": {
-        "n": 4,
-        "avg_p": 0.5349,
-        "hit_rate": 0.5,
-        "raw_gap": -0.0349,
-        "adj": -0.0041
-      },
-      "AST_OVER|60-65": {
-        "n": 4,
-        "avg_p": 0.6222,
-        "hit_rate": 0.5,
-        "raw_gap": -0.1222,
-        "adj": -0.0144
-      },
-      "PTS_OVER|45-50": {
-        "n": 4,
-        "avg_p": 0.4797,
-        "hit_rate": 0.5,
-        "raw_gap": 0.0203,
-        "adj": 0.0024
-      },
-      "REB+AST_OVER|50-55": {
-        "n": 4,
-        "avg_p": 0.533,
-        "hit_rate": 0.25,
-        "raw_gap": -0.283,
-        "adj": -0.0333
-      },
-      "REB_UNDER|55-60": {
-        "n": 4,
-        "avg_p": 0.5675,
-        "hit_rate": 1.0,
-        "raw_gap": 0.4325,
-        "adj": 0.0509
-      },
-      "PTS_UNDER|50-55": {
-        "n": 3,
-        "avg_p": 0.5262,
-        "hit_rate": 0.6667,
-        "raw_gap": 0.1405,
-        "adj": 0.0
-      },
-      "PTS+AST_OVER|45-50": {
-        "n": 3,
-        "avg_p": 0.4866,
-        "hit_rate": 0.3333,
-        "raw_gap": -0.1532,
-        "adj": 0.0
-      },
-      "PTS+AST_OVER|50-55": {
-        "n": 3,
-        "avg_p": 0.512,
-        "hit_rate": 1.0,
-        "raw_gap": 0.488,
-        "adj": 0.0
-      },
-      "REB+AST_OVER|55-60": {
-        "n": 3,
-        "avg_p": 0.5588,
-        "hit_rate": 0.3333,
-        "raw_gap": -0.2254,
-        "adj": 0.0
-      },
-      "REB_OVER|60-65": {
-        "n": 3,
-        "avg_p": 0.6068,
-        "hit_rate": 1.0,
-        "raw_gap": 0.3932,
-        "adj": 0.0
-      },
-      "AST_OVER|35-40": {
-        "n": 3,
-        "avg_p": 0.3774,
-        "hit_rate": 0.6667,
-        "raw_gap": 0.2893,
-        "adj": 0.0
-      },
-      "REB_OVER|0-5": {
-        "n": 2,
-        "avg_p": 0.0338,
-        "hit_rate": 0.0,
-        "raw_gap": -0.0338,
-        "adj": 0.0
-      },
-      "REB+AST_UNDER|10-15": {
-        "n": 2,
-        "avg_p": 0.1489,
-        "hit_rate": 0.0,
-        "raw_gap": -0.1489,
-        "adj": 0.0
-      },
-      "AST_UNDER|60-65": {
-        "n": 2,
-        "avg_p": 0.6107,
-        "hit_rate": 0.5,
-        "raw_gap": -0.1107,
-        "adj": 0.0
-      },
-      "PTS+AST_OVER|5-10": {
-        "n": 2,
-        "avg_p": 0.0566,
-        "hit_rate": 0.0,
-        "raw_gap": -0.0566,
-        "adj": 0.0
-      },
-      "REB+AST_OVER|45-50": {
-        "n": 2,
-        "avg_p": 0.4594,
-        "hit_rate": 0.5,
-        "raw_gap": 0.0406,
-        "adj": 0.0
-      },
-      "3PM_OVER|60-65": {
-        "n": 2,
-        "avg_p": 0.6334,
-        "hit_rate": 0.0,
-        "raw_gap": -0.6334,
-        "adj": 0.0
-      },
-      "3PM_OVER|40-45": {
-        "n": 2,
-        "avg_p": 0.4125,
-        "hit_rate": 0.0,
-        "raw_gap": -0.4125,
-        "adj": 0.0
-      },
-      "REB_OVER|30-35": {
-        "n": 2,
-        "avg_p": 0.3173,
-        "hit_rate": 0.5,
-        "raw_gap": 0.1827,
-        "adj": 0.0
-      },
-      "AST_OVER|45-50": {
-        "n": 2,
-        "avg_p": 0.4748,
-        "hit_rate": 1.0,
-        "raw_gap": 0.5252,
-        "adj": 0.0
-      },
-      "3PM_OVER|35-40": {
-        "n": 2,
-        "avg_p": 0.3768,
-        "hit_rate": 0.5,
-        "raw_gap": 0.1232,
-        "adj": 0.0
-      },
-      "REB_UNDER|40-45": {
-        "n": 2,
-        "avg_p": 0.42,
-        "hit_rate": 1.0,
-        "raw_gap": 0.5799,
-        "adj": 0.0
-      },
-      "AST_UNDER|35-40": {
-        "n": 2,
-        "avg_p": 0.3755,
-        "hit_rate": 0.0,
-        "raw_gap": -0.3755,
-        "adj": 0.0
-      },
-      "REB_OVER|35-40": {
-        "n": 2,
-        "avg_p": 0.3849,
-        "hit_rate": 0.5,
-        "raw_gap": 0.1151,
-        "adj": 0.0
-      },
-      "PTS+REB_UNDER|50-55": {
-        "n": 1,
-        "avg_p": 0.5455,
-        "hit_rate": 0.0,
-        "raw_gap": -0.5455,
-        "adj": 0.0
-      },
-      "REB+AST_UNDER|55-60": {
-        "n": 1,
-        "avg_p": 0.5647,
-        "hit_rate": 0.0,
-        "raw_gap": -0.5647,
-        "adj": 0.0
-      },
-      "AST_OVER|65-70": {
-        "n": 1,
-        "avg_p": 0.6747,
-        "hit_rate": 1.0,
-        "raw_gap": 0.3253,
-        "adj": 0.0
-      },
-      "AST_OVER|0-5": {
-        "n": 1,
-        "avg_p": 0.0476,
-        "hit_rate": 1.0,
-        "raw_gap": 0.9524,
-        "adj": 0.0
-      },
-      "PRA_UNDER|45-50": {
-        "n": 1,
-        "avg_p": 0.4921,
-        "hit_rate": 1.0,
-        "raw_gap": 0.5079,
-        "adj": 0.0
-      },
-      "AST_UNDER|45-50": {
-        "n": 1,
-        "avg_p": 0.4643,
-        "hit_rate": 1.0,
-        "raw_gap": 0.5357,
-        "adj": 0.0
-      },
-      "3PM_OVER|45-50": {
-        "n": 1,
-        "avg_p": 0.4736,
-        "hit_rate": 1.0,
-        "raw_gap": 0.5264,
-        "adj": 0.0
-      },
-      "REB+AST_OVER|40-45": {
-        "n": 1,
-        "avg_p": 0.4393,
-        "hit_rate": 0.0,
-        "raw_gap": -0.4393,
-        "adj": 0.0
-      },
-      "PTS_OVER|40-45": {
-        "n": 1,
-        "avg_p": 0.4424,
-        "hit_rate": 1.0,
-        "raw_gap": 0.5576,
-        "adj": 0.0
-      },
-      "PRA_OVER|40-45": {
-        "n": 1,
-        "avg_p": 0.445,
-        "hit_rate": 0.0,
-        "raw_gap": -0.445,
-        "adj": 0.0
-      },
-      "REB_UNDER|35-40": {
-        "n": 1,
-        "avg_p": 0.3545,
-        "hit_rate": 0.0,
-        "raw_gap": -0.3545,
-        "adj": 0.0
-      },
-      "PTS_UNDER|30-35": {
-        "n": 1,
-        "avg_p": 0.3373,
-        "hit_rate": 0.0,
-        "raw_gap": -0.3373,
-        "adj": 0.0
-      },
-      "AST_OVER|30-35": {
-        "n": 1,
-        "avg_p": 0.3046,
-        "hit_rate": 1.0,
-        "raw_gap": 0.6954,
-        "adj": 0.0
-      },
-      "REB_OVER|25-30": {
-        "n": 1,
-        "avg_p": 0.2929,
-        "hit_rate": 0.0,
-        "raw_gap": -0.2929,
-        "adj": 0.0
-      },
-      "AST_OVER|25-30": {
-        "n": 1,
-        "avg_p": 0.2821,
-        "hit_rate": 1.0,
-        "raw_gap": 0.7179,
-        "adj": 0.0
-      },
-      "AST_UNDER|20-25": {
-        "n": 1,
-        "avg_p": 0.2066,
-        "hit_rate": 0.0,
-        "raw_gap": -0.2066,
-        "adj": 0.0
-      },
-      "REB_UNDER|15-20": {
-        "n": 1,
-        "avg_p": 0.177,
-        "hit_rate": 0.0,
-        "raw_gap": -0.177,
-        "adj": 0.0
-      },
-      "REB_OVER|10-15": {
-        "n": 1,
-        "avg_p": 0.115,
-        "hit_rate": 1.0,
-        "raw_gap": 0.885,
-        "adj": 0.0
-      },
-      "REB_UNDER|70-75": {
-        "n": 1,
-        "avg_p": 0.7179,
-        "hit_rate": 1.0,
-        "raw_gap": 0.2821,
-        "adj": 0.0
-      }
-    },
-    "model_calib_adj": {
-      "50-55": {
-        "n": 287,
-        "avg_p": 0.5087,
-        "hit_rate": 0.4878,
-        "raw_gap": -0.0208,
-        "adj": -0.0188
-      },
-      "65-70": {
-        "n": 207,
-        "avg_p": 0.675,
-        "hit_rate": 0.4976,
-        "raw_gap": -0.1775,
-        "adj": -0.155
-      },
-      "70-75": {
-        "n": 185,
-        "avg_p": 0.7254,
-        "hit_rate": 0.5243,
-        "raw_gap": -0.2011,
-        "adj": -0.173
-      },
-      "60-65": {
-        "n": 178,
-        "avg_p": 0.6259,
-        "hit_rate": 0.4831,
-        "raw_gap": -0.1428,
-        "adj": -0.1222
-      },
-      "75-80": {
-        "n": 112,
-        "avg_p": 0.7723,
-        "hit_rate": 0.5714,
-        "raw_gap": -0.2009,
-        "adj": -0.1585
-      },
-      "55-60": {
-        "n": 109,
-        "avg_p": 0.5734,
-        "hit_rate": 0.4954,
-        "raw_gap": -0.078,
-        "adj": -0.0612
-      },
-      "80-85": {
-        "n": 61,
-        "avg_p": 0.8259,
-        "hit_rate": 0.5246,
-        "raw_gap": -0.3013,
-        "adj": -0.202
-      },
-      "85-90": {
-        "n": 18,
-        "avg_p": 0.8776,
-        "hit_rate": 0.5,
-        "raw_gap": -0.3776,
-        "adj": -0.1416
-      },
-      "90-95": {
-        "n": 4,
-        "avg_p": 0.9265,
-        "hit_rate": 0.5,
-        "raw_gap": -0.4265,
-        "adj": -0.0502
-      },
-      "95-100": {
-        "n": 2,
-        "avg_p": 0.9675,
-        "hit_rate": 0.5,
-        "raw_gap": -0.4675,
-        "adj": 0.0
-      }
-    },
-    "reliability": {
-      "pooled_model_mse": 0.27758,
-      "pooled_market_mse": 0.2327,
-      "model_mse_by_market": {
-        "3PM_OVER": {
-          "n": 95,
-          "mse": 0.27393
-        },
-        "3PM_UNDER": {
-          "n": 12,
-          "mse": 0.27758
-        },
-        "AST_OVER": {
-          "n": 204,
-          "mse": 0.26939
-        },
-        "AST_UNDER": {
-          "n": 77,
-          "mse": 0.25537
-        },
-        "PRA_OVER": {
-          "n": 71,
-          "mse": 0.30043
-        },
-        "PRA_UNDER": {
-          "n": 5,
-          "mse": 0.27758
-        },
-        "PTS_OVER": {
-          "n": 113,
-          "mse": 0.28192
-        },
-        "PTS_UNDER": {
-          "n": 36,
-          "mse": 0.28752
-        },
-        "PTS+AST_OVER": {
-          "n": 106,
-          "mse": 0.29645
-        },
-        "PTS+AST_UNDER": {
-          "n": 9,
-          "mse": 0.27758
-        },
-        "PTS+REB_OVER": {
-          "n": 20,
-          "mse": 0.32568
-        },
-        "PTS+REB_UNDER": {
-          "n": 7,
-          "mse": 0.27758
-        },
-        "REB_OVER": {
-          "n": 271,
-          "mse": 0.26693
-        },
-        "REB_UNDER": {
-          "n": 52,
-          "mse": 0.26077
-        },
-        "REB+AST_OVER": {
-          "n": 63,
-          "mse": 0.30998
-        },
-        "REB+AST_UNDER": {
-          "n": 22,
-          "mse": 0.24052
-        }
-      },
-      "market_mse_by_market": {
-        "3PM_OVER": {
-          "n": 7,
-          "mse": 0.2327
-        },
-        "AST_OVER": {
-          "n": 32,
-          "mse": 0.26307
-        },
-        "AST_UNDER": {
-          "n": 14,
-          "mse": 0.2327
-        },
-        "PRA_OVER": {
-          "n": 7,
-          "mse": 0.2327
-        },
-        "PRA_UNDER": {
-          "n": 1,
-          "mse": 0.2327
-        },
-        "PTS_OVER": {
-          "n": 15,
-          "mse": 0.2327
-        },
-        "PTS_UNDER": {
-          "n": 4,
-          "mse": 0.2327
-        },
-        "PTS+AST_OVER": {
-          "n": 8,
-          "mse": 0.2327
-        },
-        "PTS+REB_UNDER": {
-          "n": 1,
-          "mse": 0.2327
-        },
-        "REB_OVER": {
-          "n": 38,
-          "mse": 0.23654
-        },
-        "REB_UNDER": {
-          "n": 9,
-          "mse": 0.2327
-        },
-        "REB+AST_OVER": {
-          "n": 12,
-          "mse": 0.2327
-        },
-        "REB+AST_UNDER": {
-          "n": 3,
-          "mse": 0.2327
-        }
-      }
-    },
-    "holdout_check": {
-      "ok": true,
-      "n_train": 102,
-      "n_test": 45,
-      "test_date_range": [
-        "2026-05-08",
-        "2026-05-12"
-      ],
-      "mse_raw_p_market": 0.24509,
-      "mse_corrected_p_market": 0.25364,
-      "improved": false,
-      "improvement": -0.00855
     }
   }
 }

@@ -83,6 +83,7 @@ from env_config import require_env
 from nba_api_utils import dataframe_call_result
 from player_regression import predict_player_stat  # noqa: E402
 from residual_correction import apply_correction, load_artifact  # noqa: E402
+from probability_calibration import calibrate_over, load_artifact as load_probability_artifact  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -491,6 +492,12 @@ if RESIDUAL_CORRECTIONS and date(int(SEASON[:4]), 10, 1) <= date.fromisoformat(
 ):
     # NBA_SEASON backtests cannot see a correction trained on their own future.
     RESIDUAL_CORRECTIONS = {}
+# v9: only apply a probability fit to a later season than its training data.
+PROBABILITY_CALIBRATION = load_probability_artifact()
+if PROBABILITY_CALIBRATION and date(int(SEASON[:4]), 10, 1) <= date.fromisoformat(
+    PROBABILITY_CALIBRATION["training_cutoff"]
+):
+    PROBABILITY_CALIBRATION = {}
 NULL_POS_PLAYERS = set()  # v8 Fix 6: players whose position lookup failed (DvP=1.0 for these)
 
 # v8 Fix 5: manual position overrides for players missing from the auto-detect roster fetch.
@@ -2222,6 +2229,9 @@ def evaluate_prop(line, proj, market_key, sd=None, conf_penalty=0.0):
     else:
         z = edge / sd
         over_p = normal_cdf(z)
+    # v9: fit OVER once and derive UNDER as its exact complement. Penalties
+    # affect display/ranking confidence, not the model's probability.
+    over_p = calibrate_over(over_p, MARKET_LABELS.get(market_key, market_key), PROBABILITY_CALIBRATION)
     under_p = 1.0 - over_p
     pick = "OVER" if over_p > under_p else "UNDER"
     pick_p = over_p if pick == "OVER" else under_p
@@ -2232,6 +2242,7 @@ def evaluate_prop(line, proj, market_key, sd=None, conf_penalty=0.0):
         "edge_pct": round(edge_pct, 1),
         "over_prob": round(over_p * 100, 1),
         "under_prob": round(under_p * 100, 1),
+        "p_model": pick_p,
         "confidence": round(conf, 1),
         "pick": pick,
     }
@@ -2555,13 +2566,19 @@ def process_game(
         proj = (1.0 - MARKET_ANCHOR_WEIGHT) * proj + MARKET_ANCHOR_WEIGHT * line
         # A skewed count distribution can favor UNDER even when its mean is
         # above the line. Use the probability-based pick for every adjustment.
-        pick_dir = evaluate_prop(line, proj, mkt, sd=sd)["pick"]
+        # The historical combo-SD convention chooses its inflation using the
+        # uncalibrated distribution; calibrate the final pick after SD is set.
+        raw_sd = sd if sd is not None and sd > 0 else PROP_STD_DEV_PO.get(mkt, 5.0)
+        raw_over = _nb_over_prob(proj, raw_sd, line) if mkt in SINGLE_STAT_MARKETS else normal_cdf((proj - line) / raw_sd)
+        pick_dir = "OVER" if raw_over > 0.5 else "UNDER"
         adj_sd = (
             sd * COMBO_UNDER_SD_MULT
             if (pick_dir == "UNDER" and mkt in COMBO_UNDER_MARKETS and sd)
             else sd
         )
 
+        preliminary = evaluate_prop(line, proj, mkt, sd=adj_sd)
+        pick_dir = preliminary["pick"]
         direction_penalty, book_flag = _compute_direction_penalty(
             mkt, label, pick_dir, proj, line, book_count, meta
         )
@@ -2578,6 +2595,10 @@ def process_game(
 
         po_count_local = meta["po_count"]
         po_raw_count_local = meta.get("po_raw_count", po_count_local)
+        meta["probability_calibration_version"] = (
+            PROBABILITY_CALIBRATION.get("version", "identity")
+            if PROBABILITY_CALIBRATION.get("method") == "platt" else "identity"
+        )
 
         flags = _build_prop_flags(
             ev, meta, details, book_flag, pick_dir, proj, line, po_count_local, po_raw_count_local
@@ -2596,6 +2617,7 @@ def process_game(
                 "Edge": ev["edge"],
                 "Edge%": ev["edge_pct"],
                 "Confidence": ev["confidence"],
+                "P_Model": ev["p_model"],
                 "Conf_Label": conf_label,
                 "Pick": ev["pick"],
                 "PO_Games": po_count_local,

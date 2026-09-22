@@ -72,6 +72,18 @@ _GAME_ROW = {
 # upsert_prop_predictions / load_prop_predictions
 # ===========================================================================
 class TestPropPredictions:
+    def test_stores_calibrated_probability_separately_from_ranking_confidence(self, tmp_path):
+        db = tmp_path / "predictions.db"
+        row = {**_PROP_ROW, "p_model": .713, "confidence": 58.0,
+               "residual_correction_version": "v9-unconditional-1",
+               "probability_calibration_version": "v9-probability-1"}
+        upsert_prop_predictions([row], _D1, path=db)
+        loaded = load_prop_predictions(_D1, path=db)[0]
+        assert loaded["p_model"] == pytest.approx(.713)
+        assert loaded["confidence"] == pytest.approx(58.0)
+        assert loaded["residual_correction_version"] == "v9-unconditional-1"
+        assert loaded["probability_calibration_version"] == "v9-probability-1"
+
     def test_empty_rows_returns_zero(self, tmp_path):
         db = tmp_path / "test.db"
         count = upsert_prop_predictions([], _D1, path=db)

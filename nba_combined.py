@@ -791,7 +791,9 @@ def _pick_to_dict(row: pd.Series, game_key: str, pred) -> dict:
     player, market, pick = str(row["Player"]), str(row["Market"]), str(row["Pick"])
     p_mkt = _p_market(player, market, pick)
     d = _decimal_odds(player, market, pick)
-    p_model = float(row["Confidence"]) / 100.0
+    # v9: confidence carries risk/ranking deductions; use the coherent
+    # calibrated selected-side probability for logging and stake arithmetic.
+    p_model = float(row.get("P_Model", float(row["Confidence"]) / 100.0))
     total_penalty = float(row.get("total_penalty", row.get("direction_penalty", 0.0)))
     # Sized off p_model, not market_calibration.py's blended p_final: that
     # module's own holdout_check() currently fails to generalize out-of-
@@ -807,6 +809,7 @@ def _pick_to_dict(row: pd.Series, game_key: str, pred) -> dict:
         "pick": row["Pick"],
         "projection": float(row["Projection"]),
         "confidence": float(row["Confidence"]),
+        "p_model": p_model,
         "edge_pct": float(row["Edge%"]),
         "flags": row["Flags"],
         "p_market": p_mkt,  # de-vigged market probability at prediction time, or None
@@ -828,6 +831,8 @@ def _pick_to_dict(row: pd.Series, game_key: str, pred) -> dict:
         "active_season": meta.get("active_season"),
         "season_mode": meta.get("season_mode"),
         "model_version": meta.get("model_version"),
+        "residual_correction_version": meta.get("residual_correction_version"),
+        "probability_calibration_version": meta.get("probability_calibration_version"),
         # Bookmaker input and model output are deliberately separate.
         "book_spread": float(book_spread) if book_spread is not None else None,
         "model_margin": float(pred["expected_margin"]) if pred else None,

@@ -35,6 +35,7 @@ from replay_config import (
     NEUTRAL_SPREAD,
     SEASON_TYPE_PO,
     SEASON_TYPE_RS,
+    LOW_MINUTES_THRESHOLD,
 )
 from replay_data import SeasonBundle, asof_before
 
@@ -59,9 +60,9 @@ def parse_overrides(pairs: List[str]) -> Dict[str, Any]:
     return out
 
 
-def eligibility(minutes_before: np.ndarray) -> Tuple[bool, str]:
+def eligibility(minutes_before: np.ndarray, min_prior_games: int = ELIG_MIN_PRIOR_GAMES) -> Tuple[bool, str]:
     """Pre-game eligibility from ALL prior played games this season (independent of any model filter)."""
-    if len(minutes_before) < ELIG_MIN_PRIOR_GAMES:
+    if len(minutes_before) < min_prior_games:
         return False, "insufficient_prior_games"
     if ELIG_MIN_AVG_MINUTES_LAST10 > 0 and float(np.mean(minutes_before[-10:])) < ELIG_MIN_AVG_MINUTES_LAST10:
         return False, "low_recent_minutes"
@@ -87,7 +88,8 @@ def split_dates(dates: List[pd.Timestamp], n_chunks: int, weights: Optional[List
 
 
 # ---------------------------------------------------------------------------------------------- worker
-def init_worker(bundle: SeasonBundle, overrides: Dict[str, Any], project_root: str) -> None:
+def init_worker(bundle: SeasonBundle, overrides: Dict[str, Any], project_root: str,
+                min_prior_games: int = ELIG_MIN_PRIOR_GAMES, include_voids: bool = False) -> None:
     os.environ["ODDS_API_KEY"] = "replay-dummy-key"  # the replay must never hold or use the real key
     if project_root not in sys.path:
         sys.path.insert(0, project_root)
@@ -106,6 +108,11 @@ def init_worker(bundle: SeasonBundle, overrides: Dict[str, Any], project_root: s
     pl_players["_i"] = pl_players.groupby("PLAYER_ID").cumcount()
     _W["pgroups"] = {pid: g.reset_index(drop=True) for pid, g in pl_players.groupby("PLAYER_ID", sort=False)}
     _W["by_date"] = {d: list(zip(g["PLAYER_ID"].tolist(), g["_i"].tolist())) for d, g in pl_players.groupby("GAME_DATE")}
+    _W["min_prior_games"] = min_prior_games
+    _W["include_voids"] = include_voids
+    if include_voids:
+        _W["teams_by_date"] = {d: {int(row.TEAM_ID): row for row in frame.itertuples(index=False)}
+                               for d, frame in bundle.teams.groupby("GAME_DATE")}
 
     pl.SEASON = bundle.season  # the model's notion of "current season" must be the replayed season
     # Always reconstruct the raw historical model first. Applying the FINAL
@@ -170,25 +177,89 @@ def _setup_date(d: pd.Timestamp) -> str:
     return mode
 
 
+def _pregame_candidates(d: pd.Timestamp):
+    """Known-at-cutoff roster from each player's LAST played team plus today's schedule.
+
+    The predicted game row is used only afterwards for grading, never to choose
+    the team/player candidate. A same-day trade not visible in prior logs is
+    counted as an ambiguous reconstruction; the earlier-team candidate remains
+    in the data as a void, so outcome-dependent selection cannot creep in.
+    """
+    schedule = _W["teams_by_date"].get(d, {})
+    candidates = []
+    failures = {"stale_prior_team": 0, "changed_team_unobservable": 0}
+    for pid, g in _W["pgroups"].items():
+        dates = g["GAME_DATE"].to_numpy(dtype="datetime64[ns]")
+        i = int(np.searchsorted(dates, np.datetime64(d), side="left"))
+        if i == 0:
+            continue  # unknown roster before this player's first logged game
+        previous = g.iloc[i - 1]
+        team_id = int(previous["TEAM_ID"])
+        if team_id not in schedule:
+            continue
+        if (d - pd.Timestamp(previous["GAME_DATE"])).days > 21:
+            failures["stale_prior_team"] += 1
+            continue  # team membership after a long absence cannot be inferred
+        observed_today = bool(i < len(g) and g.iloc[i]["GAME_DATE"] == d)
+        changed_team = observed_today and int(g.iloc[i]["TEAM_ID"]) != team_id
+        if changed_team:
+            failures["changed_team_unobservable"] += 1
+        played = observed_today and not changed_team
+        if played:
+            row = g.iloc[i]
+        else:
+            team_row = schedule[team_id]
+            row = pd.Series({"GAME_DATE": d, "GAME_ID": team_row.GAME_ID,
+                             "TEAM_ID": team_id, "PLAYER_ID": pid,
+                             "PLAYER_NAME": previous["PLAYER_NAME"],
+                             "MATCHUP": team_row.MATCHUP,
+                             "SEASON_TYPE": team_row.SEASON_TYPE,
+                             "USG_ASOF": previous.get("USG_ASOF", np.nan)})
+        candidates.append((pid, i, row, played))
+    return candidates, failures
+
+
 def run_chunk(dates: List[pd.Timestamp]):
     t0 = time.perf_counter()
     pl, pgroups, by_date = _W["pl"], _W["pgroups"], _W["by_date"]
     rows: List[Dict[str, Any]] = []
     counts = {"played_rows": 0, "ineligible_insufficient_prior_games": 0, "ineligible_low_recent_minutes": 0,
-              "eligible_player_games": 0, "projection_rows": 0}
+              "eligible_player_games": 0, "projection_rows": 0, "dnp_void_player_games": 0}
     failures: Dict[str, int] = {}
     with contextlib.redirect_stdout(io.StringIO()):
         for d in dates:
             mode = _setup_date(d)
-            for pid, i in by_date.get(d, []):
+            if _W["include_voids"]:
+                candidates, candidate_failures = _pregame_candidates(d)
+                for reason, n in candidate_failures.items():
+                    failures[reason] = failures.get(reason, 0) + n
+            else:
+                candidates = [(pid, i, pgroups[pid].iloc[i], True) for pid, i in by_date.get(d, [])]
+            for pid, i, row, played in candidates:
                 g = pgroups[pid]
-                counts["played_rows"] += 1
-                ok, why = eligibility(g["MIN"].values[:i])
+                counts["played_rows"] += int(played)
+                if _W["include_voids"]:
+                    recent = g["MIN"].values[max(0, i - 10):i]
+                    role_low = bool(len(recent) and np.mean(recent) < LOW_MINUTES_THRESHOLD[row["SEASON_TYPE"]])
+                    for floor in (5, 10):
+                        if i < floor:
+                            counts[f"excluded_l{floor}_prior_games"] = counts.get(f"excluded_l{floor}_prior_games", 0) + 1
+                            if d.month in (10, 11):
+                                key = f"excluded_l{floor}_early_season"
+                                counts[key] = counts.get(key, 0) + 1
+                            if role_low:
+                                key = f"excluded_l{floor}_low_minutes"
+                                counts[key] = counts.get(key, 0) + 1
+                    if i >= 5 and role_low:
+                        counts["eligible_l5_low_minutes"] = counts.get("eligible_l5_low_minutes", 0) + 1
+                    if i >= 10 and role_low:
+                        counts["eligible_l10_low_minutes"] = counts.get("eligible_l10_low_minutes", 0) + 1
+                ok, why = eligibility(g["MIN"].values[:i], _W["min_prior_games"])
                 if not ok:
                     counts["ineligible_" + why] += 1
                     continue
                 counts["eligible_player_games"] += 1
-                row = g.iloc[i]
+                counts["dnp_void_player_games"] += int(not played)
                 roll_min10 = float(np.mean(g["MIN"].values[max(0, i - 10):i]))
                 prior = g.iloc[:i].iloc[::-1]
                 if len(prior) and prior["GAME_DATE"].max() >= d:
@@ -228,11 +299,13 @@ def run_chunk(dates: List[pd.Timestamp]):
                         "season_type": row["SEASON_TYPE"],
                         "mode": mode,
                         "market": label,
-                        "actual": float(sum(float(row[c]) for c in cols)),
+                        "actual": float(sum(float(row[c]) for c in cols)) if played else np.nan,
+                        "played": played,
+                        "graded_status": "GRADED" if played else "DNP_VOID",
                         "projection": float(proj),
                         "sd": float(sd) if sd is not None else np.nan,
                         "proj_min": float(np.mean([v["min"] for v in details.values()])),
-                        "actual_min": float(row["MIN"]),
+                        "actual_min": float(row["MIN"]) if played else np.nan,
                         "po_count": int(meta.get("po_count", 0)),
                         "pos_group": details[cols[0]].get("pos_group"),
                         "roll_min10": roll_min10,
@@ -254,6 +327,8 @@ def run_replay(
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
     log=lambda msg: None,
+    min_prior_games: int = ELIG_MIN_PRIOR_GAMES,
+    include_voids: bool = False,
 ) -> Tuple[pd.DataFrame, Dict[str, Any]]:
     players = bundle.players
     sel = players[players["SEASON_TYPE"].isin(season_types)]
@@ -272,12 +347,13 @@ def run_replay(
     failures: Dict[str, int] = {}
     busy = 0.0
     if workers <= 1:
-        init_worker(bundle, overrides or {}, project_root)
+        init_worker(bundle, overrides or {}, project_root, min_prior_games, include_voids)
         results = (run_chunk(c) for c in chunks)
         pool = None
     else:
         ctx = mp.get_context("spawn")
-        pool = ctx.Pool(workers, initializer=init_worker, initargs=(bundle, overrides or {}, project_root))
+        pool = ctx.Pool(workers, initializer=init_worker,
+                        initargs=(bundle, overrides or {}, project_root, min_prior_games, include_voids))
         results = pool.imap_unordered(run_chunk, chunks)
     done = 0
     try:
@@ -307,5 +383,7 @@ def run_replay(
         "worker_busy_s": round(busy, 2),
         "workers": workers,
         "overrides": overrides or {},
+        "min_prior_games": min_prior_games,
+        "include_voids": include_voids,
     }
     return df, info
