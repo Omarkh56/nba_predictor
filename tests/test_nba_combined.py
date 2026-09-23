@@ -253,7 +253,18 @@ class TestSpreadAndPickProvenance:
         _nc.props_model.GAME_SPREADS["LAL@BOS"] = 4.5
         monkeypatch.setattr(_nc, "_p_market", lambda *_a: 0.52)
         monkeypatch.setattr(_nc, "_decimal_odds", lambda *_a: 1.91)
-        monkeypatch.setattr(_nc.props_model, "compute_stake_pct", lambda *_a: 0.01)
+        monkeypatch.setattr(
+            _nc.props_model,
+            "compute_stake_decision",
+            lambda *_a, **_k: types.SimpleNamespace(
+                stake_pct=0.01,
+                market_implied_probability=1 / 1.91,
+                model_edge=0.18,
+                expected_value=0.337,
+                full_kelly=0.37,
+                stake_skip_reason="",
+            ),
+        )
         meta = {
             "avg_min": 34.0, "usg_pct": 0.3, "rs_raw_count": 70, "rs_usable_count": 20,
             "po_raw_count": 5, "po_usable_count": 4, "fetch_status": "rs=ok;po=ok;po_raw=ok",
@@ -274,3 +285,5 @@ class TestSpreadAndPickProvenance:
         assert out["game_spread"] == pytest.approx(8.2)  # explicit legacy meaning
         assert out["rs_raw_count"] == 70 and out["po_usable_count"] == 4
         assert out["fetch_status"] == "rs=ok;po=ok;po_raw=ok"
+        assert out["stake_pct"] == pytest.approx(0.01)
+        assert out["expected_value"] == pytest.approx(0.337)

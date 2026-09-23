@@ -72,6 +72,32 @@ _GAME_ROW = {
 # upsert_prop_predictions / load_prop_predictions
 # ===========================================================================
 class TestPropPredictions:
+    def test_finance_fields_round_trip(self, tmp_path):
+        db = tmp_path / "predictions.db"
+        row = {
+            **_PROP_ROW,
+            "bet_id": "bet_123",
+            "logged_at": "2026-05-01T18:00:00+00:00",
+            "entry_american_odds": -110,
+            "entry_decimal_odds": 1.9090909,
+            "market_implied_probability": 0.5238095,
+            "vig_pct": 4.5,
+            "model_edge": 0.071,
+            "expected_value": 0.136,
+            "kelly_fraction": 0.1496,
+            "stake_pct": 0.0374,
+            "stake_skip_reason": "",
+            "odds_source": "odds_tracker_consensus",
+            "odds_snapshot_at": "2026-05-01T17:55:00+00:00",
+        }
+        upsert_prop_predictions([row], _D1, path=db)
+        loaded = load_prop_predictions(_D1, path=db)[0]
+        assert loaded["bet_id"] == "bet_123"
+        assert loaded["entry_decimal_odds"] == pytest.approx(1.9090909)
+        assert loaded["kelly_fraction"] == pytest.approx(0.1496)
+        assert loaded["stake_skip_reason"] == ""
+        assert loaded["odds_source"] == "odds_tracker_consensus"
+
     def test_stores_calibrated_probability_separately_from_ranking_confidence(self, tmp_path):
         db = tmp_path / "predictions.db"
         row = {**_PROP_ROW, "p_model": .713, "confidence": 58.0,

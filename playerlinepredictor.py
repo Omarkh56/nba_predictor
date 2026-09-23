@@ -80,6 +80,7 @@ import urllib3
 
 from config import current_season
 from env_config import require_env
+from finance import StakeDecision, recommend_stake
 from nba_api_utils import dataframe_call_result
 from player_regression import predict_player_stat  # noqa: E402
 from residual_correction import apply_correction, load_artifact  # noqa: E402
@@ -262,10 +263,10 @@ SUSPICIOUS_EDGE_DOCK = 20.0  # confidence points docked when edge_pct > SUSPICIO
 TREND_DOWN_OVER_PENALTY = 3.0  # confidence docked for OVER picks on a declining-trend player
 MARKET_ANCHOR_WEIGHT = 0.12  # v6 Fix 6: 12% pull toward market line dampens runaway projections
 
-# v10: fractional-Kelly stake sizing (see compute_stake_pct() below)
-KELLY_FRACTION = 0.35  # fraction of full Kelly — don't stake as if p_model were exact
-STAKE_PENALTY_DIVISOR = 50.0  # total_penalty=50 -> stake discounted to ~0; tune against total_penalty's real range
+# v10: auditable quarter-Kelly stake sizing (see compute_stake_decision() below)
+KELLY_FRACTION = 0.25
 MAX_STAKE_PCT = 0.05  # hard cap: 5% of bankroll, regardless of what the formula says
+MIN_STAKE_EDGE = float(os.getenv("NBA_MIN_STAKE_EDGE", "0.02"))
 
 # -----------------------------------------------------------------------------
 # Defense vs Position (DvP) — computed from league logs + team rosters
@@ -2248,41 +2249,35 @@ def evaluate_prop(line, proj, market_key, sd=None, conf_penalty=0.0):
     }
 
 
-def compute_stake_pct(p: float, decimal_odds, total_penalty: float = 0.0) -> float:
-    """Fractional-Kelly stake recommendation, as a fraction of bankroll.
+def compute_stake_decision(p: float, decimal_odds, *, p_market=None, vig_pct=None,
+                           data_is_fresh: bool = True) -> StakeDecision:
+    """Return the quarter-Kelly recommendation and its audit fields.
 
-    f* = EV / (d-1), EV = p*d - 1 — the raw Kelly fraction, clipped at 0:
-    a negative-EV pick gets no stake recommendation at all, not a negative
-    one. `p` should be p_model (or, once market_calibration.py's blended
-    p_final is validated out-of-sample — see that module's holdout_check(),
-    which currently fails on the live sample — p_final in its place).
-
-    stake_pct = f* * KELLY_FRACTION is the direct, quantifiable response to
-    not knowing p exactly: don't let sizing pretend to more certainty than
-    the probability estimate actually has.
-
-    The result is then discounted by total_penalty (already computed in
-    process_game() as meta['conf_penalty'] + direction_penalty — the same
-    number that already docks confidence) rather than inventing a second,
-    parallel risk system: stake_pct *= max(0, 1 - total_penalty/STAKE_PENALTY_DIVISOR).
-    One source of truth for "how much do we trust this pick," instead of a
-    confidence number and a stake number that can silently disagree.
-
-    Finally hard-capped at MAX_STAKE_PCT regardless of what the formula
-    says — cheap insurance against a single mis-estimated p/d pair spiking
-    the fraction.
-
-    Returns 0.0 when decimal_odds is unusable (None, <= 1.0) or p is None —
-    no market price means no stake recommendation, same as no market check
-    already means no market-driven ranking elsewhere in this pipeline.
+    ``p_market`` is the selected side's de-vig probability when paired odds
+    exist. With only one side, it stays missing and the minimum-edge check
+    uses raw implied probability from ``decimal_odds``.
     """
-    if p is None or decimal_odds is None or decimal_odds <= 1.0:
-        return 0.0
-    ev = p * decimal_odds - 1.0
-    f_star = max(0.0, ev / (decimal_odds - 1.0))
-    stake = f_star * KELLY_FRACTION
-    stake *= max(0.0, 1.0 - total_penalty / STAKE_PENALTY_DIVISOR)
-    return min(stake, MAX_STAKE_PCT)
+    return recommend_stake(
+        p,
+        decimal_odds,
+        devig_market_probability=p_market,
+        vig_pct=vig_pct,
+        min_edge=MIN_STAKE_EDGE,
+        kelly_multiplier=KELLY_FRACTION,
+        max_stake_pct=MAX_STAKE_PCT,
+        data_is_fresh=data_is_fresh,
+    )
+
+
+def compute_stake_pct(p: float, decimal_odds, total_penalty: float = 0.0) -> float:
+    """Backward-compatible stake-only wrapper around the formal policy.
+
+    ``total_penalty`` remains accepted so older callers do not break. It no
+    longer scales money independently from the documented Kelly, edge, vig,
+    and freshness gates.
+    """
+    del total_penalty
+    return compute_stake_decision(p, decimal_odds).stake_pct
 
 
 # =============================================================================

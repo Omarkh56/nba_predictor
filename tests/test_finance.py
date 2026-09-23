@@ -9,6 +9,8 @@ from finance import (
     decimal_to_implied,
     ensure_finance_fields,
     make_bet_id,
+    odds_data_is_fresh,
+    recommend_stake,
 )
 
 
@@ -25,6 +27,31 @@ def test_invalid_american_odds_are_rejected(bad):
 
 def test_decimal_implied_probability():
     assert decimal_to_implied(2.5) == pytest.approx(0.4)
+
+
+def test_quarter_kelly_uses_formal_formula():
+    decision = recommend_stake(0.54, 2.0, min_edge=0.02)
+    assert decision.full_kelly == pytest.approx(0.08)
+    assert decision.expected_value == pytest.approx(0.08)
+    assert decision.stake_pct == pytest.approx(0.02)
+
+
+def test_freshness_requires_timestamp_and_rejects_post_start_quote():
+    assert odds_data_is_fresh(
+        "2026-05-01T18:30:00+00:00",
+        "2026-05-01T19:00:00+00:00",
+        "2026-05-01T20:00:00+00:00",
+    )
+    assert not odds_data_is_fresh(
+        None,
+        "2026-05-01T19:00:00+00:00",
+        "2026-05-01T20:00:00+00:00",
+    )
+    assert not odds_data_is_fresh(
+        "2026-05-01T20:01:00+00:00",
+        "2026-05-01T20:05:00+00:00",
+        "2026-05-01T20:00:00+00:00",
+    )
 
 
 def test_bet_id_is_stable_across_display_formatting():

@@ -11,6 +11,7 @@ import types
 import unittest.mock as mock
 from pathlib import Path
 
+import pandas  # preload before patch.dict restores sys.modules after the stub import
 import pytest
 
 os.environ.setdefault("ODDS_API_KEY", "test-odds-api-key")
@@ -75,10 +76,10 @@ class TestComputeStakePct:
         assert _pl.compute_stake_pct(p=0.50, decimal_odds=2.0, total_penalty=0.0) == 0.0
 
     def test_positive_ev_gets_positive_stake(self):
-        # p=0.60, d=2.0 -> EV=0.20, f*=0.20, stake=0.20*KELLY_FRACTION
-        stake = _pl.compute_stake_pct(p=0.60, decimal_odds=2.0, total_penalty=0.0)
-        expected = 0.20 * _pl.KELLY_FRACTION
-        assert stake == pytest.approx(min(expected, _pl.MAX_STAKE_PCT))
+        # p=.54, d=2 -> EV=.08, full Kelly=.08, quarter Kelly=.02.
+        stake = _pl.compute_stake_pct(p=0.54, decimal_odds=2.0, total_penalty=0.0)
+        assert _pl.KELLY_FRACTION == 0.25
+        assert stake == pytest.approx(0.02)
 
     def test_none_p_returns_zero(self):
         assert _pl.compute_stake_pct(p=None, decimal_odds=2.0, total_penalty=0.0) == 0.0
@@ -95,26 +96,29 @@ class TestComputeStakePct:
         stake = _pl.compute_stake_pct(p=0.95, decimal_odds=5.0, total_penalty=0.0)
         assert stake == pytest.approx(_pl.MAX_STAKE_PCT)
 
-    def test_penalty_discount_shrinks_stake_monotonically(self):
-        # p=0.55, d=2.0 -> EV=0.10, f*=0.10, stake=0.035 -- comfortably below
-        # MAX_STAKE_PCT so the cap doesn't mask the discount being tested.
-        base = _pl.compute_stake_pct(p=0.55, decimal_odds=2.0, total_penalty=0.0)
-        mild = _pl.compute_stake_pct(p=0.55, decimal_odds=2.0, total_penalty=10.0)
-        heavy = _pl.compute_stake_pct(p=0.55, decimal_odds=2.0, total_penalty=40.0)
-        assert base < _pl.MAX_STAKE_PCT  # sanity: not testing the cap by accident
-        assert base > mild > heavy >= 0.0
+    def test_insufficient_edge_is_zero_with_reason(self):
+        decision = _pl.compute_stake_decision(0.515, 2.0)
+        assert decision.expected_value > 0
+        assert decision.stake_pct == 0.0
+        assert decision.stake_skip_reason == "insufficient_model_edge"
 
-    def test_penalty_at_or_above_divisor_zeroes_the_stake(self):
-        stake = _pl.compute_stake_pct(p=0.90, decimal_odds=3.0, total_penalty=_pl.STAKE_PENALTY_DIVISOR)
-        assert stake == 0.0
+    def test_unavailable_vig_does_not_invent_a_value_or_block_valid_edge(self):
+        decision = _pl.compute_stake_decision(0.56, 2.0, p_market=None, vig_pct=None)
+        assert decision.stake_pct > 0
+        assert decision.stake_skip_reason == ""
 
-    def test_penalty_never_produces_a_negative_stake(self):
-        # total_penalty far above the divisor -> discount factor clipped at 0, not negative
-        stake = _pl.compute_stake_pct(p=0.90, decimal_odds=3.0, total_penalty=500.0)
-        assert stake == 0.0
+    def test_paired_market_edge_must_exceed_vig(self):
+        decision = _pl.compute_stake_decision(0.56, 2.0, p_market=0.53, vig_pct=4.0)
+        assert decision.model_edge == pytest.approx(0.03)
+        assert decision.stake_pct == 0.0
+        assert decision.stake_skip_reason == "edge_not_above_market_vig"
 
-    def test_negative_total_penalty_does_not_boost_past_the_cap(self):
-        # A flag whose calibrated effect is a bonus (negative total_penalty)
-        # should not let the discount factor exceed 1.0 and blow past MAX_STAKE_PCT.
-        stake = _pl.compute_stake_pct(p=0.95, decimal_odds=5.0, total_penalty=-20.0)
-        assert stake == pytest.approx(_pl.MAX_STAKE_PCT)
+    def test_stale_required_data_is_zero_with_reason(self):
+        decision = _pl.compute_stake_decision(0.60, 2.0, data_is_fresh=False)
+        assert decision.stake_pct == 0.0
+        assert decision.stake_skip_reason == "stale_required_data"
+
+    def test_legacy_penalty_argument_does_not_change_formal_policy(self):
+        base = _pl.compute_stake_pct(0.54, 2.0, total_penalty=0.0)
+        penalized = _pl.compute_stake_pct(0.54, 2.0, total_penalty=500.0)
+        assert penalized == pytest.approx(base)

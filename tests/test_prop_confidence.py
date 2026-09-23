@@ -134,9 +134,8 @@ def test_process_game_tie_uses_under_penalties_and_combo_variance(predictor, run
 
 
 def test_process_game_row_carries_total_penalty_for_stake_sizing(predictor, run_game):
-    # compute_stake_pct()'s risk discount reads this field directly -- it
-    # must stay in sync with meta['conf_penalty'] + direction_penalty rather
-    # than silently drifting if process_game() is refactored later.
+    # Keep the combined ranking penalty auditable even though the formal
+    # quarter-Kelly policy no longer applies a second penalty discount.
     row = run_game(penalty=3.5)
     assert row["total_penalty"] == pytest.approx(3.5 + row["direction_penalty"])
 

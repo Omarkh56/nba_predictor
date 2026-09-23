@@ -47,7 +47,7 @@ import oddstracker
 import playerlinepredictor as props_model
 import predictions_db as pred_db
 from config import current_season
-from roi_analysis import american_to_decimal
+from finance import american_to_decimal, make_bet_id, odds_data_is_fresh
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +59,7 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 # Minimum confidence to display with a star in the best-bets section.
 # 53.0% = breakeven at standard -110 juice.
 BREAKEVEN_CONF = 53.0
+ODDS_MAX_AGE_MINUTES = float(os.getenv("NBA_ODDS_MAX_AGE_MINUTES", "60"))
 
 # Market ranking weights — applied only to the sort score, not displayed values.
 # 3PM lines are tiny (0.5 / 1.5) so even a small absolute edge produces huge
@@ -162,6 +163,21 @@ def _attach_game_market(pred: dict) -> None:
         return
 
 
+def _optional_float(value):
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if math.isfinite(number) else None
+
+
+def _optional_text(value):
+    if value is None or pd.isna(value):
+        return None
+    text = str(value).strip()
+    return text or None
+
+
 def _load_today_lean(snap_date: date) -> dict:
     """Load today's odds snapshot from odds_tracker.csv into a fast lookup dict.
     If no snapshot exists for today, attempts to fetch one automatically."""
@@ -192,15 +208,18 @@ def _load_today_lean(snap_date: date) -> dict:
         today = df[df["date"] == snap_date.isoformat()]
         for _, row in today.iterrows():
             key = (str(row["player"]).strip().lower(), str(row["market"]).strip())
-            devig_over = float(row.get("devig_over", 0.5))
             lean_map[key] = {
                 "book_lean": row.get("book_lean", "NEUTRAL"),
-                "lean_strength": float(row.get("lean_strength", 0.0)),
-                "devig_over": devig_over,
-                "devig_under": float(row.get("devig_under", 1.0 - devig_over)),
-                "vig_pct": float(row.get("vig_pct", 0.0)),
-                "avg_over_odds": float(row.get("avg_over_odds", -110)),
-                "avg_under_odds": float(row.get("avg_under_odds", -110)),
+                "lean_strength": _optional_float(row.get("lean_strength")),
+                "devig_over": _optional_float(row.get("devig_over")),
+                "devig_under": _optional_float(row.get("devig_under")),
+                "vig_pct": _optional_float(row.get("vig_pct")),
+                "avg_over_odds": _optional_float(row.get("avg_over_odds")),
+                "avg_under_odds": _optional_float(row.get("avg_under_odds")),
+                "snapshot_at": _optional_text(row.get("snapshot_at")),
+                "event_id": _optional_text(row.get("event_id")),
+                "commence_time": _optional_text(row.get("commence_time")),
+                "odds_source": _optional_text(row.get("odds_source")) or "odds_tracker_consensus",
             }
         if lean_map:
             print(
@@ -240,8 +259,9 @@ def _p_market(player: str, market: str, pick: str):
     lean = _get_lean(player, market)
     if not lean:
         return None
-    devig_over = lean.get("devig_over", 0.5)
-    return lean.get("devig_under", 1.0 - devig_over) if pick == "UNDER" else devig_over
+    value = lean.get("devig_under") if pick == "UNDER" else lean.get("devig_over")
+    probability = _optional_float(value)
+    return probability if probability is not None and 0 < probability < 1 else None
 
 
 def _decimal_odds(player: str, market: str, pick: str):
@@ -788,21 +808,42 @@ def print_best_bets(pred: dict, props_df: pd.DataFrame):
 # =============================================================================
 # JSON EXPORT
 # =============================================================================
-def _pick_to_dict(row: pd.Series, game_key: str, pred) -> dict:
+def _pick_to_dict(row: pd.Series, game_key: str, pred, game_date_value=None) -> dict:
     """Convert a props DataFrame row + game context to a JSON-exportable dict."""
     meta = row.get("meta") or {}
     player, market, pick = str(row["Player"]), str(row["Market"]), str(row["Pick"])
+    lean = _get_lean(player, market)
     p_mkt = _p_market(player, market, pick)
     d = _decimal_odds(player, market, pick)
     # v9: confidence carries risk/ranking deductions; use the coherent
     # calibrated selected-side probability for logging and stake arithmetic.
     p_model = float(row.get("P_Model", float(row["Confidence"]) / 100.0))
-    total_penalty = float(row.get("total_penalty", row.get("direction_penalty", 0.0)))
     # Sized off p_model, not market_calibration.py's blended p_final: that
     # module's own holdout_check() currently fails to generalize out-of-
     # sample on the live market sample (~150 rows) -- using it to size real
     # stakes would be premature. Revisit once that check passes.
-    stake_pct = props_model.compute_stake_pct(p_model, d, total_penalty)
+    logged_at = datetime.now(timezone.utc).isoformat()
+    odds_snapshot_at = lean.get("snapshot_at") if lean else None
+    game_start_at = lean.get("commence_time") if lean else None
+    is_fresh = odds_data_is_fresh(
+        odds_snapshot_at,
+        logged_at,
+        game_start_at,
+        max_age_minutes=ODDS_MAX_AGE_MINUTES,
+    )
+    vig_pct = _optional_float(lean.get("vig_pct")) if lean else None
+    stake = props_model.compute_stake_decision(
+        p_model,
+        d,
+        p_market=p_mkt,
+        vig_pct=vig_pct,
+        data_is_fresh=is_fresh,
+    )
+    american = _optional_float(
+        lean.get("avg_under_odds") if pick == "UNDER" else lean.get("avg_over_odds")
+    ) if lean else None
+    bet_date = game_date_value or (pred.get("game_date") if pred else None)
+    bet_id = make_bet_id(bet_date, player, market, row["Line"], pick) if bet_date else None
     book_spread = props_model.GAME_SPREADS.get(game_key)
     return {
         "game": game_key,
@@ -817,7 +858,22 @@ def _pick_to_dict(row: pd.Series, game_key: str, pred) -> dict:
         "flags": row["Flags"],
         "p_market": p_mkt,  # de-vigged market probability at prediction time, or None
         "decimal_odds": d,
-        "stake_pct": stake_pct,  # fractional-Kelly stake recommendation, 0.0 if no odds/negative EV
+        "stake_pct": stake.stake_pct,
+        "bet_id": bet_id,
+        "logged_at": logged_at,
+        "game_start_at": game_start_at,
+        "entry_american_odds": american,
+        "entry_decimal_odds": d,
+        "market_implied_probability": stake.market_implied_probability,
+        "vig_pct": vig_pct,
+        "model_edge": stake.model_edge,
+        "expected_value": stake.expected_value,
+        "kelly_fraction": stake.full_kelly,
+        "stake_skip_reason": stake.stake_skip_reason,
+        "odds_book": None,
+        "odds_source": lean.get("odds_source") if lean else None,
+        "odds_event_id": lean.get("event_id") if lean else None,
+        "odds_snapshot_at": odds_snapshot_at,
         "po_count": int(row.get("PO_Games", 0)),
         "avg_min": float(meta.get("avg_min", 0)),
         "book_count": int(row.get("book_count", 0)),
@@ -1053,7 +1109,7 @@ def _process_single_game(
                         .head(N)
                     )
                     for _, row in pd.concat([top_e, top_c]).iterrows():
-                        all_picks_export.append(_pick_to_dict(row, gk, pred))
+                        all_picks_export.append(_pick_to_dict(row, gk, pred, m.get("game_date")))
             else:
                 print("  No props returned for this game.")
         except Exception:
