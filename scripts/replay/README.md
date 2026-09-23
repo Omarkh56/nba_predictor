@@ -43,6 +43,10 @@ python3 scripts/replay/backtest_bets.py build
 python3 scripts/replay/clean_invalid_bets.py
 python3 calibrate.py
 python3 scripts/replay/calibrate_probabilities.py
+
+# Let the fixed models act as a zero-vig "house": quote both sides of every
+# cached 2025-26 game and every L10-eligible prop at the model's own half line
+python3 scripts/replay/model_book_backtest.py --season 2025-26
 ```
 
 Outputs
@@ -127,6 +131,18 @@ Never write simulated bets into `bet_log.csv`; that file contains only real
 logged picks. `clean_invalid_bets.py` backs up the local log and moves
 historical DNPs misgraded as misses into an ignored void file before
 rerunning the older `calibrate.py` diagnostic.
+
+**Model-book check.** `model_book_backtest.py` converts the saved game's
+home-win probability into no-vig home/away fair odds. For player props it sets
+the house line to `floor(as-of corrected projection) + 0.5`, recomputes the
+predictive probability at that line, applies a calibrator fitted only on prior
+weeks, and quotes both OVER and UNDER. Regular season and playoffs are reported
+separately. Historical results never set a price; they are used only after the
+quote to score Brier, log loss, accuracy and reliability. The game artifact's
+training, validation and test seasons are rejected as holdouts. The run is
+cache-only and aborts on a cache miss. These are the model's fair prices, so the
+report supports prediction/calibration claims only; it cannot establish ROI,
+profit or an edge over a sportsbook.
 
 ## API cache
 
