@@ -14,6 +14,16 @@ from typing import List
 
 DB_PATH = Path(__file__).parent / "predictions.db"
 
+PROP_FINANCE_FIELDS = (
+    "bet_id", "logged_at", "game_start_at", "entry_american_odds",
+    "entry_decimal_odds", "market_implied_probability", "vig_pct",
+    "model_edge", "expected_value", "kelly_fraction", "stake_skip_reason",
+    "bankroll_before", "stake_amount", "closing_line", "closing_decimal_odds",
+    "line_clv", "implied_probability_clv", "raw_implied_probability_clv",
+    "odds_book", "odds_source", "odds_event_id", "odds_snapshot_at",
+    "closing_snapshot_at", "clv_unmatched_reason",
+)
+
 PROP_PROVENANCE_FIELDS = (
     "rs_raw_count",
     "rs_usable_count",
@@ -98,6 +108,30 @@ _MIGRATIONS = [
     ("prop_predictions", "model_margin", "REAL"),
     ("prop_predictions", "residual_correction_version", "TEXT"),
     ("prop_predictions", "probability_calibration_version", "TEXT"),
+    ("prop_predictions", "bet_id", "TEXT"),
+    ("prop_predictions", "logged_at", "TEXT"),
+    ("prop_predictions", "game_start_at", "TEXT"),
+    ("prop_predictions", "entry_american_odds", "REAL"),
+    ("prop_predictions", "entry_decimal_odds", "REAL"),
+    ("prop_predictions", "market_implied_probability", "REAL"),
+    ("prop_predictions", "vig_pct", "REAL"),
+    ("prop_predictions", "model_edge", "REAL"),
+    ("prop_predictions", "expected_value", "REAL"),
+    ("prop_predictions", "kelly_fraction", "REAL"),
+    ("prop_predictions", "stake_skip_reason", "TEXT"),
+    ("prop_predictions", "bankroll_before", "REAL"),
+    ("prop_predictions", "stake_amount", "REAL"),
+    ("prop_predictions", "closing_line", "REAL"),
+    ("prop_predictions", "closing_decimal_odds", "REAL"),
+    ("prop_predictions", "line_clv", "REAL"),
+    ("prop_predictions", "implied_probability_clv", "REAL"),
+    ("prop_predictions", "raw_implied_probability_clv", "REAL"),
+    ("prop_predictions", "odds_book", "TEXT"),
+    ("prop_predictions", "odds_source", "TEXT"),
+    ("prop_predictions", "odds_event_id", "TEXT"),
+    ("prop_predictions", "odds_snapshot_at", "TEXT"),
+    ("prop_predictions", "closing_snapshot_at", "TEXT"),
+    ("prop_predictions", "clv_unmatched_reason", "TEXT"),
     ("game_predictions", "home_prob", "REAL"),
     ("game_predictions", "p_market", "REAL"),
     ("game_predictions", "decimal_odds", "REAL"),

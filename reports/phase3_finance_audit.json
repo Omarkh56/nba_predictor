@@ -1,0 +1,58 @@
+{
+  "audit_date": "2026-09-23",
+  "bet_log": {
+    "rows": 956,
+    "date_min": "2026-04-18",
+    "date_max": "2026-05-12",
+    "result_counts": {"HIT": 494, "MISS": 462},
+    "coverage": {
+      "projection": 956,
+      "actual": 956,
+      "p_model": 956,
+      "p_market": 130,
+      "decimal_odds": 118,
+      "stake_pct": 0,
+      "realized_profit": 0
+    },
+    "decimal_odds_by_market": {
+      "3PM": 7,
+      "AST": 39,
+      "PRA": 8,
+      "PTS": 14,
+      "PTS+AST": 4,
+      "PTS+REB": 0,
+      "REB": 35,
+      "REB+AST": 11
+    }
+  },
+  "odds_tracker": {
+    "rows": 2046,
+    "date_min": "2026-04-30",
+    "date_max": "2026-06-08",
+    "bet_key_matches": 130,
+    "exact_line_matches": 96,
+    "exact_line_valid_selected_prices": 92,
+    "current_prices_from_different_line": 26,
+    "has_snapshot_timestamp": false,
+    "has_event_id": false,
+    "has_book_identity": false,
+    "retains_multiple_snapshots": false
+  },
+  "sqlite": {
+    "prop_rows": 1090,
+    "date_min": "2026-04-18",
+    "date_max": "2026-06-08",
+    "p_model": 0,
+    "p_market": 0,
+    "decimal_odds": 0,
+    "stake_pct": 0
+  },
+  "safe_backfill": {
+    "entry_consensus_prices": 92,
+    "stakes": 0,
+    "profits": 0,
+    "closing_prices": 0,
+    "line_clv": 0,
+    "price_clv": 0
+  }
+}

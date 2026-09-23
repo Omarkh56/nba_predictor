@@ -18,6 +18,8 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Dict, Iterable, List, Mapping, MutableMapping, Sequence, Tuple
 
+from finance import FINANCE_FIELDS, ensure_finance_fields
+
 
 BET_LOG_FIELDS = [
     "date",
@@ -35,6 +37,7 @@ BET_LOG_FIELDS = [
     "decimal_odds",
     "stake_pct",
     "realized_profit",
+    *FINANCE_FIELDS,
 ]
 KEY_FIELDS = ("date", "player", "market", "line", "pick")
 
@@ -177,7 +180,7 @@ def upsert_bet_rows(
     existing: Sequence[Mapping[str, object]], incoming: Iterable[Mapping[str, object]]
 ) -> Tuple[List[Dict[str, str]], UpsertStats]:
     """Deduplicate existing rows and merge incoming rows without writing a file."""
-    additions = [dict(r) for r in incoming]
+    additions = [ensure_finance_fields(r) for r in incoming]
     ordered: Dict[Tuple[str, ...], Dict[str, str]] = {}
     counts: Dict[Tuple[str, ...], int] = {}
     duplicate_groups = 0
@@ -186,7 +189,7 @@ def upsert_bet_rows(
     unchanged = 0
 
     for raw in existing:
-        row = {k: _text(v) for k, v in raw.items()}
+        row = {k: _text(v) for k, v in ensure_finance_fields(raw).items()}
         key = canonical_bet_key(row)
         counts[key] = counts.get(key, 0) + 1
         if key not in ordered:
