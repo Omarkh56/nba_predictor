@@ -1,0 +1,1260 @@
+{
+  "source": "2025-26 unconditional player-game replay; final chronological holdout only",
+  "split_boundaries": {
+    "Playoffs": {
+      "train_end": "2026-05-01",
+      "val_end": "2026-05-12"
+    },
+    "Regular Season": {
+      "train_end": "2026-01-29",
+      "val_end": "2026-03-10"
+    }
+  },
+  "aggregate": {
+    "Regular Season": {
+      "raw": {
+        "n": 40512,
+        "mean_projection": 10.077317831753556,
+        "mean_actual": 9.176564968404424,
+        "mean_residual": 0.900752863349131,
+        "pct_bias": 0.09815795632140002,
+        "mae": 3.873792950236967,
+        "date_bootstrap_95_pct_bias": [
+          0.06910352323682496,
+          0.12401431265162746
+        ]
+      },
+      "corrected": {
+        "n": 40512,
+        "mean_projection": 8.96870153273448,
+        "mean_actual": 9.176564968404424,
+        "mean_residual": -0.20786343566994336,
+        "pct_bias": -0.02265155168471342,
+        "mae": 3.7182284038154645,
+        "date_bootstrap_95_pct_bias": [
+          -0.05026663055235203,
+          0.0016905830105785296
+        ]
+      },
+      "dates": 32
+    },
+    "Playoffs": {
+      "raw": {
+        "n": 3608,
+        "mean_projection": 9.406929046563192,
+        "mean_actual": 7.987804878048781,
+        "mean_residual": 1.4191241685144127,
+        "pct_bias": 0.17766134628730051,
+        "mae": 3.531319290465632,
+        "date_bootstrap_95_pct_bias": [
+          0.14112300068943784,
+          0.21223658260195197
+        ]
+      },
+      "corrected": {
+        "n": 3608,
+        "mean_projection": 8.325280151485517,
+        "mean_actual": 7.987804878048781,
+        "mean_residual": 0.3374752734367369,
+        "pct_bias": 0.04224881285772889,
+        "mae": 3.285896276506295,
+        "date_bootstrap_95_pct_bias": [
+          0.012197983340136442,
+          0.07122157267921637
+        ]
+      },
+      "dates": 19
+    }
+  },
+  "by_market": {
+    "Regular Season": {
+      "3PM": {
+        "n": 5064,
+        "mean_projection": 1.2698106683610446,
+        "mean_actual": 1.2892969984202212,
+        "mean_residual": -0.019486330059176646,
+        "pct_bias": -0.01511391873482471,
+        "mae": 0.9203252221504358
+      },
+      "AST": {
+        "n": 5064,
+        "mean_projection": 2.5664511859332757,
+        "mean_actual": 2.6360584518167456,
+        "mean_residual": -0.0696072658834697,
+        "pct_bias": -0.02640581275255754,
+        "mae": 1.4329892146694199
+      },
+      "PRA": {
+        "n": 5064,
+        "mean_projection": 17.61464283940168,
+        "mean_actual": 18.03080568720379,
+        "mean_residual": -0.4161628478021111,
+        "pct_bias": -0.023080657349519106,
+        "mae": 6.4572745394194
+      },
+      "PTS": {
+        "n": 5064,
+        "mean_projection": 10.940565335998441,
+        "mean_actual": 11.279818325434439,
+        "mean_residual": -0.3392529894359976,
+        "pct_bias": -0.03007610403361096,
+        "mae": 4.9225245677641984
+      },
+      "PTS+AST": {
+        "n": 5064,
+        "mean_projection": 13.50249890654844,
+        "mean_actual": 13.915876777251185,
+        "mean_residual": -0.4133778707027433,
+        "pct_bias": -0.029705485131810587,
+        "mae": 5.475141134327318
+      },
+      "PTS+REB": {
+        "n": 5064,
+        "mean_projection": 15.052333026634221,
+        "mean_actual": 15.394747235387046,
+        "mean_residual": -0.3424142087528231,
+        "pct_bias": -0.022242275466903064,
+        "mae": 5.88982477898344
+      },
+      "REB": {
+        "n": 5064,
+        "mean_projection": 4.11872722629866,
+        "mean_actual": 4.1149289099526065,
+        "mean_residual": 0.003798316346053711,
+        "pct_bias": 0.0009230575859687105,
+        "mae": 1.9403473744893704
+      },
+      "REB+AST": {
+        "n": 5064,
+        "mean_projection": 6.6845830727000735,
+        "mean_actual": 6.7509873617693525,
+        "mean_residual": -0.0664042890692792,
+        "pct_bias": -0.009836233651587735,
+        "mae": 2.707400398720138
+      }
+    },
+    "Playoffs": {
+      "3PM": {
+        "n": 451,
+        "mean_projection": 1.14006159773397,
+        "mean_actual": 1.1529933481152994,
+        "mean_residual": -0.012931750381329194,
+        "pct_bias": -0.011215806580729744,
+        "mae": 0.8667157973208853
+      },
+      "AST": {
+        "n": 451,
+        "mean_projection": 2.2805079309638727,
+        "mean_actual": 2.1374722838137474,
+        "mean_residual": 0.14303564715012562,
+        "pct_bias": 0.066918129527704,
+        "mae": 1.1796417375854191
+      },
+      "PRA": {
+        "n": 451,
+        "mean_projection": 16.38275208784297,
+        "mean_actual": 15.687361419068736,
+        "mean_residual": 0.6953906687742315,
+        "pct_bias": 0.0443280836208026,
+        "mae": 5.689405699258969
+      },
+      "PTS": {
+        "n": 451,
+        "mean_projection": 10.18834827643438,
+        "mean_actual": 9.669623059866963,
+        "mean_residual": 0.5187252165674207,
+        "pct_bias": 0.05364482290114806,
+        "mae": 4.354140757201353
+      },
+      "PTS+AST": {
+        "n": 451,
+        "mean_projection": 12.479928325243081,
+        "mean_actual": 11.80709534368071,
+        "mean_residual": 0.6728329815623704,
+        "pct_bias": 0.05698547881401484,
+        "mae": 4.7302726184550705
+      },
+      "PTS+REB": {
+        "n": 451,
+        "mean_projection": 14.092123899230787,
+        "mean_actual": 13.54988913525499,
+        "mean_residual": 0.5422347639757983,
+        "pct_bias": 0.040017653175108005,
+        "mae": 5.334966771175737
+      },
+      "REB": {
+        "n": 451,
+        "mean_projection": 3.8821395737147646,
+        "mean_actual": 3.8802660753880267,
+        "mean_residual": 0.0018734983267381952,
+        "pct_bias": 0.0004828272830622434,
+        "mae": 1.7655816489531118
+      },
+      "REB+AST": {
+        "n": 451,
+        "mean_projection": 6.156379520720313,
+        "mean_actual": 6.017738359201774,
+        "mean_residual": 0.1386411615185398,
+        "pct_bias": 0.02303874865322824,
+        "mae": 2.3664451820998154
+      }
+    }
+  },
+  "by_projection_level": {
+    "Regular Season": {
+      "high": {
+        "n": 10125,
+        "mean_projection": 16.521971264325565,
+        "mean_actual": 15.409086419753086,
+        "mean_residual": 1.1128848445724773,
+        "pct_bias": 0.07222263632358226,
+        "mae": 4.627332145229399
+      },
+      "low": {
+        "n": 10140,
+        "mean_projection": 3.2239992461328395,
+        "mean_actual": 4.205818540433925,
+        "mean_residual": -0.9818192943010856,
+        "pct_bias": -0.23344309433753857,
+        "mae": 2.8103780119580475
+      },
+      "mid-high": {
+        "n": 10122,
+        "mean_projection": 9.672421749732777,
+        "mean_actual": 9.900217348350129,
+        "mean_residual": -0.22779559861735196,
+        "pct_bias": -0.023009151274372183,
+        "mae": 3.8751062390550532
+      },
+      "mid-low": {
+        "n": 10125,
+        "mean_projection": 6.465133050494891,
+        "mean_actual": 7.198716049382716,
+        "mean_residual": -0.7335829988878256,
+        "pct_bias": -0.10190469992919499,
+        "mae": 3.5614886648844064
+      }
+    },
+    "Playoffs": {
+      "high": {
+        "n": 903,
+        "mean_projection": 17.521212930715432,
+        "mean_actual": 15.224806201550388,
+        "mean_residual": 2.2964067291650423,
+        "pct_bias": 0.1508332322109422,
+        "mae": 4.855511553416392
+      },
+      "mid-high": {
+        "n": 897,
+        "mean_projection": 9.554163317929717,
+        "mean_actual": 9.779264214046822,
+        "mean_residual": -0.22510089611710646,
+        "pct_bias": -0.023018183289676752,
+        "mae": 3.738311520126547
+      },
+      "mid-low": {
+        "n": 904,
+        "mean_projection": 4.672242208761671,
+        "mean_actual": 4.8484513274336285,
+        "mean_residual": -0.17620911867195727,
+        "pct_bias": -0.03634338199394236,
+        "mae": 2.7745305435360303
+      },
+      "low": {
+        "n": 904,
+        "mean_projection": 1.5731903287834157,
+        "mean_actual": 2.120575221238938,
+        "mean_residual": -0.5473848924555226,
+        "pct_bias": -0.25813038225341284,
+        "mae": 1.7804710044133039
+      }
+    }
+  },
+  "by_minute_error": {
+    "Regular Season": {
+      "over by >5": {
+        "n": 9344,
+        "mean_projection": 8.179790455613531,
+        "mean_actual": 4.985659246575342,
+        "mean_residual": 3.1941312090381873,
+        "pct_bias": 0.6406637620154729,
+        "mae": 3.773223762153569
+      },
+      "within 2": {
+        "n": 10160,
+        "mean_projection": 9.839006811044058,
+        "mean_actual": 9.99242125984252,
+        "mean_residual": -0.15341444879846072,
+        "pct_bias": -0.015353080580679856,
+        "mae": 3.106801180667315
+      },
+      "over by 2-5": {
+        "n": 6856,
+        "mean_projection": 8.740335401645059,
+        "mean_actual": 7.5866394399066515,
+        "mean_residual": 1.1536959617384086,
+        "pct_bias": 0.15206943349249297,
+        "mae": 2.9808582856134
+      },
+      "under by 2-5": {
+        "n": 6216,
+        "mean_projection": 9.986036497652291,
+        "mean_actual": 11.621460746460746,
+        "mean_residual": -1.635424248808456,
+        "pct_bias": -0.14072449965521897,
+        "mae": 3.619903017166279
+      },
+      "under by >5": {
+        "n": 7936,
+        "mean_projection": 8.183823449293552,
+        "mean_actual": 12.52507560483871,
+        "mean_residual": -4.341252155545158,
+        "pct_bias": -0.3466048663105904,
+        "mae": 5.150287891300176
+      }
+    },
+    "Playoffs": {
+      "under by >5": {
+        "n": 632,
+        "mean_projection": 9.954335368723424,
+        "mean_actual": 12.745253164556962,
+        "mean_residual": -2.790917795833537,
+        "pct_bias": -0.21897703872958355,
+        "mae": 4.650154216618582
+      },
+      "under by 2-5": {
+        "n": 592,
+        "mean_projection": 9.59821086646845,
+        "mean_actual": 10.10641891891892,
+        "mean_residual": -0.5082080524504689,
+        "pct_bias": -0.050285670575075644,
+        "mae": 3.0064387583103636
+      },
+      "within 2": {
+        "n": 904,
+        "mean_projection": 7.815579455866006,
+        "mean_actual": 7.777654867256637,
+        "mean_residual": 0.03792458860936786,
+        "pct_bias": 0.004876095591362329,
+        "mae": 2.726874095065162
+      },
+      "over by >5": {
+        "n": 880,
+        "mean_projection": 8.186718737725311,
+        "mean_actual": 5.173863636363636,
+        "mean_residual": 3.0128551013616742,
+        "pct_bias": 0.5823220929493242,
+        "mae": 3.715684999402996
+      },
+      "over by 2-5": {
+        "n": 600,
+        "mean_projection": 6.324556138793464,
+        "mean_actual": 5.33,
+        "mean_residual": 0.9945561387934635,
+        "pct_bias": 0.1865958984603121,
+        "mae": 2.336512623997486
+      }
+    }
+  },
+  "by_history_depth": {
+    "Regular Season": {
+      "50+": {
+        "n": 26440,
+        "mean_projection": 10.075212103339807,
+        "mean_actual": 10.140847201210287,
+        "mean_residual": -0.06563509787048263,
+        "pct_bias": -0.006472348568929156,
+        "mae": 3.833317628627912
+      },
+      "15-29": {
+        "n": 3416,
+        "mean_projection": 6.073070319086124,
+        "mean_actual": 6.84923887587822,
+        "mean_residual": -0.7761685567920964,
+        "pct_bias": -0.11332186989792714,
+        "mae": 3.4482774666750746
+      },
+      "30-49": {
+        "n": 9528,
+        "mean_projection": 7.203037453420643,
+        "mean_actual": 7.5030436607892526,
+        "mean_residual": -0.30000620736861,
+        "pct_bias": -0.03998460104083308,
+        "mae": 3.485663907841181
+      },
+      "10-14": {
+        "n": 1128,
+        "mean_projection": 6.7156732408198,
+        "mean_actual": 7.757978723404255,
+        "mean_residual": -1.0423054825844555,
+        "pct_bias": -0.13435271218778036,
+        "mae": 3.8025083815401715
+      }
+    },
+    "Playoffs": {
+      "50+": {
+        "n": 3296,
+        "mean_projection": 8.80263046842123,
+        "mean_actual": 8.41747572815534,
+        "mean_residual": 0.38515474026589014,
+        "pct_bias": 0.04575656083896965,
+        "mae": 3.359904374167276
+      },
+      "15-29": {
+        "n": 128,
+        "mean_projection": 3.9969130850701973,
+        "mean_actual": 4.3203125,
+        "mean_residual": -0.32339941492980206,
+        "pct_bias": -0.07485556077941169,
+        "mae": 2.1189508484813646
+      },
+      "30-49": {
+        "n": 184,
+        "mean_projection": 2.7855211290999304,
+        "mean_actual": 2.842391304347826,
+        "mean_residual": -0.05687017524789563,
+        "pct_bias": -0.02000786280231892,
+        "mae": 2.7719741292052085
+      }
+    }
+  },
+  "candidate_experiment": {
+    "selection_rule": "lowest RS+PO validation sum of MAE + absolute mean residual",
+    "test_not_used_for_selection": true,
+    "best": {
+      "form": "multiplicative",
+      "k": 250,
+      "buckets": 1,
+      "validation_objective": 6.8095790752595535,
+      "validation": {
+        "Regular Season": {
+          "n": 42096,
+          "mean_projection": 8.90800027680023,
+          "mean_actual": 8.975722158874952,
+          "mean_residual": -0.06772188207472185,
+          "pct_bias": -0.007545006504881646,
+          "mae": 3.562887520090606
+        },
+        "Playoffs": {
+          "n": 3552,
+          "mean_projection": 7.97893745342386,
+          "mean_actual": 7.971565315315315,
+          "mean_residual": 0.007372138108544785,
+          "pct_bias": 0.0009248043285025985,
+          "mae": 3.171597534985681
+        }
+      },
+      "test": {
+        "Regular Season": {
+          "overall": {
+            "n": 40512,
+            "mean_projection": 8.943358289858994,
+            "mean_actual": 9.176564968404424,
+            "mean_residual": -0.23320667854543087,
+            "pct_bias": -0.025413286926903294,
+            "mae": 3.6877762669838643
+          },
+          "by_market": {
+            "3PM": {
+              "n": 5064,
+              "mean_projection": 1.2582415131830786,
+              "mean_actual": 1.2892969984202212,
+              "mean_residual": -0.031055485237142442,
+              "pct_bias": -0.024087146154218,
+              "mae": 0.9368030240405761
+            },
+            "AST": {
+              "n": 5064,
+              "mean_projection": 2.5515301167239572,
+              "mean_actual": 2.6360584518167456,
+              "mean_residual": -0.08452833509278862,
+              "pct_bias": -0.032066183902156084,
+              "mae": 1.4278442569671954
+            },
+            "PRA": {
+              "n": 5064,
+              "mean_projection": 17.567800108725503,
+              "mean_actual": 18.03080568720379,
+              "mean_residual": -0.46300557847828816,
+              "pct_bias": -0.025678585112082743,
+              "mae": 6.392719932470989
+            },
+            "PTS": {
+              "n": 5064,
+              "mean_projection": 10.896628733586432,
+              "mean_actual": 11.279818325434439,
+              "mean_residual": -0.3831895918480069,
+              "pct_bias": -0.0339712556348507,
+              "mae": 4.868392042495887
+            },
+            "PTS+AST": {
+              "n": 5064,
+              "mean_projection": 13.445206650621895,
+              "mean_actual": 13.915876777251185,
+              "mean_residual": -0.4706701266292904,
+              "pct_bias": -0.033822527618145685,
+              "mae": 5.412341026745724
+            },
+            "PTS+REB": {
+              "n": 5064,
+              "mean_projection": 15.01875600146521,
+              "mean_actual": 15.394747235387046,
+              "mean_residual": -0.37599123392183703,
+              "pct_bias": -0.024423345714801148,
+              "mae": 5.828873471863184
+            },
+            "REB": {
+              "n": 5064,
+              "mean_projection": 4.128162446384632,
+              "mean_actual": 4.1149289099526065,
+              "mean_residual": 0.01323353643202505,
+              "pct_bias": 0.0032159817876847518,
+              "mae": 1.9336648866630886
+            },
+            "REB+AST": {
+              "n": 5064,
+              "mean_projection": 6.680540748181233,
+              "mean_actual": 6.7509873617693525,
+              "mean_residual": -0.0704466135881186,
+              "pct_bias": -0.01043500895692025,
+              "mae": 2.701571494624271
+            }
+          }
+        },
+        "Playoffs": {
+          "overall": {
+            "n": 3608,
+            "mean_projection": 8.227260580222078,
+            "mean_actual": 7.987804878048781,
+            "mean_residual": 0.23945570217329717,
+            "pct_bias": 0.029977660424748653,
+            "mae": 3.2326508614977394
+          },
+          "by_market": {
+            "3PM": {
+              "n": 451,
+              "mean_projection": 1.131544814987845,
+              "mean_actual": 1.1529933481152994,
+              "mean_residual": -0.02144853312745401,
+              "pct_bias": -0.01860247777015723,
+              "mae": 0.8836790100867137
+            },
+            "AST": {
+              "n": 451,
+              "mean_projection": 2.1582024452540605,
+              "mean_actual": 2.1374722838137474,
+              "mean_residual": 0.0207301614403132,
+              "pct_bias": 0.009698446897905864,
+              "mae": 1.1535060527976813
+            },
+            "PRA": {
+              "n": 451,
+              "mean_projection": 16.176378165850718,
+              "mean_actual": 15.687361419068736,
+              "mean_residual": 0.489016746781981,
+              "pct_bias": 0.03117265763938847,
+              "mae": 5.558797678737676
+            },
+            "PTS": {
+              "n": 451,
+              "mean_projection": 10.062115243844191,
+              "mean_actual": 9.669623059866963,
+              "mean_residual": 0.3924921839772281,
+              "pct_bias": 0.04059022585960328,
+              "mae": 4.3038235157659
+            },
+            "PTS+AST": {
+              "n": 451,
+              "mean_projection": 12.224953063179077,
+              "mean_actual": 11.80709534368071,
+              "mean_residual": 0.4178577194983674,
+              "pct_bias": 0.035390390890847646,
+              "mae": 4.628371242218931
+            },
+            "PTS+REB": {
+              "n": 451,
+              "mean_projection": 14.015537475782132,
+              "mean_actual": 13.54988913525499,
+              "mean_residual": 0.4656483405271443,
+              "pct_bias": 0.03436547235767339,
+              "mae": 5.257988688111436
+            },
+            "REB": {
+              "n": 451,
+              "mean_projection": 3.948123078462712,
+              "mean_actual": 3.8802660753880267,
+              "mean_residual": 0.06785700307468548,
+              "pct_bias": 0.01748771907810466,
+              "mae": 1.7510211144581576
+            },
+            "REB+AST": {
+              "n": 451,
+              "mean_projection": 6.101230354415884,
+              "mean_actual": 6.017738359201774,
+              "mean_residual": 0.08349199521411207,
+              "pct_bias": 0.013874314606324446,
+              "mae": 2.32401958980542
+            }
+          }
+        }
+      }
+    },
+    "current_validation_objective": 6.874572298998017,
+    "current_validation": {
+      "Regular Season": {
+        "n": 42096,
+        "mean_projection": 8.954159543336248,
+        "mean_actual": 8.975722158874952,
+        "mean_residual": -0.021562615538706174,
+        "pct_bias": -0.0024023265378580864,
+        "mae": 3.5842857387391636
+      },
+      "Playoffs": {
+        "n": 3552,
+        "mean_projection": 8.037408985160425,
+        "mean_actual": 7.971565315315315,
+        "mean_residual": 0.06584366984511042,
+        "pct_bias": 0.008259816891747563,
+        "mae": 3.202880274875037
+      }
+    },
+    "all_candidates": [
+      {
+        "form": "multiplicative",
+        "k": 250,
+        "buckets": 1,
+        "validation_objective": 6.8095790752595535,
+        "validation": {
+          "Regular Season": {
+            "n": 42096,
+            "mean_projection": 8.90800027680023,
+            "mean_actual": 8.975722158874952,
+            "mean_residual": -0.06772188207472185,
+            "pct_bias": -0.007545006504881646,
+            "mae": 3.562887520090606
+          },
+          "Playoffs": {
+            "n": 3552,
+            "mean_projection": 7.97893745342386,
+            "mean_actual": 7.971565315315315,
+            "mean_residual": 0.007372138108544785,
+            "pct_bias": 0.0009248043285025985,
+            "mae": 3.171597534985681
+          }
+        },
+        "test": {
+          "Regular Season": {
+            "overall": {
+              "n": 40512,
+              "mean_projection": 8.943358289858994,
+              "mean_actual": 9.176564968404424,
+              "mean_residual": -0.23320667854543087,
+              "pct_bias": -0.025413286926903294,
+              "mae": 3.6877762669838643
+            },
+            "by_market": {
+              "3PM": {
+                "n": 5064,
+                "mean_projection": 1.2582415131830786,
+                "mean_actual": 1.2892969984202212,
+                "mean_residual": -0.031055485237142442,
+                "pct_bias": -0.024087146154218,
+                "mae": 0.9368030240405761
+              },
+              "AST": {
+                "n": 5064,
+                "mean_projection": 2.5515301167239572,
+                "mean_actual": 2.6360584518167456,
+                "mean_residual": -0.08452833509278862,
+                "pct_bias": -0.032066183902156084,
+                "mae": 1.4278442569671954
+              },
+              "PRA": {
+                "n": 5064,
+                "mean_projection": 17.567800108725503,
+                "mean_actual": 18.03080568720379,
+                "mean_residual": -0.46300557847828816,
+                "pct_bias": -0.025678585112082743,
+                "mae": 6.392719932470989
+              },
+              "PTS": {
+                "n": 5064,
+                "mean_projection": 10.896628733586432,
+                "mean_actual": 11.279818325434439,
+                "mean_residual": -0.3831895918480069,
+                "pct_bias": -0.0339712556348507,
+                "mae": 4.868392042495887
+              },
+              "PTS+AST": {
+                "n": 5064,
+                "mean_projection": 13.445206650621895,
+                "mean_actual": 13.915876777251185,
+                "mean_residual": -0.4706701266292904,
+                "pct_bias": -0.033822527618145685,
+                "mae": 5.412341026745724
+              },
+              "PTS+REB": {
+                "n": 5064,
+                "mean_projection": 15.01875600146521,
+                "mean_actual": 15.394747235387046,
+                "mean_residual": -0.37599123392183703,
+                "pct_bias": -0.024423345714801148,
+                "mae": 5.828873471863184
+              },
+              "REB": {
+                "n": 5064,
+                "mean_projection": 4.128162446384632,
+                "mean_actual": 4.1149289099526065,
+                "mean_residual": 0.01323353643202505,
+                "pct_bias": 0.0032159817876847518,
+                "mae": 1.9336648866630886
+              },
+              "REB+AST": {
+                "n": 5064,
+                "mean_projection": 6.680540748181233,
+                "mean_actual": 6.7509873617693525,
+                "mean_residual": -0.0704466135881186,
+                "pct_bias": -0.01043500895692025,
+                "mae": 2.701571494624271
+              }
+            }
+          },
+          "Playoffs": {
+            "overall": {
+              "n": 3608,
+              "mean_projection": 8.227260580222078,
+              "mean_actual": 7.987804878048781,
+              "mean_residual": 0.23945570217329717,
+              "pct_bias": 0.029977660424748653,
+              "mae": 3.2326508614977394
+            },
+            "by_market": {
+              "3PM": {
+                "n": 451,
+                "mean_projection": 1.131544814987845,
+                "mean_actual": 1.1529933481152994,
+                "mean_residual": -0.02144853312745401,
+                "pct_bias": -0.01860247777015723,
+                "mae": 0.8836790100867137
+              },
+              "AST": {
+                "n": 451,
+                "mean_projection": 2.1582024452540605,
+                "mean_actual": 2.1374722838137474,
+                "mean_residual": 0.0207301614403132,
+                "pct_bias": 0.009698446897905864,
+                "mae": 1.1535060527976813
+              },
+              "PRA": {
+                "n": 451,
+                "mean_projection": 16.176378165850718,
+                "mean_actual": 15.687361419068736,
+                "mean_residual": 0.489016746781981,
+                "pct_bias": 0.03117265763938847,
+                "mae": 5.558797678737676
+              },
+              "PTS": {
+                "n": 451,
+                "mean_projection": 10.062115243844191,
+                "mean_actual": 9.669623059866963,
+                "mean_residual": 0.3924921839772281,
+                "pct_bias": 0.04059022585960328,
+                "mae": 4.3038235157659
+              },
+              "PTS+AST": {
+                "n": 451,
+                "mean_projection": 12.224953063179077,
+                "mean_actual": 11.80709534368071,
+                "mean_residual": 0.4178577194983674,
+                "pct_bias": 0.035390390890847646,
+                "mae": 4.628371242218931
+              },
+              "PTS+REB": {
+                "n": 451,
+                "mean_projection": 14.015537475782132,
+                "mean_actual": 13.54988913525499,
+                "mean_residual": 0.4656483405271443,
+                "pct_bias": 0.03436547235767339,
+                "mae": 5.257988688111436
+              },
+              "REB": {
+                "n": 451,
+                "mean_projection": 3.948123078462712,
+                "mean_actual": 3.8802660753880267,
+                "mean_residual": 0.06785700307468548,
+                "pct_bias": 0.01748771907810466,
+                "mae": 1.7510211144581576
+              },
+              "REB+AST": {
+                "n": 451,
+                "mean_projection": 6.101230354415884,
+                "mean_actual": 6.017738359201774,
+                "mean_residual": 0.08349199521411207,
+                "pct_bias": 0.013874314606324446,
+                "mae": 2.32401958980542
+              }
+            }
+          }
+        }
+      },
+      {
+        "form": "multiplicative",
+        "k": 50,
+        "buckets": 4,
+        "validation_objective": 6.8277091181494995,
+        "validation": {
+          "Regular Season": {
+            "n": 42096,
+            "mean_projection": 8.915887032687234,
+            "mean_actual": 8.975722158874952,
+            "mean_residual": -0.05983512618772037,
+            "pct_bias": -0.006666330032125271,
+            "mae": 3.56397979014024
+          },
+          "Playoffs": {
+            "n": 3552,
+            "mean_projection": 7.926179028278278,
+            "mean_actual": 7.971565315315315,
+            "mean_residual": -0.04538628703703754,
+            "pct_bias": -0.005693522569505821,
+            "mae": 3.1585079147845017
+          }
+        }
+      },
+      {
+        "form": "additive",
+        "k": 50,
+        "buckets": 4,
+        "validation_objective": 6.888292549544621,
+        "validation": {
+          "Regular Season": {
+            "n": 42096,
+            "mean_projection": 8.904517071493997,
+            "mean_actual": 8.975722158874952,
+            "mean_residual": -0.07120508738095659,
+            "pct_bias": -0.007933076149260136,
+            "mae": 3.5711117615029475
+          },
+          "Playoffs": {
+            "n": 3552,
+            "mean_projection": 7.901206442543847,
+            "mean_actual": 7.971565315315315,
+            "mean_residual": -0.07035887277146852,
+            "pct_bias": -0.008826230481520612,
+            "mae": 3.175616827889248
+          }
+        }
+      },
+      {
+        "form": "additive",
+        "k": 250,
+        "buckets": 1,
+        "validation_objective": 6.929921151555533,
+        "validation": {
+          "Regular Season": {
+            "n": 42096,
+            "mean_projection": 8.855325767627889,
+            "mean_actual": 8.975722158874952,
+            "mean_residual": -0.12039639124706239,
+            "pct_bias": -0.0134135603928,
+            "mae": 3.58026136696363
+          },
+          "Playoffs": {
+            "n": 3552,
+            "mean_projection": 7.939118316983111,
+            "mean_actual": 7.971565315315315,
+            "mean_residual": -0.03244699833220457,
+            "pct_bias": -0.00407034215348722,
+            "mae": 3.1968163950126356
+          }
+        }
+      },
+      {
+        "form": "multiplicative",
+        "k": 10,
+        "buckets": 4,
+        "validation_objective": 7.0122740100852035,
+        "validation": {
+          "Regular Season": {
+            "n": 42096,
+            "mean_projection": 8.898663668276393,
+            "mean_actual": 8.975722158874952,
+            "mean_residual": -0.077058490598559,
+            "pct_bias": -0.008585213449634872,
+            "mae": 3.563138602921787
+          },
+          "Playoffs": {
+            "n": 3552,
+            "mean_projection": 7.741079359501668,
+            "mean_actual": 7.971565315315315,
+            "mean_residual": -0.2304859558136474,
+            "pct_bias": -0.02891351280417007,
+            "mae": 3.141590960751209
+          }
+        }
+      },
+      {
+        "form": "multiplicative",
+        "k": 50,
+        "buckets": 1,
+        "validation_objective": 7.019200687866096,
+        "validation": {
+          "Regular Season": {
+            "n": 42096,
+            "mean_projection": 8.886258099888945,
+            "mean_actual": 8.975722158874952,
+            "mean_residual": -0.08946405898600782,
+            "pct_bias": -0.009967338271221794,
+            "mae": 3.561723901045226
+          },
+          "Playoffs": {
+            "n": 3552,
+            "mean_projection": 7.759472403218483,
+            "mean_actual": 7.971565315315315,
+            "mean_residual": -0.2120929120968318,
+            "pct_bias": -0.026606181309127546,
+            "mae": 3.15591981573803
+          }
+        }
+      },
+      {
+        "form": "multiplicative",
+        "k": 10,
+        "buckets": 1,
+        "validation_objective": 7.076237230173595,
+        "validation": {
+          "Regular Season": {
+            "n": 42096,
+            "mean_projection": 8.881810911242896,
+            "mean_actual": 8.975722158874952,
+            "mean_residual": -0.0939112476320559,
+            "pct_bias": -0.010462806888379337,
+            "mae": 3.561495806629292
+          },
+          "Playoffs": {
+            "n": 3552,
+            "mean_projection": 7.705013372706135,
+            "mean_actual": 7.971565315315315,
+            "mean_residual": -0.2665519426091792,
+            "pct_bias": -0.03343784213836498,
+            "mae": 3.154278233303067
+          }
+        }
+      },
+      {
+        "form": "additive",
+        "k": 10,
+        "buckets": 4,
+        "validation_objective": 7.078738299925823,
+        "validation": {
+          "Regular Season": {
+            "n": 42096,
+            "mean_projection": 8.887123965980999,
+            "mean_actual": 8.975722158874952,
+            "mean_residual": -0.08859819289395542,
+            "pct_bias": -0.009870870702738042,
+            "mae": 3.5703560840812725
+          },
+          "Playoffs": {
+            "n": 3552,
+            "mean_projection": 7.71312278739889,
+            "mean_actual": 7.971565315315315,
+            "mean_residual": -0.2584425279164258,
+            "pct_bias": -0.03242054950235368,
+            "mae": 3.16134149503417
+          }
+        }
+      },
+      {
+        "form": "additive",
+        "k": 50,
+        "buckets": 1,
+        "validation_objective": 7.161525751377212,
+        "validation": {
+          "Regular Season": {
+            "n": 42096,
+            "mean_projection": 8.832670581110518,
+            "mean_actual": 8.975722158874952,
+            "mean_residual": -0.1430515777644347,
+            "pct_bias": -0.01593761206422696,
+            "mae": 3.579489142294091
+          },
+          "Playoffs": {
+            "n": 3552,
+            "mean_projection": 7.717850130747912,
+            "mean_actual": 7.971565315315315,
+            "mean_residual": -0.25371518456740266,
+            "pct_bias": -0.031827523771266616,
+            "mae": 3.1852698467512837
+          }
+        }
+      },
+      {
+        "form": "additive",
+        "k": 10,
+        "buckets": 1,
+        "validation_objective": 7.218984093009956,
+        "validation": {
+          "Regular Season": {
+            "n": 42096,
+            "mean_projection": 8.828036705322047,
+            "mean_actual": 8.975722158874952,
+            "mean_residual": -0.14768545355290422,
+            "pct_bias": -0.016453879803629706,
+            "mae": 3.5793411792385577
+          },
+          "Playoffs": {
+            "n": 3552,
+            "mean_projection": 7.6634872522974335,
+            "mean_actual": 7.971565315315315,
+            "mean_residual": -0.30807806301788243,
+            "pct_bias": -0.03864712272080235,
+            "mae": 3.183879397200611
+          }
+        }
+      },
+      {
+        "form": "additive",
+        "k": 250,
+        "buckets": 4,
+        "validation_objective": 7.2481586640415046,
+        "validation": {
+          "Regular Season": {
+            "n": 42096,
+            "mean_projection": 8.984283564931632,
+            "mean_actual": 8.975722158874952,
+            "mean_residual": 0.008561406056679708,
+            "pct_bias": 0.0009538403601558031,
+            "mae": 3.5754056035194997
+          },
+          "Playoffs": {
+            "n": 3552,
+            "mean_projection": 8.389435282876686,
+            "mean_actual": 7.971565315315315,
+            "mean_residual": 0.4178699675613713,
+            "pct_bias": 0.0524200644456292,
+            "mae": 3.2463216869039537
+          }
+        }
+      },
+      {
+        "form": "multiplicative",
+        "k": 1000,
+        "buckets": 1,
+        "validation_objective": 7.248711303803399,
+        "validation": {
+          "Regular Season": {
+            "n": 42096,
+            "mean_projection": 8.98283189105278,
+            "mean_actual": 8.975722158874952,
+            "mean_residual": 0.0071097321778267365,
+            "pct_bias": 0.0007921069805839327,
+            "mae": 3.5676548209997585
+          },
+          "Playoffs": {
+            "n": 3552,
+            "mean_projection": 8.408451652712314,
+            "mean_actual": 7.971565315315315,
+            "mean_residual": 0.4368863373969994,
+            "pct_bias": 0.05480558963214345,
+            "mae": 3.2370604132288134
+          }
+        }
+      },
+      {
+        "form": "multiplicative",
+        "k": 250,
+        "buckets": 4,
+        "validation_objective": 7.258071871026786,
+        "validation": {
+          "Regular Season": {
+            "n": 42096,
+            "mean_projection": 8.994875068863639,
+            "mean_actual": 8.975722158874952,
+            "mean_residual": 0.019152909988685813,
+            "pct_bias": 0.0021338572707208783,
+            "mae": 3.5686859492860914
+          },
+          "Playoffs": {
+            "n": 3552,
+            "mean_projection": 8.40498273635063,
+            "mean_actual": 7.971565315315315,
+            "mean_residual": 0.4334174210353139,
+            "pct_bias": 0.05437042837780099,
+            "mae": 3.2368155907166947
+          }
+        }
+      },
+      {
+        "form": "additive",
+        "k": 1000,
+        "buckets": 1,
+        "validation_objective": 7.29043353925795,
+        "validation": {
+          "Regular Season": {
+            "n": 42096,
+            "mean_projection": 8.933315979357559,
+            "mean_actual": 8.975722158874952,
+            "mean_residual": -0.042406179517393144,
+            "pct_bias": -0.004724542356234039,
+            "mae": 3.5835383897690747
+          },
+          "Playoffs": {
+            "n": 3552,
+            "mean_projection": 8.380450249255293,
+            "mean_actual": 7.971565315315315,
+            "mean_residual": 0.40888493393997927,
+            "pct_bias": 0.05129292902542138,
+            "mae": 3.2556040360315026
+          }
+        }
+      },
+      {
+        "form": "additive",
+        "k": 1000,
+        "buckets": 4,
+        "validation_objective": 8.025798178972861,
+        "validation": {
+          "Regular Season": {
+            "n": 42096,
+            "mean_projection": 9.20554252531339,
+            "mean_actual": 8.975722158874952,
+            "mean_residual": 0.22982036643843753,
+            "pct_bias": 0.025604665827495265,
+            "mae": 3.593867772464606
+          },
+          "Playoffs": {
+            "n": 3552,
+            "mean_projection": 8.826837204728333,
+            "mean_actual": 7.971565315315315,
+            "mean_residual": 0.8552718894130195,
+            "pct_bias": 0.10729033202172153,
+            "mae": 3.3468381506567986
+          }
+        }
+      },
+      {
+        "form": "multiplicative",
+        "k": 1000,
+        "buckets": 4,
+        "validation_objective": 8.032007980646902,
+        "validation": {
+          "Regular Season": {
+            "n": 42096,
+            "mean_projection": 9.213973784760809,
+            "mean_actual": 8.975722158874952,
+            "mean_residual": 0.2382516258858576,
+            "pct_bias": 0.026544006339398643,
+            "mae": 3.588259129547775
+          },
+          "Playoffs": {
+            "n": 3552,
+            "mean_projection": 8.832991885731337,
+            "mean_actual": 7.971565315315315,
+            "mean_residual": 0.8614265704160212,
+            "pct_bias": 0.10806241137622134,
+            "mae": 3.3440706547972483
+          }
+        }
+      },
+      {
+        "form": "additive",
+        "k": 5000,
+        "buckets": 1,
+        "validation_objective": 8.117159451757002,
+        "validation": {
+          "Regular Season": {
+            "n": 42096,
+            "mean_projection": 9.222725480764979,
+            "mean_actual": 8.975722158874952,
+            "mean_residual": 0.24700332189002644,
+            "pct_bias": 0.027519047216250585,
+            "mae": 3.606061392696199
+          },
+          "Playoffs": {
+            "n": 3552,
+            "mean_projection": 8.872267112715688,
+            "mean_actual": 7.971565315315315,
+            "mean_residual": 0.9007017974003733,
+            "pct_bias": 0.11298932665958418,
+            "mae": 3.3633929397704034
+          }
+        }
+      },
+      {
+        "form": "multiplicative",
+        "k": 5000,
+        "buckets": 1,
+        "validation_objective": 8.145682426726164,
+        "validation": {
+          "Regular Season": {
+            "n": 42096,
+            "mean_projection": 9.260084352583066,
+            "mean_actual": 8.975722158874952,
+            "mean_residual": 0.284362193708116,
+            "pct_bias": 0.0316812607024546,
+            "mae": 3.5948492738966484
+          },
+          "Playoffs": {
+            "n": 3552,
+            "mean_projection": 8.8817518605135,
+            "mean_actual": 7.971565315315315,
+            "mean_residual": 0.9101865451981846,
+            "pct_bias": 0.1141791491627742,
+            "mae": 3.356284413923216
+          }
+        }
+      },
+      {
+        "form": "additive",
+        "k": 5000,
+        "buckets": 4,
+        "validation_objective": 8.826038509535561,
+        "validation": {
+          "Regular Season": {
+            "n": 42096,
+            "mean_projection": 9.652911445348836,
+            "mean_actual": 8.975722158874952,
+            "mean_residual": 0.6771892864738843,
+            "pct_bias": 0.07544677458674429,
+            "mae": 3.66200092449518
+          },
+          "Playoffs": {
+            "n": 3552,
+            "mean_projection": 9.047921624660857,
+            "mean_actual": 7.971565315315315,
+            "mean_residual": 1.0763563093455415,
+            "pct_bias": 0.13502446091454579,
+            "mae": 3.4104919892209553
+          }
+        }
+      },
+      {
+        "form": "multiplicative",
+        "k": 5000,
+        "buckets": 4,
+        "validation_objective": 8.828539120900494,
+        "validation": {
+          "Regular Season": {
+            "n": 42096,
+            "mean_projection": 9.656935808194177,
+            "mean_actual": 8.975722158874952,
+            "mean_residual": 0.6812136493192252,
+            "pct_bias": 0.07589513548452026,
+            "mae": 3.659599677662013
+          },
+          "Playoffs": {
+            "n": 3552,
+            "mean_projection": 9.049379135087609,
+            "mean_actual": 7.971565315315315,
+            "mean_residual": 1.077813819772294,
+            "pct_bias": 0.13520729958789293,
+            "mae": 3.4099119741469606
+          }
+        }
+      }
+    ],
+    "deployment_status": "diagnostic_only",
+    "deployment_blocker": "playoff fit uses the current postseason's early outcomes; only one unseen postseason is available, so stability and playoff cold-start behavior are unproven"
+  }
+}

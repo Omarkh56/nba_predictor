@@ -47,6 +47,10 @@ python3 scripts/replay/calibrate_probabilities.py
 # Let the fixed models act as a zero-vig "house": quote both sides of every
 # cached 2025-26 game and every L10-eligible prop at the model's own half line
 python3 scripts/replay/model_book_backtest.py --season 2025-26
+
+# Diagnose raw/corrected projection bias on the frozen final holdout and test
+# regime-aware additive/multiplicative candidates without changing live logic
+python3 scripts/replay/diagnose_projection_bias.py
 ```
 
 Outputs
@@ -143,6 +147,13 @@ training, validation and test seasons are rejected as holdouts. The run is
 cache-only and aborts on a cache miss. These are the model's fair prices, so the
 report supports prediction/calibration claims only; it cannot establish ROI,
 profit or an edge over a sportsbook.
+
+**Bias diagnosis.** `diagnose_projection_bias.py` uses the frozen chronological
+splits and reports whole-date bootstrap intervals, exact-market bias, projection
+level, history depth and minutes-error strata. Actual minutes are an after-game
+diagnostic only. Correction candidates are selected on validation dates and the
+final test is revealed once. The script leaves live model parameters unchanged;
+see `reports/projection-bias-diagnostic.md` for the current decision.
 
 ## API cache
 
