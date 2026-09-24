@@ -35,6 +35,7 @@ from nba_api.stats.static import players
 import oddstracker
 import predictions_db as pred_db
 from bet_log_utils import BET_LOG_FIELDS, read_bet_rows, upsert_bet_log, write_bet_rows
+from clv import apply_closing_clv, write_clv_reports
 from finance import FINANCE_FIELDS, grade_financial_rows
 from roi_analysis import write_finance_reports
 
@@ -838,9 +839,24 @@ def _grade_finance_log():
     if not rows:
         return None
     graded, stats = grade_financial_rows(rows, _configured_starting_bankroll())
+    live_indices = [
+        index for index, row in enumerate(graded)
+        if row.get("logged_at") not in (None, "")
+    ]
+    snapshots = pd.DataFrame()
+    if os.path.isfile(oddstracker.SNAPSHOT_FILE) and os.path.getsize(oddstracker.SNAPSHOT_FILE) > 0:
+        try:
+            snapshots = pd.read_csv(oddstracker.SNAPSHOT_FILE)
+        except (OSError, pd.errors.ParserError):
+            snapshots = pd.DataFrame()
+    live_rows = apply_closing_clv([graded[index] for index in live_indices], snapshots)
+    for index, joined in zip(live_indices, live_rows):
+        graded[index] = joined
     output_fields = list(dict.fromkeys([*BET_LOG_FIELDS, *fields, *[k for row in graded for k in row]]))
     write_bet_rows(LOG_FILE, output_fields, graded)
-    report = write_finance_reports(Path(LOG_FILE), Path(LOG_FILE).parent / "reports")
+    reports_dir = Path(LOG_FILE).parent / "reports"
+    report = write_finance_reports(Path(LOG_FILE), reports_dir)
+    write_clv_reports(live_rows, reports_dir)
     overall = report["overall"]
     roi = "n/a" if overall["roi"] is None else f"{overall['roi'] * 100:.2f}%"
     print(

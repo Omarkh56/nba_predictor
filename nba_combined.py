@@ -188,9 +188,14 @@ def _load_today_lean(snap_date: date) -> dict:
     needs_fetch = True
     if os.path.isfile(tracker_path) and os.path.getsize(tracker_path) > 0:
         try:
-            df = pd.read_csv(tracker_path, usecols=["date", "player", "market"])
-            if (df["date"] == snap_date.isoformat()).any():
-                needs_fetch = False
+            df = pd.read_csv(tracker_path)
+            today_rows = df[df["date"] == snap_date.isoformat()]
+            if "snapshot_at" in today_rows and not today_rows.empty:
+                now = datetime.now(timezone.utc).isoformat()
+                needs_fetch = not any(
+                    odds_data_is_fresh(value, now, max_age_minutes=ODDS_MAX_AGE_MINUTES)
+                    for value in today_rows["snapshot_at"]
+                )
         except (OSError, ValueError, KeyError):
             pass
 

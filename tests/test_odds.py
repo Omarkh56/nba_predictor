@@ -6,6 +6,7 @@ import math
 import sys
 import importlib
 import types
+import pandas as pd
 import pytest
 
 
@@ -64,6 +65,10 @@ american_to_implied = _ot.american_to_implied
 devig               = _ot.devig
 devig_power         = _ot.devig_power
 book_lean           = _ot.book_lean
+parse_props_to_rows = _ot.parse_props_to_rows
+parse_props_to_snapshot_rows = _ot.parse_props_to_snapshot_rows
+append_consensus_rows = _ot._append_rows
+append_snapshot_rows = _ot._append_snapshot_rows
 
 
 # ===========================================================================
@@ -179,3 +184,82 @@ class TestBookLean:
     def test_strength_is_absolute_deviation(self):
         _, s = book_lean(0.30)
         assert s == pytest.approx(0.20, abs=1e-6)
+
+
+class TestTimestampedPropSnapshots:
+    def test_parser_preserves_every_player_and_book_quote(self):
+        payload = {"bookmakers": [{
+            "key": "book_a", "title": "Book A", "markets": [{
+                "key": "PTS", "outcomes": [
+                    {"description": player, "name": side, "point": line, "price": -110}
+                    for player, line in (("Player A", 20.5), ("Player B", 15.5))
+                    for side in ("Over", "Under")
+                ],
+            }],
+        }]}
+        consensus = parse_props_to_rows(
+            payload, "AAA@BBB", "2026-05-01",
+            snapshot_at="2026-05-01T18:00:00+00:00",
+            event_id="event-1", commence_time="2026-05-01T20:00:00+00:00",
+        )
+        snapshots = parse_props_to_snapshot_rows(
+            payload, "AAA@BBB", "2026-05-01", "2026-05-01T18:00:00+00:00",
+            "event-1", "2026-05-01T20:00:00+00:00",
+        )
+        assert {row["player"] for row in consensus} == {"Player A", "Player B"}
+        assert len(snapshots) == 4
+        assert all(row["event_id"] == "event-1" for row in snapshots)
+        assert all(row["devig_probability"] == pytest.approx(0.5) for row in snapshots)
+
+    def test_one_sided_quote_keeps_vig_and_devig_missing(self):
+        payload = {"bookmakers": [{
+            "key": "book_a", "title": "Book A", "markets": [{
+                "key": "PTS", "outcomes": [
+                    {"description": "Player A", "name": "Over", "point": 20.5, "price": -110}
+                ],
+            }],
+        }]}
+        snapshots = parse_props_to_snapshot_rows(
+            payload, "AAA@BBB", "2026-05-01", "2026-05-01T18:00:00+00:00",
+            "event-1", "2026-05-01T20:00:00+00:00",
+        )
+        assert len(snapshots) == 1
+        assert snapshots[0]["vig_pct"] is None
+        assert snapshots[0]["devig_probability"] is None
+
+    def test_consensus_updates_but_book_snapshots_append(self, tmp_path):
+        consensus_path = tmp_path / "odds_tracker.csv"
+        snapshot_path = tmp_path / "prop_odds_snapshots.csv"
+        base = {
+            "date": "2026-05-01", "game": "AAA@BBB", "player": "Player A",
+            "market": "PTS", "line": 20.5, "books_count": 1,
+            "avg_over_odds": -110, "avg_under_odds": -110,
+            "implied_over": .5238, "implied_under": .5238,
+            "devig_over": .5, "devig_under": .5, "book_lean": "NEUTRAL",
+            "lean_strength": 0, "vig_pct": 4.76, "k_value": 1.07,
+            "snapshot_at": "2026-05-01T18:00:00+00:00", "event_id": "event-1",
+            "commence_time": "2026-05-01T20:00:00+00:00",
+            "odds_source": "odds_tracker_consensus", "result": "",
+        }
+        append_consensus_rows([base], "2026-05-01", path=str(consensus_path))
+        append_consensus_rows([
+            {**base, "avg_over_odds": -120, "snapshot_at": "2026-05-01T19:00:00+00:00"}
+        ], "2026-05-01", path=str(consensus_path))
+        saved = pd.read_csv(consensus_path)
+        assert len(saved) == 1
+        assert saved.loc[0, "avg_over_odds"] == -120
+
+        snap = {
+            "snapshot_at": "2026-05-01T18:00:00+00:00", "date": "2026-05-01",
+            "event_id": "event-1", "commence_time": "2026-05-01T20:00:00+00:00",
+            "game": "AAA@BBB", "book_key": "book_a", "book_title": "Book A",
+            "player": "Player A", "market": "PTS", "line": 20.5, "side": "OVER",
+            "american_odds": -110, "decimal_odds": 1.909, "raw_implied_probability": .5238,
+            "opposing_american_odds": -110, "devig_probability": .5,
+            "vig_pct": 4.76, "k_value": 1.07, "odds_source": "the_odds_api",
+        }
+        assert append_snapshot_rows([snap], path=str(snapshot_path)) == 1
+        assert append_snapshot_rows([
+            {**snap, "snapshot_at": "2026-05-01T19:00:00+00:00", "american_odds": -120}
+        ], path=str(snapshot_path)) == 1
+        assert len(pd.read_csv(snapshot_path)) == 2

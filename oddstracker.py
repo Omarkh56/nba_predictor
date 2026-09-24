@@ -30,11 +30,12 @@ import os
 import sys
 import time
 import warnings
-from datetime import date
+from datetime import date, datetime, timezone
 
 from dotenv import load_dotenv
 
 from odds_api import get_json as _get_odds_json
+from finance import american_to_decimal
 
 load_dotenv()
 
@@ -65,6 +66,7 @@ MARKET_LABELS = _props_model.MARKET_LABELS
 NEUTRAL_BAND = 0.04  # |devig_over − 0.50| ≤ 4% → NEUTRAL
 
 TRACKER_FILE = os.path.join(_HERE, "odds_tracker.csv")
+SNAPSHOT_FILE = os.path.join(_HERE, "prop_odds_snapshots.csv")
 BET_LOG_FILE = os.path.join(_HERE, "bet_log.csv")
 CALIB_FILE = os.path.join(_HERE, "calibration.json")
 
@@ -85,7 +87,19 @@ TRACKER_FIELDS = [
     "lean_strength",
     "vig_pct",
     "k_value",  # v7 Fix 5: power-method de-vig exponent
+    "snapshot_at",
+    "event_id",
+    "commence_time",
+    "odds_source",
     "result",  # filled after games: OVER_HIT / UNDER_HIT / PUSH / DNP
+]
+
+SNAPSHOT_FIELDS = [
+    "snapshot_at", "date", "event_id", "commence_time", "game",
+    "book_key", "book_title", "player", "market", "line", "side",
+    "american_odds", "decimal_odds", "raw_implied_probability",
+    "opposing_american_odds", "devig_probability", "vig_pct", "k_value",
+    "odds_source",
 ]
 
 
@@ -193,7 +207,9 @@ def get_event_props(event_id: str) -> dict:
 # ===========================================================================
 # PARSE & AGGREGATE ODDS
 # ===========================================================================
-def parse_props_to_rows(props_json: dict, game_key: str, snap_date: str) -> list:
+def parse_props_to_rows(props_json: dict, game_key: str, snap_date: str, *,
+                        snapshot_at: str = "", event_id: str = "",
+                        commence_time: str = "") -> list:
     """
     Parse raw Odds API response into per-(player, market) rows with averaged
     odds across all bookmakers, implied probabilities, and book lean.
@@ -209,36 +225,26 @@ def parse_props_to_rows(props_json: dict, game_key: str, snap_date: str) -> list
         for mkt in bk.get("markets", []):
             mk = mkt.get("key", "")
             label = MARKET_LABELS.get(mk, mk)
-            over_row = None
-            under_row = None
+            paired = {}
             for oc in mkt.get("outcomes", []):
                 side = oc.get("name", "").lower()
                 price = oc.get("price")
                 point = oc.get("point")
                 player = oc.get("description", "")
-                if not player or price is None:
+                if not player or price is None or point is None or side not in {"over", "under"}:
                     continue
-                entry = {
-                    "book": book,
-                    "player": player,
-                    "market": label,
-                    "line": point,
-                    "price": float(price),
-                }
-                if side == "over":
-                    over_row = entry
-                elif side == "under":
-                    under_row = entry
-            # Only process when both sides are present from the same book
-            if over_row and under_row and over_row["player"] == under_row["player"]:
+                paired.setdefault((str(player).strip(), float(point)), {})[side] = float(price)
+            for (player, point), sides in paired.items():
+                if "over" not in sides or "under" not in sides:
+                    continue
                 raw.append(
                     {
                         "book": book,
-                        "player": over_row["player"],
-                        "market": over_row["market"],
-                        "line": over_row["line"],
-                        "over_p": over_row["price"],
-                        "under_p": under_row["price"],
+                        "player": player,
+                        "market": label,
+                        "line": point,
+                        "over_p": sides["over"],
+                        "under_p": sides["under"],
                     }
                 )
 
@@ -248,10 +254,16 @@ def parse_props_to_rows(props_json: dict, game_key: str, snap_date: str) -> list
     df = pd.DataFrame(raw)
     rows = []
     for (player, market), grp in df.groupby(["player", "market"]):
-        consensus_line = float(grp["line"].median())
-        avg_over_odds = round(float(grp["over_p"].mean()), 1)
-        avg_under_odds = round(float(grp["under_p"].mean()), 1)
-        n_books = int(grp["book"].nunique())
+        counts = grp["line"].value_counts()
+        most_common = counts[counts == counts.max()].index.astype(float).tolist()
+        median_line = float(grp["line"].median())
+        consensus_line = min(most_common, key=lambda value: (abs(value - median_line), value))
+        comparable = grp[(grp["line"] - consensus_line).abs() < 1e-9]
+        if comparable.empty:
+            continue
+        avg_over_odds = round(float(comparable["over_p"].mean()), 1)
+        avg_under_odds = round(float(comparable["under_p"].mean()), 1)
+        n_books = int(comparable["book"].nunique())
 
         dv_over, dv_under, vig, k_val = devig_power(avg_over_odds, avg_under_odds)  # v7 Fix 5
         lean, strength = book_lean(dv_over)
@@ -274,30 +286,108 @@ def parse_props_to_rows(props_json: dict, game_key: str, snap_date: str) -> list
                 "lean_strength": strength,
                 "vig_pct": vig,
                 "k_value": k_val,
+                "snapshot_at": snapshot_at,
+                "event_id": event_id,
+                "commence_time": commence_time,
+                "odds_source": "odds_tracker_consensus",
                 "result": "",  # filled after game via update_results()
             }
         )
     return rows
 
 
+def parse_props_to_snapshot_rows(props_json: dict, game_key: str, snap_date: str,
+                                 snapshot_at: str, event_id: str,
+                                 commence_time: str) -> list:
+    """Preserve bookmaker-level lines and prices for entry/closing joins."""
+    rows = []
+    for bookmaker in props_json.get("bookmakers", []):
+        book_key = str(bookmaker.get("key") or "").strip()
+        book_title = str(bookmaker.get("title") or book_key or "unknown").strip()
+        for market in bookmaker.get("markets", []):
+            label = MARKET_LABELS.get(market.get("key", ""), market.get("key", ""))
+            grouped = {}
+            for outcome in market.get("outcomes", []):
+                side = str(outcome.get("name") or "").strip().upper()
+                player = str(outcome.get("description") or "").strip()
+                price = outcome.get("price")
+                line = outcome.get("point")
+                if side not in {"OVER", "UNDER"} or not player or price is None or line is None:
+                    continue
+                try:
+                    american = float(price)
+                    decimal = american_to_decimal(american)
+                    numeric_line = float(line)
+                except (TypeError, ValueError):
+                    continue
+                grouped.setdefault((player, label, numeric_line), {})[side] = {
+                    "american": american,
+                    "decimal": decimal,
+                }
+
+            for (player, label, line), sides in grouped.items():
+                over = sides.get("OVER")
+                under = sides.get("UNDER")
+                paired = over is not None and under is not None
+                if paired:
+                    dv_over, dv_under, vig, k_value = devig_power(
+                        over["american"], under["american"]
+                    )
+                else:
+                    dv_over = dv_under = vig = k_value = None
+                for side, quote in sides.items():
+                    opposing = under if side == "OVER" else over
+                    rows.append({
+                        "snapshot_at": snapshot_at,
+                        "date": snap_date,
+                        "event_id": event_id,
+                        "commence_time": commence_time,
+                        "game": game_key,
+                        "book_key": book_key,
+                        "book_title": book_title,
+                        "player": player,
+                        "market": label,
+                        "line": line,
+                        "side": side,
+                        "american_odds": quote["american"],
+                        "decimal_odds": round(quote["decimal"], 8),
+                        "raw_implied_probability": round(american_to_implied(quote["american"]), 8),
+                        "opposing_american_odds": opposing["american"] if opposing else "",
+                        "devig_probability": dv_over if side == "OVER" else dv_under,
+                        "vig_pct": vig,
+                        "k_value": k_value,
+                        "odds_source": "the_odds_api",
+                    })
+    return rows
+
+
 # ===========================================================================
 # SNAPSHOT — fetch and save today's odds
 # ===========================================================================
-def snapshot(snap_date: date):
+def snapshot(snap_date: date, *, events=None, now=None, tracker_path=None,
+             snapshot_path=None):
     """Fetch all player prop odds for snap_date and log to odds_tracker.csv."""
+    tracker_path = tracker_path or TRACKER_FILE
+    snapshot_path = snapshot_path or SNAPSHOT_FILE
+    observed = now or datetime.now(timezone.utc)
+    if observed.tzinfo is None:
+        observed = observed.replace(tzinfo=timezone.utc)
+    snapshot_at = observed.astimezone(timezone.utc).isoformat()
     print(f"\n  Fetching events for {snap_date.isoformat()}…")
-    try:
-        events = get_all_events()
-    except (requests.exceptions.RequestException, json.JSONDecodeError) as e:
-        print(f"  Error fetching events: {e}")
-        return
+    if events is None:
+        try:
+            events = get_all_events()
+        except (requests.exceptions.RequestException, json.JSONDecodeError) as e:
+            print(f"  Error fetching events: {e}")
+            return []
 
     if not events:
         print("  No events found.")
-        return
+        return []
 
     print(f"  Found {len(events)} event(s).")
     all_rows = []
+    all_snapshot_rows = []
 
     for ev in events:
         home = ev.get("home_team", "?")
@@ -306,7 +396,15 @@ def snapshot(snap_date: date):
         print(f"  Fetching props: {gk}…")
         try:
             props = get_event_props(ev["id"])
-            rows = parse_props_to_rows(props, gk, snap_date.isoformat())
+            event_id = str(ev.get("id") or props.get("id") or "")
+            commence_time = str(ev.get("commence_time") or props.get("commence_time") or "")
+            rows = parse_props_to_rows(
+                props, gk, snap_date.isoformat(), snapshot_at=snapshot_at,
+                event_id=event_id, commence_time=commence_time,
+            )
+            all_snapshot_rows.extend(parse_props_to_snapshot_rows(
+                props, gk, snap_date.isoformat(), snapshot_at, event_id, commence_time
+            ))
             print(f"    {len(rows)} player-market line(s) parsed")
             all_rows.extend(rows)
         except Exception:
@@ -314,70 +412,108 @@ def snapshot(snap_date: date):
             logger.exception("Props fetch/parse failed for event %s (%s)", ev.get("id"), gk)
         time.sleep(0.8)  # rate-limit courtesy pause
 
-    if not all_rows:
+    if not all_rows and not all_snapshot_rows:
         print("  No prop rows collected — lines may not be posted yet or have already closed.")
         print("  Tip: books post player props 2–6 hours before tip and close ~15 min before.")
-        return
+        return []
 
-    _append_rows(all_rows, snap_date.isoformat())
-    print(f"\n  Logged {len(all_rows)} prop line(s) → {os.path.basename(TRACKER_FILE)}")
+    if all_rows:
+        _append_rows(all_rows, snap_date.isoformat(), path=tracker_path)
+    _append_snapshot_rows(all_snapshot_rows, path=snapshot_path)
+    print(f"\n  Logged {len(all_rows)} consensus line(s) → {os.path.basename(tracker_path)}")
+    print(f"  Logged {len(all_snapshot_rows)} book quote(s) → {os.path.basename(snapshot_path)}")
+    return all_rows
 
 
-def _append_rows(rows: list, snap_date: str):
-    """Append rows to odds_tracker.csv; skip duplicates (same date/player/market)."""
-    # Load existing keys to deduplicate
-    existing_keys = set()
-    if os.path.isfile(TRACKER_FILE) and os.path.getsize(TRACKER_FILE) > 0:
+def _append_rows(rows: list, snap_date: str, path=None):
+    """Upsert the latest daily consensus while preserving one public row."""
+    path = path or TRACKER_FILE
+    _migrate_tracker_csv(path)
+    existing = pd.DataFrame(columns=TRACKER_FIELDS)
+    if os.path.isfile(path) and os.path.getsize(path) > 0:
         try:
-            existing = pd.read_csv(TRACKER_FILE, usecols=["date", "player", "market"])
-            for _, r in existing.iterrows():
-                if str(r["date"]) == snap_date:
-                    existing_keys.add((r["player"], r["market"]))
-        except (OSError, KeyError, pd.errors.ParserError) as exc:
+            existing = pd.read_csv(path)
+        except (OSError, pd.errors.ParserError) as exc:
             logger.warning("Could not read existing tracker rows: %s", exc)
-
-    new_rows = [r for r in rows if (r["player"], r["market"]) not in existing_keys]
-    if not new_rows:
-        print("  All rows already logged for this date — nothing new added.")
+            return
+    incoming = pd.DataFrame(rows)
+    if incoming.empty:
         return
+    keys = set(zip(incoming["date"].astype(str), incoming["player"], incoming["market"]))
+    if not existing.empty:
+        keep = [
+            (str(row.get("date")), row.get("player"), row.get("market")) not in keys
+            for _, row in existing.iterrows()
+        ]
+        old_result = {
+            (str(row.get("date")), row.get("player"), row.get("market")): row.get("result", "")
+            for _, row in existing.iterrows()
+        }
+        for index, row in incoming.iterrows():
+            key = (str(row.get("date")), row.get("player"), row.get("market"))
+            if not str(row.get("result") or "").strip() and key in old_result and pd.notna(old_result[key]):
+                incoming.at[index, "result"] = old_result[key]
+        existing = existing.loc[keep]
+    combined = incoming.reset_index(drop=True) if existing.empty else pd.concat(
+        [existing, incoming], ignore_index=True
+    )
+    for field in TRACKER_FIELDS:
+        if field not in combined:
+            combined[field] = ""
+    combined[TRACKER_FIELDS].to_csv(path, index=False)
 
-    file_exists = os.path.isfile(TRACKER_FILE) and os.path.getsize(TRACKER_FILE) > 0
-    with open(TRACKER_FILE, "a", newline="") as fh:
-        writer = csv.DictWriter(fh, fieldnames=TRACKER_FIELDS)
+
+def _append_snapshot_rows(rows: list, path=None):
+    """Append immutable bookmaker-level observations, deduplicating retries."""
+    path = path or SNAPSHOT_FILE
+    if not rows:
+        return 0
+    existing_keys = set()
+    if os.path.isfile(path) and os.path.getsize(path) > 0:
+        try:
+            existing = pd.read_csv(path)
+            key_fields = ["snapshot_at", "event_id", "book_key", "player", "market", "line", "side"]
+            existing_keys = {
+                tuple(str(row.get(field, "")) for field in key_fields)
+                for _, row in existing.iterrows()
+            }
+        except (OSError, pd.errors.ParserError):
+            existing_keys = set()
+    key_fields = ["snapshot_at", "event_id", "book_key", "player", "market", "line", "side"]
+    additions = [
+        row for row in rows
+        if tuple(str(row.get(field, "")) for field in key_fields) not in existing_keys
+    ]
+    if not additions:
+        return 0
+    file_exists = os.path.isfile(path) and os.path.getsize(path) > 0
+    with open(path, "a", newline="", encoding="utf-8") as fh:
+        writer = csv.DictWriter(fh, fieldnames=SNAPSHOT_FIELDS, extrasaction="ignore")
         if not file_exists:
             writer.writeheader()
-        writer.writerows(new_rows)
+        writer.writerows(additions)
+    return len(additions)
 
 
 # ===========================================================================
 # SCHEMA MIGRATION — add k_value column to old odds_tracker.csv rows
 # ===========================================================================
-def _migrate_tracker_csv():
-    """One-time migration: insert 'k_value' column before 'result' if missing."""
-    if not os.path.isfile(TRACKER_FILE):
+def _migrate_tracker_csv(path=None):
+    """Add tracker metadata columns without inventing historical values."""
+    path = path or TRACKER_FILE
+    if not os.path.isfile(path):
         return
-    with open(TRACKER_FILE) as fh:
-        lines = fh.readlines()
-    if not lines:
+    try:
+        frame = pd.read_csv(path)
+    except (OSError, pd.errors.ParserError):
         return
-    header_fields = [c.strip() for c in lines[0].strip().split(",")]
-    if "k_value" in header_fields:
-        return  # already migrated
-
-    new_lines = []
-    # Find position of 'result' column to insert k_value before it
-    result_idx = header_fields.index("result") if "result" in header_fields else len(header_fields)
-    for i, line in enumerate(lines):
-        fields = line.rstrip("\n").split(",")
-        if i == 0:
-            fields = fields[:result_idx] + ["k_value"] + fields[result_idx:]
-        elif len(fields) == len(header_fields):
-            fields = fields[:result_idx] + [""] + fields[result_idx:]
-        new_lines.append(",".join(fields) + "\n")
-
-    with open(TRACKER_FILE, "w") as fh:
-        fh.writelines(new_lines)
-    print("  Migrated odds_tracker.csv → added 'k_value' column to existing rows.")
+    missing = [field for field in TRACKER_FIELDS if field not in frame]
+    if not missing:
+        return
+    for field in missing:
+        frame[field] = ""
+    frame[TRACKER_FIELDS].to_csv(path, index=False)
+    print(f"  Migrated odds_tracker.csv → added {', '.join(missing)}.")
 
 
 # ===========================================================================

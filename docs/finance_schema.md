@@ -28,3 +28,16 @@ the persisted value remains authoritative on repeated grading runs.
 and a positive stake amount. It writes `reports/finance_summary.json`,
 `reports/finance_summary.md`, and `reports/bankroll_curve.csv`. Rows without
 finance data remain in hit-rate reporting and are counted as excluded from ROI.
+
+Each `oddstracker.py` run also appends immutable bookmaker observations to the
+gitignored `prop_odds_snapshots.csv`. Every observation carries snapshot time,
+event ID, game start, book, player, market, exact line, side, price, and paired
+de-vig data when both sides exist. `odds_tracker.csv` remains the backward-
+compatible latest daily consensus used by the live predictor.
+
+Closing joins select the final snapshot strictly before game start. Directional
+line CLV and same-line price CLV stay separate. De-vig price CLV requires both
+sides; raw implied-probability CLV may still be recorded when the opposing side
+is missing. Failed joins keep CLV blank and store a machine-readable reason in
+`clv_unmatched_reason`. Reports are written to `reports/clv_summary.json` and
+`reports/clv_summary.md`.

@@ -1,0 +1,13 @@
+{
+  "attempted_rows": 0,
+  "average_implied_probability_clv": null,
+  "average_line_clv": null,
+  "average_raw_implied_probability_clv": null,
+  "closing_snapshot_rows": 0,
+  "line_clv_coverage": 0.0,
+  "line_clv_rows": 0,
+  "price_clv_coverage": 0.0,
+  "price_clv_rows": 0,
+  "raw_price_clv_rows": 0,
+  "unmatched_reasons": {}
+}
