@@ -111,6 +111,31 @@ def test_checkresults_append_path_is_idempotent(monkeypatch, tmp_path):
     assert saved.loc[0, "fetch_status"] == "rs=ok;po=ok;po_raw=ok"
 
 
+def test_checkresults_grades_profit_once_from_same_day_opening_bankroll(monkeypatch, tmp_path):
+    import sys
+
+    monkeypatch.setattr(sys, "argv", ["checkresults.py"])
+    import checkresults
+
+    path = tmp_path / "bet_log.csv"
+    monkeypatch.setattr(checkresults, "LOG_FILE", str(path))
+    monkeypatch.setenv("NBA_STARTING_BANKROLL", "100")
+    graded = [{
+        "player": "Nikola Jokic", "market": "PTS", "line": 25.5, "pick": "OVER",
+        "projection": 27.1, "actual": 30, "margin": 4.5, "result": "HIT ✓",
+        "p_model": 0.60, "p_market": 0.52, "decimal_odds": 2.0,
+        "entry_decimal_odds": 2.0, "stake_pct": 0.02, "stake_skip_reason": "",
+    }]
+    checkresults.append_to_log(graded, date(2026, 5, 1))
+    first = pd.read_csv(path)
+    checkresults.append_to_log(graded, date(2026, 5, 1))
+    second = pd.read_csv(path)
+    assert first.loc[0, "bankroll_before"] == pytest.approx(100.0)
+    assert first.loc[0, "stake_amount"] == pytest.approx(2.0)
+    assert first.loc[0, "realized_profit"] == pytest.approx(2.0)
+    pd.testing.assert_frame_equal(first, second)
+
+
 def test_box_score_zero_minutes_is_dnp_and_not_logged(monkeypatch, tmp_path):
     import sys
 

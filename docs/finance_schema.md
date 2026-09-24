@@ -18,3 +18,13 @@ closing price. `bet_id` is a stable hash of the existing identity:
 SQLite `prop_predictions` uses additive `ALTER TABLE` migrations, so databases
 created before Phase 3 remain readable. CSV readers retain unknown columns and
 writers preserve their original order after the documented public fields.
+
+Set `NBA_STARTING_BANKROLL` to a positive amount to enable bankroll tracking.
+All bets on the same date are sized from that date's opening bankroll, so CSV
+row order cannot change stake amounts. Once an opening bankroll is recorded,
+the persisted value remains authoritative on repeated grading runs.
+
+`checkresults.py` settles profit only when a row has valid recorded entry odds
+and a positive stake amount. It writes `reports/finance_summary.json`,
+`reports/finance_summary.md`, and `reports/bankroll_curve.csv`. Rows without
+finance data remain in hit-rate reporting and are counted as excluded from ROI.

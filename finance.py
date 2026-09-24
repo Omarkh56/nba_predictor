@@ -12,7 +12,7 @@ import unicodedata
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
-from typing import Mapping, Optional
+from typing import Iterable, Mapping, Optional
 
 
 # Existing public columns (line, p_model, p_market, decimal_odds, stake_pct,
@@ -65,6 +65,17 @@ class StakeDecision:
     model_edge: Optional[float]
     market_implied_probability: Optional[float]
     stake_skip_reason: str
+
+
+@dataclass(frozen=True)
+class FinanceGradeStats:
+    rows: int
+    stake_amounts_added: int
+    profits_added: int
+    finance_eligible: int
+    excluded: int
+    starting_bankroll: Optional[float]
+    ending_bankroll: Optional[float]
 
 
 def _finite(value) -> float:
@@ -234,6 +245,134 @@ def recommend_stake(p_model, decimal_odds, *, devig_market_probability=None,
     stake_pct = max(0.0, min(multiplier * full_kelly, cap))
     return StakeDecision(
         stake_pct, full_kelly, expected_value, model_edge, raw_implied, ""
+    )
+
+
+def normalize_result(value) -> str:
+    text = str(value or "").strip().upper()
+    if "HIT" in text:
+        return "HIT"
+    if "MISS" in text:
+        return "MISS"
+    if text == "PUSH":
+        return "PUSH"
+    if text in {"VOID", "DID NOT PLAY", "DNP"}:
+        return "VOID"
+    return ""
+
+
+def optional_nonnegative(value) -> Optional[float]:
+    if value in (None, ""):
+        return None
+    try:
+        number = _finite(value)
+    except (TypeError, ValueError):
+        return None
+    return number if number >= 0 else None
+
+
+def settlement_profit(result, stake_amount, decimal_odds) -> Optional[float]:
+    """Return settled profit, or ``None`` when finance inputs are unusable."""
+    outcome = normalize_result(result)
+    stake = optional_nonnegative(stake_amount)
+    if not outcome or stake is None or not valid_decimal_odds(decimal_odds):
+        return None
+    price = _finite(decimal_odds)
+    if outcome == "HIT":
+        return stake * (price - 1.0)
+    if outcome == "MISS":
+        return -stake
+    return 0.0
+
+
+def _row_decimal_odds(row: Mapping[str, object]):
+    entry = row.get("entry_decimal_odds")
+    return entry if valid_decimal_odds(entry) else row.get("decimal_odds")
+
+
+def _row_date(row: Mapping[str, object]) -> str:
+    return str(row.get("date") or "")[:10]
+
+
+def grade_financial_rows(rows: Iterable[Mapping[str, object]],
+                         starting_bankroll=None) -> tuple[list[dict], FinanceGradeStats]:
+    """Fill missing stake amounts and settled profit deterministically.
+
+    Every bet on a date uses that date's opening bankroll. Existing amounts
+    remain authoritative, which makes repeated grading idempotent and avoids
+    changing historical records if configuration changes later.
+    """
+    graded = [ensure_finance_fields(row) for row in rows]
+    configured_start = optional_nonnegative(starting_bankroll)
+
+    # Once bankroll tracking has started, its earliest persisted opening value
+    # is the source of truth on future runs.
+    persisted = [
+        (_row_date(row), optional_nonnegative(row.get("bankroll_before")))
+        for row in graded
+    ]
+    persisted = [(day, value) for day, value in persisted if day and value is not None]
+    opening = min(persisted, key=lambda item: item[0])[1] if persisted else configured_start
+
+    by_day: dict[str, list[int]] = {}
+    for index, row in enumerate(graded):
+        by_day.setdefault(_row_date(row), []).append(index)
+
+    bankroll = opening
+    stake_amounts_added = 0
+    profits_added = 0
+    eligible = 0
+    for day in sorted(by_day):
+        day_open = bankroll
+        day_profit = 0.0
+        for index in by_day[day]:
+            row = graded[index]
+            outcome = normalize_result(row.get("result"))
+            price = _row_decimal_odds(row)
+            stake_amount = optional_nonnegative(row.get("stake_amount"))
+            stake_pct = optional_nonnegative(row.get("stake_pct"))
+
+            if (
+                stake_amount is None
+                and day_open is not None
+                and stake_pct is not None
+                and stake_pct > 0
+                and outcome
+                and valid_decimal_odds(price)
+            ):
+                stake_amount = round(day_open * stake_pct, 6)
+                row["stake_amount"] = stake_amount
+                stake_amounts_added += 1
+            if stake_amount is not None and day_open is not None and row.get("bankroll_before") in (None, ""):
+                row["bankroll_before"] = round(day_open, 6)
+
+            profit = settlement_profit(outcome, stake_amount, price)
+            if profit is not None and stake_amount is not None and stake_amount > 0:
+                eligible += 1
+                if row.get("realized_profit") in (None, ""):
+                    row["realized_profit"] = round(profit, 6)
+                    profits_added += 1
+                else:
+                    stored_profit = optional_nonnegative(row.get("realized_profit"))
+                    if str(row.get("realized_profit", "")).strip().startswith("-"):
+                        try:
+                            stored_profit = _finite(row["realized_profit"])
+                        except (TypeError, ValueError):
+                            stored_profit = None
+                    if stored_profit is not None:
+                        profit = stored_profit
+                day_profit += profit
+        if day_open is not None:
+            bankroll = day_open + day_profit
+
+    return graded, FinanceGradeStats(
+        rows=len(graded),
+        stake_amounts_added=stake_amounts_added,
+        profits_added=profits_added,
+        finance_eligible=eligible,
+        excluded=len(graded) - eligible,
+        starting_bankroll=opening,
+        ending_bankroll=bankroll,
     )
 
 

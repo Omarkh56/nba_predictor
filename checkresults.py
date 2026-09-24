@@ -21,6 +21,7 @@ import sys
 import time
 import warnings
 from datetime import date, timedelta
+from pathlib import Path
 
 from dotenv import load_dotenv
 
@@ -33,8 +34,9 @@ from nba_api.stats.static import players
 
 import oddstracker
 import predictions_db as pred_db
-from bet_log_utils import upsert_bet_log
-from roi_analysis import american_to_decimal
+from bet_log_utils import BET_LOG_FIELDS, read_bet_rows, upsert_bet_log, write_bet_rows
+from finance import FINANCE_FIELDS, grade_financial_rows
+from roi_analysis import write_finance_reports
 
 logger = logging.getLogger(__name__)
 
@@ -526,6 +528,7 @@ def check_predictions(predictions, actual_stats):
                 "p_market": pred.get("p_market"),  # de-vigged market prob at prediction time
                 "decimal_odds": pred.get("decimal_odds"),
                 "stake_pct": pred.get("stake_pct"),  # fractional-Kelly recommendation at pick time
+                **{field: pred.get(field) for field in FINANCE_FIELDS},
                 **{field: pred.get(field) for field in pred_db.PROP_PROVENANCE_FIELDS},
             }
         )
@@ -785,13 +788,9 @@ def _migrate_stake_columns():
     """One-time migration: add 'decimal_odds', 'stake_pct', 'realized_profit'
     columns to bet_log.csv if missing.
 
-    decimal_odds backfills from odds_tracker.csv (same source/coverage as
-    p_market — see _migrate_market_calib_columns()'s docstring). stake_pct
-    and realized_profit start empty for every historical row: stake_pct is
-    brand new (predictions.db never stored one before this was added — see
-    predictions_db.load_all_prop_stakes()) and realized_profit needs an
-    actual recommended stake to compute, not a fabricated retroactive one.
-    Use verify_kelly_sizing.py to check the formula against history instead.
+    All three fields start empty. A same-day player/market odds row is not a
+    safe entry-price match without the exact line, so migration never infers
+    a historical price or reconstructs a stake after the fact.
 
     Old schema (12 cols): ...,flags,p_model,p_market
     New schema (15 cols): ...,p_market,decimal_odds,stake_pct,realized_profit
@@ -806,42 +805,50 @@ def _migrate_stake_columns():
     if "stake_pct" in header_fields:
         return  # already migrated
 
-    try:
-        idx = {name: header_fields.index(name) for name in ("date", "player", "market", "pick")}
-    except ValueError:
-        return  # unexpected schema — leave untouched
-
-    odds_lookup = _load_historical_market_odds()
-    matched = 0
     migrated = [",".join(header_fields + ["decimal_odds", "stake_pct", "realized_profit"]) + "\n"]
     for line in lines[1:]:
         fields = line.rstrip("\n").split(",")
-        d = fields[idx["date"]].strip()
-        p = fields[idx["player"]].strip()
-        m = fields[idx["market"]].strip()
-        pick = fields[idx["pick"]].strip().upper()
-
-        decimal_odds_str = ""
-        prices = odds_lookup.get((d, p, m))
-        if prices is not None:
-            american = prices[1] if pick == "UNDER" else prices[0]
-            if american is not None:
-                try:
-                    decimal_odds_str = f"{american_to_decimal(american):.4f}"
-                    matched += 1
-                except (ValueError, TypeError):
-                    pass
-
-        migrated.append(",".join(fields + [decimal_odds_str, "", ""]) + "\n")
+        migrated.append(",".join(fields + ["", "", ""]) + "\n")
 
     with open(LOG_FILE, "w") as fh:
         fh.writelines(migrated)
     n = len(lines) - 1
     print(
         f"  Migrated bet_log.csv → added 'decimal_odds'/'stake_pct'/'realized_profit' columns "
-        f"(decimal_odds: {matched}/{n} backfilled from odds_tracker.csv; "
-        f"stake_pct/realized_profit start empty — no historical stakes were ever computed)."
+        f"({n} historical rows left blank; no odds or stakes were inferred)."
     )
+
+
+def _configured_starting_bankroll():
+    raw = os.getenv("NBA_STARTING_BANKROLL", "").strip()
+    if not raw:
+        return None
+    try:
+        amount = float(raw)
+    except ValueError as exc:
+        raise ValueError("NBA_STARTING_BANKROLL must be a positive number") from exc
+    if amount <= 0:
+        raise ValueError("NBA_STARTING_BANKROLL must be a positive number")
+    return amount
+
+
+def _grade_finance_log():
+    """Fill missing bankroll/stake/profit fields and write finance reports."""
+    fields, rows = read_bet_rows(LOG_FILE)
+    if not rows:
+        return None
+    graded, stats = grade_financial_rows(rows, _configured_starting_bankroll())
+    output_fields = list(dict.fromkeys([*BET_LOG_FIELDS, *fields, *[k for row in graded for k in row]]))
+    write_bet_rows(LOG_FILE, output_fields, graded)
+    report = write_finance_reports(Path(LOG_FILE), Path(LOG_FILE).parent / "reports")
+    overall = report["overall"]
+    roi = "n/a" if overall["roi"] is None else f"{overall['roi'] * 100:.2f}%"
+    print(
+        f"  Finance: {report['finance_eligible_rows']} eligible, "
+        f"{report['finance_excluded_rows']} excluded; "
+        f"profit {overall['total_profit']:+.4f}, ROI {roi}"
+    )
+    return stats
 
 
 def append_to_log(results, check_date):
@@ -908,21 +915,13 @@ def append_to_log(results, check_date):
             outcome = "HIT"
         elif "MISS" in outcome:
             outcome = "MISS"
+        elif "PUSH" in outcome:
+            outcome = "PUSH"
         else:
-            continue  # PUSH — not useful for hit-rate learning
+            continue
 
         stake_pct = r.get("stake_pct")
         decimal_odds = r.get("decimal_odds")
-        realized_profit = ""
-        if stake_pct is not None and decimal_odds is not None and stake_pct > 0:
-            # Actual stake and realized profit -- what turns the sizing into
-            # something evaluable later (Sharpe, drawdown, portfolio-Kelly),
-            # not just a recommendation that was never logged.
-            realized_profit = (
-                round(stake_pct * (decimal_odds - 1.0), 6)
-                if outcome == "HIT"
-                else round(-stake_pct, 6)
-            )
 
         new_rows.append(
             {
@@ -942,7 +941,8 @@ def append_to_log(results, check_date):
                 "p_market": r.get("p_market") if r.get("p_market") is not None else "",
                 "decimal_odds": decimal_odds if decimal_odds is not None else "",
                 "stake_pct": stake_pct if stake_pct is not None else "",
-                "realized_profit": realized_profit,
+                "realized_profit": r.get("realized_profit", ""),
+                **{field: r.get(field, "") for field in FINANCE_FIELDS},
                 **{field: r.get(field, "") for field in pred_db.PROP_PROVENANCE_FIELDS},
             }
         )
@@ -956,6 +956,7 @@ def append_to_log(results, check_date):
         f"({stats.inserted} new, {stats.updated} enriched, {stats.unchanged} unchanged; "
         f"{stats.duplicates_removed} duplicate row(s) removed)"
     )
+    _grade_finance_log()
 
 
 # =============================================================================

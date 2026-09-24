@@ -1,29 +1,27 @@
 #!/usr/bin/env python3
-"""
-roi_analysis.py — Realized dollar ROI from bet_log × odds_tracker
-=================================================================
-bet_log.csv and odds_tracker.csv share (date, player, market) but are never
-joined elsewhere — calibrate.py only tracks hit rate. This script closes that
-gap: attach the book price that matched each pick, convert American → decimal,
-and compute realized profit per $1 stake.
+"""Finance reporting for recorded entry odds, stakes, and settled profit.
 
-Profit convention (unit stake = $1):
-  win  → decimal_odds − 1
-  loss → −1
+The production report reads finance fields already captured in bet_log.csv.
+It never substitutes -110 or uses a loose historical odds join. Older join
+helpers remain available only for explicitly labeled diagnostics.
 
 Usage:
     python3 roi_analysis.py
     python3 roi_analysis.py --summary
-    python3 roi_analysis.py --bets path/to/bet_log.csv --odds path/to/odds_tracker.csv
+    python3 roi_analysis.py --bets path/to/bet_log.csv --reports-dir path/to/reports
 """
 
 from __future__ import annotations
 
 import argparse
+import json
+import math
 import sys
 from pathlib import Path
 
 import pandas as pd
+
+from finance import american_to_decimal, normalize_result, valid_decimal_odds
 
 _HERE = Path(__file__).resolve().parent
 DEFAULT_BET_LOG = _HERE / "bet_log.csv"
@@ -31,26 +29,6 @@ DEFAULT_ODDS = _HERE / "odds_tracker.csv"
 DEFAULT_OUT = _HERE / "roi_per_bet.csv"
 
 JOIN_KEYS = ["date", "player", "market"]
-
-
-# ---------------------------------------------------------------------------
-# Odds math
-# ---------------------------------------------------------------------------
-def american_to_decimal(american: float) -> float:
-    """Convert American odds to decimal odds. Raises ValueError if unusable.
-
-    Valid American prices satisfy abs(odds) >= 100 (−100 / +100 = even money).
-    Values like −2 or −3.5 are not American odds (data errors in odds_tracker)
-    and would explode into absurd decimal prices (e.g. −2 → 51.0).
-    """
-    if pd.isna(american):
-        raise ValueError("missing American odds")
-    american = float(american)
-    if abs(american) < 100:
-        raise ValueError(f"not a valid American price: {american}")
-    if american > 0:
-        return 1.0 + american / 100.0
-    return 1.0 + 100.0 / abs(american)
 
 
 def realized_profit(won: bool, decimal_odds: float) -> float:
@@ -231,6 +209,247 @@ def cumulative_roi(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # ---------------------------------------------------------------------------
+# Production finance reporting from the recorded bet log
+# ---------------------------------------------------------------------------
+def maximum_drawdown(equity_values) -> tuple[float, float | None]:
+    """Return maximum peak-to-trough loss in units and as a peak fraction."""
+    values = [float(v) for v in equity_values if v is not None and math.isfinite(float(v))]
+    if not values:
+        return 0.0, None
+    peak = values[0]
+    max_loss = 0.0
+    max_fraction = 0.0 if peak > 0 else None
+    for value in values:
+        peak = max(peak, value)
+        loss = peak - value
+        max_loss = max(max_loss, loss)
+        if peak > 0:
+            fraction = loss / peak
+            max_fraction = max(max_fraction or 0.0, fraction)
+    return max_loss, max_fraction
+
+
+def _number_series(df: pd.DataFrame, field: str) -> pd.Series:
+    if field not in df:
+        return pd.Series(float("nan"), index=df.index, dtype=float)
+    return pd.to_numeric(df[field], errors="coerce")
+
+
+def _clean_json(value):
+    if isinstance(value, dict):
+        return {str(key): _clean_json(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_clean_json(item) for item in value]
+    if isinstance(value, (float, int)) and not math.isfinite(float(value)):
+        return None
+    return value
+
+
+def _prepare_recorded_finance(bets: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+    frame = bets.copy()
+    frame["result_normalized"] = frame.get("result", pd.Series(index=frame.index, dtype=str)).map(
+        normalize_result
+    )
+    entry = _number_series(frame, "entry_decimal_odds")
+    legacy = _number_series(frame, "decimal_odds")
+    frame["finance_decimal_odds"] = entry.where(entry > 1.0, legacy)
+    frame["finance_stake_amount"] = _number_series(frame, "stake_amount")
+    frame["finance_profit"] = _number_series(frame, "realized_profit")
+    frame["finance_model_edge"] = _number_series(frame, "model_edge")
+    frame["finance_stake_pct"] = _number_series(frame, "stake_pct")
+    frame["finance_p_model"] = _number_series(frame, "p_model")
+    valid_result = frame["result_normalized"].isin(["HIT", "MISS", "PUSH", "VOID"])
+    eligible_mask = (
+        valid_result
+        & (frame["finance_decimal_odds"] > 1.0)
+        & (frame["finance_stake_amount"] > 0)
+        & frame["finance_profit"].notna()
+    )
+    return frame, frame[eligible_mask].copy()
+
+
+def _bankroll_curve(finance_rows: pd.DataFrame) -> tuple[list[dict], float, float | None, float | None]:
+    if finance_rows.empty:
+        return [], 0.0, None, None
+    ordered = finance_rows.sort_values(["date", "logged_at"] if "logged_at" in finance_rows else ["date"])
+    starts = _number_series(ordered, "bankroll_before").dropna()
+    opening = float(starts.iloc[0]) if not starts.empty else None
+    running = opening if opening is not None else 0.0
+    curve = []
+    equity = [running]
+    for day, group in ordered.groupby(ordered["date"].astype(str), sort=True):
+        profit = float(group["finance_profit"].sum())
+        staked = float(group["finance_stake_amount"].sum())
+        before = running if opening is not None else None
+        running += profit
+        equity.append(running)
+        curve.append({
+            "date": day,
+            "bankroll_before": before,
+            "amount_staked": staked,
+            "profit": profit,
+            "bankroll_after": running if opening is not None else None,
+            "cumulative_profit": running - opening if opening is not None else running,
+        })
+    drawdown, drawdown_pct = maximum_drawdown(equity)
+    ending = running if opening is not None else None
+    return curve, drawdown, drawdown_pct, ending
+
+
+def _summary_record(group: pd.DataFrame) -> dict:
+    n = len(group)
+    decisions = group[group["result_normalized"].isin(["HIT", "MISS"])]
+    hits = int((decisions["result_normalized"] == "HIT").sum())
+    total_staked = float(group["finance_stake_amount"].sum())
+    profit = float(group["finance_profit"].sum())
+    curve, drawdown, drawdown_pct, ending = _bankroll_curve(group)
+    return {
+        "n": n,
+        "hits": hits,
+        "misses": int((decisions["result_normalized"] == "MISS").sum()),
+        "pushes": int((group["result_normalized"] == "PUSH").sum()),
+        "voids": int((group["result_normalized"] == "VOID").sum()),
+        "win_rate": hits / len(decisions) if len(decisions) else None,
+        "total_amount_staked": total_staked,
+        "total_profit": profit,
+        "roi": profit / total_staked if total_staked > 0 else None,
+        "average_decimal_odds": float(group["finance_decimal_odds"].mean()) if n else None,
+        "average_model_edge": float(group["finance_model_edge"].mean())
+        if group["finance_model_edge"].notna().any() else None,
+        "average_stake_pct": float(group["finance_stake_pct"].mean())
+        if group["finance_stake_pct"].notna().any() else None,
+        "maximum_drawdown": drawdown,
+        "maximum_drawdown_pct": drawdown_pct,
+        "ending_bankroll": ending,
+        "bankroll_curve": curve,
+    }
+
+
+def _group_records(frame: pd.DataFrame, field: str) -> list[dict]:
+    if frame.empty:
+        return []
+    records = []
+    for value, group in frame.groupby(field, dropna=False, sort=True):
+        label = "UNKNOWN" if pd.isna(value) or str(value).strip() == "" else str(value)
+        summary = _summary_record(group)
+        summary.pop("bankroll_curve", None)
+        records.append({field: label, **summary})
+    return records
+
+
+def build_finance_summary(bets: pd.DataFrame) -> dict:
+    """Build real-odds/stake finance metrics without filling missing prices."""
+    frame, eligible = _prepare_recorded_finance(bets)
+    results = frame[frame["result_normalized"].isin(["HIT", "MISS", "PUSH", "VOID"])]
+    decisions = results[results["result_normalized"].isin(["HIT", "MISS"])]
+
+    eligible["season_mode_group"] = eligible.get(
+        "season_mode", pd.Series("UNKNOWN", index=eligible.index)
+    ).fillna("UNKNOWN").replace("", "UNKNOWN")
+    eligible["probability_bucket"] = pd.cut(
+        eligible["finance_p_model"],
+        bins=[-math.inf, 0.55, 0.60, 0.65, math.inf],
+        labels=["<55%", "55-60%", "60-65%", "65%+"],
+    ).astype(object).where(eligible["finance_p_model"].notna(), "UNKNOWN")
+    eligible["edge_bucket"] = pd.cut(
+        eligible["finance_model_edge"],
+        bins=[-math.inf, 0.02, 0.05, 0.10, math.inf],
+        labels=["<=2%", "2-5%", "5-10%", "10%+"],
+    ).astype(object).where(eligible["finance_model_edge"].notna(), "UNKNOWN")
+    source = eligible.get("odds_book", pd.Series("", index=eligible.index)).fillna("").astype(str).str.strip()
+    fallback = eligible.get("odds_source", pd.Series("", index=eligible.index)).fillna("").astype(str).str.strip()
+    eligible["source_or_book"] = source.where(source != "", fallback).replace("", "UNKNOWN")
+    eligible["month"] = eligible.get("date", pd.Series("", index=eligible.index)).astype(str).str[:7]
+
+    overall = _summary_record(eligible)
+    report = {
+        "scope": "real logged bets with recorded entry odds and positive stake amounts",
+        "logged_rows": len(frame),
+        "settled_rows": len(results),
+        "hit_miss_rows": len(decisions),
+        "hits": int((decisions["result_normalized"] == "HIT").sum()),
+        "misses": int((decisions["result_normalized"] == "MISS").sum()),
+        "hit_rate_all_logged": float((decisions["result_normalized"] == "HIT").mean())
+        if len(decisions) else None,
+        "finance_eligible_rows": len(eligible),
+        "finance_excluded_rows": len(results) - len(eligible),
+        "overall": overall,
+        "by_market": _group_records(eligible, "market"),
+        "by_direction": _group_records(eligible, "pick"),
+        "by_season_mode": _group_records(eligible, "season_mode_group"),
+        "by_probability_bucket": _group_records(eligible, "probability_bucket"),
+        "by_edge_bucket": _group_records(eligible, "edge_bucket"),
+        "by_source_or_book": _group_records(eligible, "source_or_book"),
+        "by_month": _group_records(eligible, "month"),
+    }
+    return _clean_json(report)
+
+
+def finance_summary_markdown(report: dict) -> str:
+    overall = report["overall"]
+    roi = "n/a" if overall["roi"] is None else f"{overall['roi'] * 100:.2f}%"
+    win_rate = "n/a" if overall["win_rate"] is None else f"{overall['win_rate'] * 100:.2f}%"
+    ending = "n/a" if overall["ending_bankroll"] is None else f"{overall['ending_bankroll']:.2f}"
+    lines = [
+        "# Finance summary",
+        "",
+        "Real-money-compatible metrics include only logged bets with recorded entry odds, "
+        "a positive stake amount, and a settled profit. Missing finance data is never filled "
+        "with assumed odds.",
+        "",
+        f"- Settled logged rows: {report['settled_rows']}",
+        f"- Finance-eligible rows: {report['finance_eligible_rows']}",
+        f"- Excluded for missing/invalid finance data: {report['finance_excluded_rows']}",
+        f"- Total staked: {overall['total_amount_staked']:.4f}",
+        f"- Total profit: {overall['total_profit']:+.4f}",
+        f"- ROI: {roi}",
+        f"- Win rate: {win_rate}",
+        f"- Maximum drawdown: {overall['maximum_drawdown']:.4f}",
+        f"- Ending bankroll: {ending}",
+        "",
+        "## Breakdowns",
+        "",
+    ]
+    for title, key, label in (
+        ("Market", "by_market", "market"),
+        ("Direction", "by_direction", "pick"),
+        ("Season", "by_season_mode", "season_mode_group"),
+        ("Probability bucket", "by_probability_bucket", "probability_bucket"),
+        ("Edge bucket", "by_edge_bucket", "edge_bucket"),
+        ("Odds source/book", "by_source_or_book", "source_or_book"),
+        ("Month", "by_month", "month"),
+    ):
+        lines.extend([f"### {title}", "", "| Group | Bets | Staked | Profit | ROI |", "|---|---:|---:|---:|---:|"])
+        for row in report[key]:
+            row_roi = "n/a" if row["roi"] is None else f"{row['roi'] * 100:.2f}%"
+            lines.append(
+                f"| {row[label]} | {row['n']} | {row['total_amount_staked']:.4f} | "
+                f"{row['total_profit']:+.4f} | {row_roi} |"
+            )
+        if not report[key]:
+            lines.append("| No eligible bets | 0 | 0 | 0 | n/a |")
+        lines.append("")
+    return "\n".join(lines)
+
+
+def write_finance_reports(bet_path: Path = DEFAULT_BET_LOG,
+                          reports_dir: Path | None = None) -> dict:
+    reports_dir = reports_dir or (_HERE / "reports")
+    reports_dir.mkdir(parents=True, exist_ok=True)
+    bets = pd.read_csv(bet_path) if bet_path.exists() and bet_path.stat().st_size else pd.DataFrame()
+    report = build_finance_summary(bets)
+    (reports_dir / "finance_summary.json").write_text(
+        json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    (reports_dir / "finance_summary.md").write_text(
+        finance_summary_markdown(report) + "\n", encoding="utf-8"
+    )
+    curve = pd.DataFrame(report["overall"].get("bankroll_curve", []))
+    curve.to_csv(reports_dir / "bankroll_curve.csv", index=False)
+    return report
+
+
+# ---------------------------------------------------------------------------
 # Printing
 # ---------------------------------------------------------------------------
 def _pct(x: float) -> str:
@@ -361,12 +580,11 @@ def export_per_bet(df: pd.DataFrame, path: Path) -> None:
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--bets", type=Path, default=DEFAULT_BET_LOG, help="bet_log.csv path")
-    p.add_argument("--odds", type=Path, default=DEFAULT_ODDS, help="odds_tracker.csv path")
     p.add_argument(
-        "--out",
+        "--reports-dir",
         type=Path,
-        default=DEFAULT_OUT,
-        help="per-bet realized profit CSV (default: roi_per_bet.csv)",
+        default=_HERE / "reports",
+        help="directory for finance_summary.json/.md and bankroll_curve.csv",
     )
     p.add_argument(
         "--summary",
@@ -378,29 +596,14 @@ def main(argv: list[str] | None = None) -> int:
     if not args.bets.exists():
         print(f"bet_log not found: {args.bets}", file=sys.stderr)
         return 1
-    if not args.odds.exists():
-        print(f"odds_tracker not found: {args.odds}", file=sys.stderr)
-        return 1
-
-    matched, stats = load_joined(args.bets, args.odds)
-    priced = attach_prices(matched)
-    dropped_bad_odds = len(matched) - len(priced)
-    if dropped_bad_odds:
-        print(f"  ⚠  Dropped {dropped_bad_odds} matched row(s) with unusable odds")
-
-    if priced.empty:
-        print_summary(stats, pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame())
-        return 0
-
-    overall = _roi_table(priced)
-    by_market = _roi_table(priced, ["market"])
-    by_md = _roi_table(priced, ["market", "pick"])
-    mismatches = flag_mismatches(by_md)
-    cum = cumulative_roi(priced)
-
-    print_summary(stats, overall, by_market, by_md, mismatches, cum)
-    export_per_bet(cum, args.out)
-    print(f"\n  Wrote per-bet realized profit → {args.out}")
+    report = write_finance_reports(args.bets, args.reports_dir)
+    overall = report["overall"]
+    roi = "n/a" if overall["roi"] is None else f"{overall['roi'] * 100:.2f}%"
+    print(
+        f"Finance report: {report['finance_eligible_rows']} eligible / "
+        f"{report['settled_rows']} settled rows; profit={overall['total_profit']:+.4f}; ROI={roi}"
+    )
+    print(f"Wrote reports → {args.reports_dir}")
     return 0
 
 
