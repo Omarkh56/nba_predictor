@@ -17,6 +17,7 @@ import os
 import sys
 import types
 import unittest.mock as mock
+from datetime import date
 from pathlib import Path
 
 import pandas as pd
@@ -231,6 +232,23 @@ class TestRankingChangesBehavior:
 
 
 class TestSpreadAndPickProvenance:
+    def test_export_records_same_day_opening_bankroll_and_stake_amount(self, monkeypatch):
+        saved = {}
+        monkeypatch.setattr(_nc, "_bankroll_before_date", lambda _day: 100.0)
+        monkeypatch.setattr(
+            _nc.pred_db,
+            "upsert_prop_predictions",
+            lambda rows, game_date: saved.update(rows=rows, game_date=game_date) or len(rows),
+        )
+        picks = [
+            {"player": "Player A", "market": "PTS", "confidence": 60.0, "stake_pct": 0.02},
+            {"player": "Player B", "market": "REB", "confidence": 58.0, "stake_pct": 0.01},
+        ]
+        day = date(2026, 5, 1)
+        _nc.export_picks_db(picks, day)
+        assert [row["bankroll_before"] for row in saved["rows"]] == [100.0, 100.0]
+        assert [row["stake_amount"] for row in saved["rows"]] == [2.0, 1.0]
+
     def test_market_edge_uses_model_probability_not_ranking_confidence(self, monkeypatch):
         monkeypatch.setattr(_nc, "_p_market", lambda *_a: .55)
         row = pd.DataFrame([{"Player": "Test Player", "Market": "PTS", "Pick": "OVER",

@@ -46,8 +46,9 @@ import newnbapredictor as team_model
 import oddstracker
 import playerlinepredictor as props_model
 import predictions_db as pred_db
+from bet_log_utils import read_bet_rows
 from config import current_season
-from finance import american_to_decimal, make_bet_id, odds_data_is_fresh
+from finance import american_to_decimal, grade_financial_rows, make_bet_id, odds_data_is_fresh
 
 logger = logging.getLogger(__name__)
 
@@ -946,14 +947,41 @@ def export_picks_db(all_picks: list, game_date: date) -> None:
     """Deduplicate and upsert prop picks into predictions.db."""
     if not all_picks:
         return
+    bankroll = _bankroll_before_date(game_date)
     seen: dict = {}
-    for p in all_picks:
+    for original in all_picks:
+        p = dict(original)
+        if bankroll is not None:
+            stake_pct = _optional_float(p.get("stake_pct"))
+            if stake_pct is not None and stake_pct >= 0:
+                p["bankroll_before"] = round(bankroll, 6)
+                p["stake_amount"] = round(bankroll * stake_pct, 6)
         key = (p["player"], p["market"])
         if key not in seen or p["confidence"] > seen[key]["confidence"]:
             seen[key] = p
     final = sorted(seen.values(), key=lambda x: x["confidence"], reverse=True)
     n = pred_db.upsert_prop_predictions(final, game_date)
     print(f"\n  Saved {n} pick(s) → predictions.db")
+
+
+def _bankroll_before_date(game_date: date):
+    """Return the persisted opening bankroll when tracking is configured."""
+    raw = os.getenv("NBA_STARTING_BANKROLL", "").strip()
+    if not raw:
+        return None
+    try:
+        starting = float(raw)
+    except ValueError as exc:
+        raise ValueError("NBA_STARTING_BANKROLL must be a positive number") from exc
+    if not math.isfinite(starting) or starting <= 0:
+        raise ValueError("NBA_STARTING_BANKROLL must be a positive number")
+    log_path = os.path.join(_HERE, "bet_log.csv")
+    _, rows = read_bet_rows(log_path)
+    prior = [row for row in rows if str(row.get("date") or "")[:10] < game_date.isoformat()]
+    if not prior:
+        return starting
+    _, stats = grade_financial_rows(prior, starting)
+    return stats.ending_bankroll if stats.ending_bankroll is not None else starting
 
 
 # =============================================================================
