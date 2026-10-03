@@ -881,7 +881,7 @@ if __name__ == "__main__":
     args = sys.argv[1:]
 
     # Parse date argument if provided
-    snap_date = date.today()
+    snap_date = team_codes.today_slate_date()  # v10: US Eastern slate date, not local time
     for a in args:
         try:
             snap_date = date.fromisoformat(a)

@@ -1037,10 +1037,10 @@ def _fetch_matchups_and_lean(slate_date=None, lookahead: bool = False) -> tuple:
         else:
             print(f"  No games on {slate_date.isoformat()}. Use --next to jump to the next slate.")
         return [], slate_date
-    game_date = matchups[0].get("game_date", slate_date or date.today())
+    game_date = matchups[0].get("game_date", slate_date or team_codes.today_slate_date())
     _TODAY_LEAN = _load_today_lean(game_date)
     _TODAY_GAME_ODDS = _load_today_game_odds(game_date, matchups)
-    tag = "TODAY" if game_date == date.today() else game_date.strftime("%A %B %d")
+    tag = "TODAY" if game_date == team_codes.today_slate_date() else game_date.strftime("%A %B %d")
     print(f"  {len(matchups)} game(s)  —  {tag}")
     for m in matchups:
         print(f"    {m['away_abbr']} @ {m['home_abbr']}")

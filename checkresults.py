@@ -52,7 +52,8 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 if len(sys.argv) > 1:
     CHECK_DATE = date.fromisoformat(sys.argv[1])
 else:
-    CHECK_DATE = date.today() - timedelta(days=1)
+    # v10: yesterday on the US Eastern slate calendar, not local time
+    CHECK_DATE = team_codes.today_slate_date() - timedelta(days=1)
 
 
 # =============================================================================
