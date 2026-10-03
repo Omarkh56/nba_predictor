@@ -295,6 +295,25 @@ def hand_tuned_predict(df: pd.DataFrame) -> np.ndarray:
 # SECTION 4 — GAME MODEL FITTING
 # =============================================================================
 
+def apply_test_gate(recommendation, test_ll, test_bs, ht_test_ll, ht_test_bs):
+    """v10: a validation "swap" must also beat hand-tuned on the held-out test season.
+
+    Returns (recommendation, gate) with gate in {"passed", "failed", "not_run"}.
+    The test season still never chooses between models; it can only veto a
+    swap. In the 2026-27 configuration the learned model won on 2024-25
+    validation (log loss 0.6014 vs 0.6113) but lost on 2025-26 (0.6010 vs 0.5977).
+    """
+    if None in (test_ll, test_bs, ht_test_ll, ht_test_bs):
+        gate = "not_run"
+    elif test_ll <= ht_test_ll and test_bs <= ht_test_bs:
+        gate = "passed"
+    else:
+        gate = "failed"
+    if recommendation == "swap" and gate != "passed":
+        return "monitor", gate
+    return recommendation, gate
+
+
 def fit_game_models(df_train: pd.DataFrame, df_val: pd.DataFrame,
                     df_test: pd.DataFrame = None,
                     features: list = None) -> dict:
@@ -395,6 +414,14 @@ def fit_game_models(df_train: pd.DataFrame, df_val: pd.DataFrame,
             print(f"  {'Hand-tuned':<20} {ht_test_ll:>10.4f} {ht_test_bs:>10.4f}")
             print(f"  {'Learned (LogReg)':<20} {test_log_loss:>10.4f} {test_brier:>10.4f}")
 
+    validation_recommendation = recommendation
+    recommendation, test_gate = apply_test_gate(
+        recommendation, test_log_loss, test_brier, ht_test_ll, ht_test_bs
+    )
+    if validation_recommendation == "swap" and recommendation != "swap":
+        print(f"  ✗ Held-out gate {test_gate}: the learned model must also beat hand-tuned "
+              f"on {TEST_SEASON} → {recommendation}, not swap")
+
     return {
         "log_model":              log_model,
         "ridge_model":            ridge_model,
@@ -422,6 +449,8 @@ def fit_game_models(df_train: pd.DataFrame, df_val: pd.DataFrame,
         "val_games":              len(df_val),
         "train_games":            len(df_train),
         "recommendation":         recommendation,
+        "validation_recommendation": validation_recommendation,
+        "test_gate":              test_gate,
     }
 
 

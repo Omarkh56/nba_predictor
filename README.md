@@ -22,15 +22,14 @@
 
 ### 1. Install dependencies
 
+Use one Python version for local runs and CI (CI uses 3.11):
+
 ```bash
+python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-If you see TLS errors on macOS (LibreSSL), run:
-
-```bash
-pip install --upgrade certifi
-```
+If you see TLS errors on macOS (LibreSSL), run `pip install --upgrade certifi`.
 
 ### 2. Configure API keys
 
@@ -49,25 +48,47 @@ API_FOOTBALL_KEY=your_key_here      # https://www.api-football.com/
 
 Scripts load `.env` automatically via `python-dotenv`. You can still `export ODDS_API_KEY=...` in the shell if you prefer; existing environment variables are not overwritten.
 
-### 3. Run the full pipeline
+### 3. Run one slate
+
+Every run belongs to one slate date on the US Eastern (NBA) calendar:
 
 ```bash
-python3 nba_combined.py           # today's games
-python3 nba_combined.py --verbose # with per-factor breakdown
+python3 nba_combined.py                     # today's slate
+python3 nba_combined.py --date 2026-10-20   # a specific slate
+python3 nba_combined.py --next              # the next date with games (scans 44 days)
+python3 nba_combined.py --date 2026-10-20 --verbose
 ```
 
-### 4. Grade results and recalibrate (after games)
+Only odds events that tip off on that date feed props, spreads and book lean, and every team is stored with its NBA Stats code (`team_codes.py`), whichever source it came from.
+
+### 4. Daily cycle
 
 ```bash
-# Append graded bets to bet_log.csv with: checkresults.py (manual grading)
-python3 calibrate.py --summary    # recompute calibration.json
+python3 oddstracker.py 2026-10-20           # odds snapshot for that slate only
+python3 nba_combined.py --date 2026-10-20   # predictions and picks → predictions.db
+python3 checkresults.py 2026-10-20          # after the games: grade props and games
+python3 calibrate.py --summary              # refresh calibration.json
 ```
+
+Each run appends one line to `run_log.jsonl`, with a status for every stage:
+
+| Status | Meaning |
+|---|---|
+| `ok` | The source answered and returned data |
+| `no_games` | The source answered: nothing scheduled or played |
+| `market_unavailable` | The source answered: no lines posted for that event |
+| `fetch_failed` | A request failed, or games weren't final: unknown, not empty |
+| `skipped` | Nothing to do |
+
+Exit codes: `0` ok or no games, `2` failed (nothing saved, rerun later), `3` partial (some games' odds failed). Grading writes nothing when stats.nba.com can't be reached or a game isn't final, and regrading a date never duplicates rows in `bet_log.csv` or `game_log.csv`.
 
 ### 5. (Optional) Train learned model weights
 
 ```bash
-python3 train_model.py            # writes learned_params.json
+python3 train_model.py --no-fetch           # writes learned_params.json
 ```
+
+A learned game model goes live only if it beat the hand-tuned model on validation **and** on the held-out test season, and that test season is the latest completed one. Otherwise the hand-tuned model stays in charge and the run prints why.
 
 ---
 
@@ -130,11 +151,12 @@ Outputs `calibration.json`, loaded at startup to adjust confidence and projectio
 
 | File | Contents |
 |---|---|
-| `calibration.json` | Market-direction hit rates + player-market bias (gitignored) |
-| `learned_params.json` | Logistic/ridge regression weights from `train_model.py` (gitignored) |
-| `predictions_YYYY-MM-DD.json` | Top prop picks exported after each run (gitignored) |
-| `game_predictions_YYYY-MM-DD.json` | Team model picks exported after each run (gitignored) |
-| `bet_log.csv` | Graded bet history for calibration (gitignored) |
+| `predictions.db` | Prop and game picks per slate, with odds provenance (gitignored) |
+| `bet_log.csv`, `game_log.csv` | Graded props and games, upserted so reruns never duplicate (gitignored) |
+| `odds_tracker.csv`, `prop_odds_snapshots.csv` | Consensus lines and per-book quotes for each slate (gitignored) |
+| `run_log.jsonl` | One status line per pipeline run (gitignored) |
+| `calibration.json` | Market-direction hit rates and diagnostics (tracked) |
+| `learned_params.json` | Learned model weights from `train_model.py` (gitignored) |
 | `data_cache/` | Cached NBA API responses from `train_model.py` (gitignored) |
 
 ---
@@ -142,19 +164,18 @@ Outputs `calibration.json`, loaded at startup to adjust confidence and projectio
 ## Tests
 
 ```bash
-python3 -m pytest tests/ -v
+NBA_SEASON=2025-26 python3 -m pytest -q   # last completed season
+NBA_SEASON=2026-27 python3 -m pytest -q   # live season
 ```
 
-72 tests covering pure functions in `calibrate.py`, `oddstracker.py`, `playerlinepredictor.py`, and `newnbapredictor.py`. Tests stub all NBA API network calls so they run offline.
-
-CI runs automatically on every push via `.github/workflows/ci.yml`.
+The season decides which fitted artifacts are active: `probability_calibration.json` and `residual_corrections.json` switch on only for seasons that start after their training cutoff. The suite must pass under both settings, and CI runs both. Tests stub every network call and never write to your data files.
 
 ---
 
 ## Known limitations
 
-- **Hand-tuned weights are the default.** Training saves a `swap` recommendation only when the learned game model beats the baseline on both validation metrics. The predictor applies that recommendation automatically when the required inputs are available; no manual source-code toggle is needed.
-- **2026-27 season.** Season constants are hardcoded; update `SEASON` in `nba_combined.py` and `playerlinepredictor.py` when the season rolls over.
+- **Hand-tuned weights are the default.** Training saves `swap` only when the learned game model beats the baseline on both validation metrics and on the held-out test season, and the predictor also requires that test season to be the latest completed one.
+- **Season rollover.** `config.current_season()` switches seasons every Oct 1; set `NBA_SEASON=YYYY-YY` to backtest another season. Early in a season players have few current-season games, and that regime is not validated yet.
 - **Odds API key required.** Copy `.env.example` to `.env` and set `ODDS_API_KEY`. Without it, scripts exit immediately instead of calling the Odds API.
 - **LibreSSL on macOS Python 3.9** may produce TLS warnings. `pip install --upgrade certifi` resolves this.
 - **No live score integration.** The model is pre-game only; it does not update based on in-game events.

@@ -220,6 +220,29 @@ _LEARNED_GAME_PARAMS: dict = {}
 _VENUE_RESIDUALS: dict = {}   # {team_id_str: float} — isolated home-court edge
 
 
+def _held_out_gate(params: dict, gm: dict) -> tuple:
+    """v10: (ok, reason). Learned game weights go live only if they were tested
+    on the latest completed season and beat hand-tuned there on log loss and Brier.
+
+    Validation alone said "swap" while the deployed model lost on 2025-26 (log
+    loss 0.6065 vs 0.5977), and a 2026-27 retrain lost there too (0.6010).
+    Missing evidence fails closed: the hand-tuned model stays in charge.
+    """
+    latest = validation_season()
+    tested = params.get("tested_on")
+    if tested != latest:
+        return False, f"tested on {tested or 'no season'}; latest completed season is {latest} — retrain"
+    try:
+        ll, bs = float(gm["test_log_loss"]), float(gm["test_brier"])
+        hll, hbs = float(gm["ht_test_log_loss"]), float(gm["ht_test_brier"])
+    except (KeyError, TypeError, ValueError):
+        return False, "no held-out test metrics — retrain"
+    if ll > hll or bs > hbs:
+        return False, (f"lost to hand-tuned on {tested} (log loss {ll:.4f} vs {hll:.4f}, "
+                       f"Brier {bs:.4f} vs {hbs:.4f})")
+    return True, f"beat hand-tuned on {tested}"
+
+
 def _load_learned_params() -> None:
     """Load parameters and apply the saved training recommendation."""
     global _LEARNED_GAME_PARAMS, USE_LEARNED_GAME_MODEL, _VENUE_RESIDUALS
@@ -240,10 +263,13 @@ def _load_learned_params() -> None:
         if gm:
             _LEARNED_GAME_PARAMS = gm
             rec = gm.get("recommendation", "keep_hand_tuned")
-            USE_LEARNED_GAME_MODEL = (rec in ("swap", "use_learned")
-                                      and gm.get("feature_version") == GAME_FEATURE_VERSION)
-            if rec in ("swap", "use_learned") and not USE_LEARNED_GAME_MODEL:
+            versions_match = gm.get("feature_version") == GAME_FEATURE_VERSION
+            gate_ok, gate_reason = _held_out_gate(data, gm)
+            USE_LEARNED_GAME_MODEL = rec in ("swap", "use_learned") and versions_match and gate_ok
+            if rec in ("swap", "use_learned") and not versions_match:
                 logger.warning("Learned game inputs changed; rerun train_model.py before using these weights")
+            elif rec in ("swap", "use_learned") and not gate_ok:
+                print(f"  [train_model] learned game model inactive: {gate_reason}")
             ll_h = gm.get("hand_tuned_log_loss", "?")
             ll_l = gm.get("learned_log_loss", "?")
             print(
