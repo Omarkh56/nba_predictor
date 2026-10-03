@@ -38,6 +38,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+import argparse
+
 import pandas as pd
 import requests.exceptions
 
@@ -46,6 +48,8 @@ import newnbapredictor as team_model
 import oddstracker
 import playerlinepredictor as props_model
 import predictions_db as pred_db
+import team_codes
+from run_log import RunLog
 from bet_log_utils import read_bet_rows
 from config import current_season
 from finance import american_to_decimal, grade_financial_rows, make_bet_id, odds_data_is_fresh
@@ -212,6 +216,11 @@ def _load_today_lean(snap_date: date) -> dict:
     try:
         df = pd.read_csv(tracker_path)
         today = df[df["date"] == snap_date.isoformat()]
+        if "commence_time" in today.columns:
+            # v10: older snapshots stamped other dates' games with this date;
+            # keep rows that tip off on the slate (or carry no timestamp).
+            tip_dates = today["commence_time"].map(team_codes.slate_date_of)
+            today = today[tip_dates.isna() | (tip_dates == snap_date)]
         for _, row in today.iterrows():
             key = (str(row["player"]).strip().lower(), str(row["market"]).strip())
             lean_map[key] = {
@@ -369,15 +378,21 @@ def _apply_market_cap(df: pd.DataFrame) -> pd.DataFrame:
 # HELPERS
 # =============================================================================
 def _abbr(team_full_name: str) -> str:
-    return props_model.TEAM_NAME_TO_ABBR.get(team_full_name, team_full_name[:3].upper())
+    return team_codes.normalize_team(team_full_name) or team_full_name[:3].upper()
 
 
-def _match_odds_event(all_events, home_abbr, away_abbr):
-    # Normalize ESPN short abbreviations (NY→NYK, GS→GSW, etc.) so they match
-    # the standard abbreviations produced from Odds API full team names.
-    home_norm = props_model.ESPN_TO_NBA_ABBR.get(home_abbr, home_abbr)
-    away_norm = props_model.ESPN_TO_NBA_ABBR.get(away_abbr, away_abbr)
+def _match_odds_event(all_events, home_abbr, away_abbr, slate_date=None):
+    """Return the Odds API event for this matchup on this slate, or None.
+
+    v10: teams compare as canonical NBA codes (team_codes), and when slate_date
+    is given an event on another date never matches, so a later game in a series
+    or home-and-home can't stand in for tonight's.
+    """
+    home_norm = team_codes.normalize_team(home_abbr) or home_abbr
+    away_norm = team_codes.normalize_team(away_abbr) or away_abbr
     for ev in all_events:
+        if slate_date is not None and team_codes.event_slate_date(ev) != slate_date:
+            continue
         if (
             _abbr(ev.get("home_team", "")) == home_norm
             and _abbr(ev.get("away_team", "")) == away_norm
@@ -918,7 +933,9 @@ def export_game_picks_db(team_preds: list, game_date: date) -> None:
     rows = []
     for r in team_preds:
         margin = r["expected_margin"]
-        home_spread = r["home_spread"] if margin > 0 else r["away_spread"]
+        # v10: home_spread is already the home line (-margin). The old
+        # "else away_spread" flipped its sign whenever the away team was favoured.
+        home_spread = r["home_spread"]
         fav = r["favorite"]
         rows.append(
             {
@@ -1002,15 +1019,25 @@ def _init_calibration() -> None:
         )
 
 
-def _fetch_matchups_and_lean() -> tuple:
-    """Return (matchups, game_date) and populate today's book-lean snapshot."""
+def _fetch_matchups_and_lean(slate_date=None, lookahead: bool = False) -> tuple:
+    """Return (matchups, game_date) and populate the slate's book-lean snapshot.
+
+    v10: slate_date (US Eastern) is explicit. With no date, or lookahead=True,
+    the old "next date with games" scan is used. Raises
+    team_model.ScheduleFetchError when ESPN can't be reached, so a failed fetch
+    never looks like an empty slate.
+    """
     global _TODAY_LEAN, _TODAY_GAME_ODDS
     print("\n  Fetching games from ESPN…")
-    matchups = team_model.get_todays_games()
+    scan = lookahead or slate_date is None
+    matchups = team_model.get_todays_games() if scan else team_model.get_games_for_date(slate_date)
     if not matchups:
-        print("  No games found.")
-        return [], None
-    game_date = matchups[0].get("game_date", date.today())
+        if scan:
+            print("  No games found in the next 44 days.")
+        else:
+            print(f"  No games on {slate_date.isoformat()}. Use --next to jump to the next slate.")
+        return [], slate_date
+    game_date = matchups[0].get("game_date", slate_date or date.today())
     _TODAY_LEAN = _load_today_lean(game_date)
     _TODAY_GAME_ODDS = _load_today_game_odds(game_date, matchups)
     tag = "TODAY" if game_date == date.today() else game_date.strftime("%A %B %d")
@@ -1049,24 +1076,37 @@ def _run_team_model(matchups: list, team_injuries: dict) -> tuple:
     return team_preds, {(p["away_abbr"], p["home_abbr"]): p for p in team_preds}
 
 
-def _setup_odds_and_spreads(matchups: list, team_map: dict) -> list:
-    """Fetch Odds API events, resolve spreads; return event list."""
+def _setup_odds_and_spreads(matchups: list, team_map: dict, game_date=None, run=None) -> list:
+    """Fetch the slate's Odds API events and resolve spreads; return those events."""
     print("\n  Fetching Odds API events…")
     try:
         all_events = props_model.get_all_odds_events()
     except (requests.exceptions.RequestException, json.JSONDecodeError) as e:
         print(f"  ⚠  Odds API error: {e}")
-        all_events = []
+        if run is not None:
+            run.stage("odds_events", "fetch_failed", error=type(e).__name__)
+        return []
+    if game_date is not None:
+        # v10: the feed lists every upcoming game; keep this slate's only.
+        slate_events = team_codes.events_for_date(all_events, game_date)
+        if len(slate_events) != len(all_events):
+            print(f"  Ignoring {len(all_events) - len(slate_events)} odds event(s) "
+                  f"not on {game_date.isoformat()}.")
+        all_events = slate_events
     if not all_events:
         print("  No events returned — props unavailable for all games.")
+        if run is not None:
+            run.stage("odds_events", "market_unavailable", reason="no odds events for slate")
         return []
+    if run is not None:
+        run.stage("odds_events", "ok", events=len(all_events))
 
     print("  Resolving spreads…")
     for m in matchups:
         ha = m["home_abbr"]
         aa = m["away_abbr"]
         gk = f"{aa}@{ha}"
-        odds_ev = _match_odds_event(all_events, ha, aa)
+        odds_ev = _match_odds_event(all_events, ha, aa, m.get("game_date"))
         pred = team_map.get((aa, ha))
         if odds_ev and gk not in props_model.GAME_SPREADS:
             props_model.GAME_SPREADS[gk] = props_model._auto_fetch_spread(
@@ -1087,7 +1127,7 @@ def _process_single_game(
     aa = m["away_abbr"]
     gk = f"{aa}@{ha}"
     pred = team_map.get((aa, ha))
-    ev = _match_odds_event(all_events, ha, aa)
+    ev = _match_odds_event(all_events, ha, aa, m.get("game_date"))
     sprd = props_model.GAME_SPREADS.get(gk, 0.0)
 
     tip_str = f"  │  {m.get('status', '')}" if m.get("status") else ""
@@ -1253,7 +1293,43 @@ def _print_global_summary(
     print("  For informational purposes only. Not financial advice.")
 
 
-def main():
+def _parse_args(argv=None):
+    """CLI: --date YYYY-MM-DD (US Eastern, default today), --next, --verbose."""
+    parser = argparse.ArgumentParser(description="NBA team model + player props for one slate.")
+    parser.add_argument(
+        "--date", type=date.fromisoformat, default=None,
+        help="slate date YYYY-MM-DD on the US Eastern calendar (default: today)",
+    )
+    parser.add_argument(
+        "--next", action="store_true",
+        help="use the next date with games instead (scans up to 44 days ahead)",
+    )
+    parser.add_argument("--verbose", action="store_true", help="per-factor breakdowns")
+    args, _unknown = parser.parse_known_args(argv)
+    if args.date is None and not args.next:
+        args.date = team_codes.today_slate_date()
+    return args
+
+
+def _record_props_stages(run, matchups: list, events: list) -> None:
+    """One run-log stage per game: ok, market_unavailable or fetch_failed."""
+    for m in matchups:
+        gk = f"{m['away_abbr']}@{m['home_abbr']}"
+        ev = _match_odds_event(events, m["home_abbr"], m["away_abbr"], m.get("game_date"))
+        if ev is None:
+            run.stage(f"props:{gk}", "market_unavailable", reason="no odds event for this game")
+            continue
+        info = dict(props_model.LAST_PROPS_STATUS.get(ev.get("id"), {}))
+        run.stage(f"props:{gk}", info.pop("status", "skipped"), **info)
+
+
+def main(argv=None) -> int:
+    """Run one slate end to end. Returns an exit code (run_log.EXIT_CODES)."""
+    global VERBOSE
+    args = _parse_args(sys.argv[1:] if argv is None else argv)
+    VERBOSE = VERBOSE or args.verbose
+    run = RunLog("nba_combined", slate_date=args.date)
+
     print("\n" + "═" * WIDTH)
     print("  NBA ANALYSIS  —  Team Model  ×  Player Props")
     if VERBOSE:
@@ -1262,13 +1338,28 @@ def main():
 
     _init_calibration()
 
-    matchups, game_date = _fetch_matchups_and_lean()
+    try:
+        matchups, game_date = _fetch_matchups_and_lean(args.date, lookahead=args.next)
+    except team_model.ScheduleFetchError as exc:
+        print(f"\n  ⚠  Could not reach ESPN ({exc}).")
+        print("  The slate is unknown: this run FAILED, it is not an empty day. Nothing was saved.")
+        run.stage("schedule", "fetch_failed", required=True, error=str(exc)[:300])
+        run.finish()
+        return run.exit_code()
+    run.set_slate_date(game_date)
     if not matchups:
-        return
+        run.stage("schedule", "no_games", required=True)
+        run.finish()
+        return run.exit_code()
+    run.stage("schedule", "ok", required=True, games=len(matchups))
+    snap = dict(getattr(oddstracker, "LAST_SNAPSHOT_STATUS", {}) or {})
+    if snap:
+        run.stage("odds_snapshot", snap.pop("status"), **snap)
 
     team_injuries, props_injuries = _fetch_injuries()
     team_preds, team_map = _run_team_model(matchups, team_injuries)
-    all_events = _setup_odds_and_spreads(matchups, team_map)
+    run.stage("team_model", "ok" if team_preds else "fetch_failed", games=len(team_preds))
+    all_events = _setup_odds_and_spreads(matchups, team_map, game_date, run=run)
 
     print("\n  Loading player data (stats, USG%, DvP rosters)…")
     props_model.get_team_season_stats()
@@ -1281,10 +1372,14 @@ def main():
     for m in matchups:
         results, _ = _process_single_game(m, team_map, all_events, props_injuries, all_picks_export)
         all_props_results.extend(results)
+    _record_props_stages(run, matchups, all_events)
 
     _print_global_summary(team_preds, all_props_results, all_picks_export, game_date)
+    record = run.finish(picks=len(all_picks_export), props_analyzed=len(all_props_results))
+    print(f"  Run {record['run_id']}: {record['status']} → {run.path.name}")
     print(f"{'═' * WIDTH}\n")
+    return run.exit_code()
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

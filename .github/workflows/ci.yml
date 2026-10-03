@@ -9,6 +9,15 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    # v10: the season rolls over every Oct 1 and changes which fitted artifacts
+    # are active, so the suite must pass for the last completed season and the
+    # live one.
+    strategy:
+      fail-fast: false
+      matrix:
+        nba-season: ["2025-26", "2026-27"]
+    env:
+      NBA_SEASON: ${{ matrix.nba-season }}
 
     steps:
       - uses: actions/checkout@v4
@@ -22,5 +31,5 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Run tests
+      - name: Run tests (NBA_SEASON=${{ matrix.nba-season }})
         run: python -m pytest tests/ -v --tb=short --cov=. --cov-report=term-missing --cov-fail-under=35

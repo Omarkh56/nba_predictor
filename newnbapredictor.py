@@ -28,7 +28,8 @@ from typing import Dict, List, Optional, Tuple
 import requests
 import urllib3
 
-from config import current_season
+from config import current_season, validation_season
+import team_codes
 from game_features import GAME_FEATURE_VERSION, build_live_game_features
 from nba_api_utils import api_call_with_retry as _api_call
 
@@ -373,47 +374,77 @@ def _sigmoid(x: float) -> float:
 # =============================================================================
 # ESPN — GAMES & INJURIES
 # =============================================================================
+class ScheduleFetchError(RuntimeError):
+    """ESPN's scoreboard couldn't be fetched: the slate is unknown, not empty."""
+
+
+def _scoreboard_matchups(events: list, target: date) -> List[Dict]:
+    """Parse ESPN scoreboard events into matchups (pre-game and live only).
+
+    v10: team codes are canonical NBA codes (team_codes), not ESPN's NY, GS,
+    SA, NO, UTAH or WSH, so odds matching, rosters and grading all agree.
+    """
+    matchups = []
+    for event in events:
+        try:
+            comp = event["competitions"][0]
+            status_type = event["status"]["type"]
+            status_txt = status_type.get("shortDetail", "")
+            state = status_type.get("state", "pre")
+            if state == "post":
+                continue
+            competitors = comp["competitors"]
+            home = next(c for c in competitors if c["homeAway"] == "home")
+            away = next(c for c in competitors if c["homeAway"] == "away")
+            ha_raw = home["team"]["abbreviation"]
+            aa_raw = away["team"]["abbreviation"]
+            matchups.append(
+                {
+                    "away_abbr": team_codes.normalize_team(aa_raw) or aa_raw,
+                    "away_name": ESPN_ABBR_TO_NAME.get(aa_raw, away["team"]["displayName"]),
+                    "home_abbr": team_codes.normalize_team(ha_raw) or ha_raw,
+                    "home_name": ESPN_ABBR_TO_NAME.get(ha_raw, home["team"]["displayName"]),
+                    "status": status_txt,
+                    "game_date": target,
+                }
+            )
+        except (KeyError, StopIteration):
+            continue
+    return matchups
+
+
+def get_games_for_date(target: date) -> List[Dict]:
+    """Matchups on one US Eastern date. Raises ScheduleFetchError if ESPN fails."""
+    date_str = target.strftime("%Y%m%d")
+    try:
+        resp = requests.get(
+            f"{ESPN_SCOREBOARD_URL}?dates={date_str}", headers=ESPN_HEADERS, timeout=12
+        )
+        resp.raise_for_status()
+        events = resp.json().get("events", [])
+    except (requests.RequestException, ValueError) as e:
+        raise ScheduleFetchError(f"ESPN scoreboard {date_str}: {e}") from e
+    return _scoreboard_matchups(events, target)
+
+
 def get_todays_games() -> List[Dict]:
+    """Next date with games, scanning from yesterday up to 44 days ahead.
+
+    v10: after 3 straight failed requests this raises ScheduleFetchError
+    instead of returning [] — an outage is not an empty schedule.
+    """
+    failures = 0
     for days_ahead in range(-1, 45):  # include preseason / early-season slate
         target = date.today() + timedelta(days=days_ahead)
-        date_str = target.strftime("%Y%m%d")
         try:
-            resp = requests.get(
-                f"{ESPN_SCOREBOARD_URL}?dates={date_str}", headers=ESPN_HEADERS, timeout=12
-            )
-            resp.raise_for_status()
-            events = resp.json().get("events", [])
-        except requests.RequestException as e:
-            print(f"  ESPN error ({date_str}): {e}")
+            matchups = get_games_for_date(target)
+        except ScheduleFetchError as e:
+            failures += 1
+            print(f"  ESPN error ({target:%Y%m%d}): {e}")
+            if failures >= 3:
+                raise
             continue
-        if not events:
-            continue
-        matchups = []
-        for event in events:
-            try:
-                comp = event["competitions"][0]
-                status_type = event["status"]["type"]
-                status_txt = status_type.get("shortDetail", "")
-                state = status_type.get("state", "pre")
-                if state == "post":
-                    continue
-                competitors = comp["competitors"]
-                home = next(c for c in competitors if c["homeAway"] == "home")
-                away = next(c for c in competitors if c["homeAway"] == "away")
-                ha = home["team"]["abbreviation"]
-                aa = away["team"]["abbreviation"]
-                matchups.append(
-                    {
-                        "away_abbr": aa,
-                        "away_name": ESPN_ABBR_TO_NAME.get(aa, away["team"]["displayName"]),
-                        "home_abbr": ha,
-                        "home_name": ESPN_ABBR_TO_NAME.get(ha, home["team"]["displayName"]),
-                        "status": status_txt,
-                        "game_date": target,
-                    }
-                )
-            except (KeyError, StopIteration):
-                continue
+        failures = 0
         if matchups:
             return matchups
     return []

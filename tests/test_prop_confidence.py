@@ -6,12 +6,17 @@ import pytest
 
 
 @pytest.fixture
-def predictor():
+def predictor(monkeypatch):
     with mock.patch(
         "requests.sessions.Session.request", side_effect=AssertionError("Network forbidden")
     ):
         import playerlinepredictor
 
+        # These tests check raw probability -> pick/confidence logic. The fitted
+        # artifacts switch on by season (_artifact_for_season), so pin them off;
+        # tests/test_season_rollover.py covers the gated behaviour.
+        monkeypatch.setattr(playerlinepredictor, "PROBABILITY_CALIBRATION", {})
+        monkeypatch.setattr(playerlinepredictor, "RESIDUAL_CORRECTIONS", {})
         yield playerlinepredictor
 
 

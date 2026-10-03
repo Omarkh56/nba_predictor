@@ -78,7 +78,8 @@ import pandas as pd
 import requests
 import urllib3
 
-from config import current_season
+from config import SEASON_START_MONTH, current_season
+import team_codes as _team_codes
 from env_config import require_env
 from finance import StakeDecision, recommend_stake
 from nba_api_utils import dataframe_call_result
@@ -115,47 +116,11 @@ BASE_URL = "https://api.the-odds-api.com/v4"
 
 ESPN_INJURIES_URL = "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/injuries"
 
-ESPN_TO_NBA_ABBR = {
-    "GS": "GSW",
-    "NO": "NOP",
-    "NY": "NYK",
-    "SA": "SAS",
-    "WSH": "WAS",
-    "UTH": "UTA",
-}
+# v10: one team-code map for the whole pipeline (team_codes.py). The old literal
+# mapped "UTH" instead of ESPN's "UTAH", so Utah games never matched an odds event.
+ESPN_TO_NBA_ABBR = dict(_team_codes.ESPN_TO_NBA_ABBR)
 
-TEAM_NAME_TO_ABBR = {
-    "Atlanta Hawks": "ATL",
-    "Boston Celtics": "BOS",
-    "Brooklyn Nets": "BKN",
-    "Charlotte Hornets": "CHA",
-    "Chicago Bulls": "CHI",
-    "Cleveland Cavaliers": "CLE",
-    "Dallas Mavericks": "DAL",
-    "Denver Nuggets": "DEN",
-    "Detroit Pistons": "DET",
-    "Golden State Warriors": "GSW",
-    "Houston Rockets": "HOU",
-    "Indiana Pacers": "IND",
-    "Los Angeles Clippers": "LAC",
-    "Los Angeles Lakers": "LAL",
-    "Memphis Grizzlies": "MEM",
-    "Miami Heat": "MIA",
-    "Milwaukee Bucks": "MIL",
-    "Minnesota Timberwolves": "MIN",
-    "New Orleans Pelicans": "NOP",
-    "New York Knicks": "NYK",
-    "Oklahoma City Thunder": "OKC",
-    "Orlando Magic": "ORL",
-    "Philadelphia 76ers": "PHI",
-    "Phoenix Suns": "PHX",
-    "Portland Trail Blazers": "POR",
-    "Sacramento Kings": "SAC",
-    "San Antonio Spurs": "SAS",
-    "Toronto Raptors": "TOR",
-    "Utah Jazz": "UTA",
-    "Washington Wizards": "WAS",
-}
+TEAM_NAME_TO_ABBR = dict(_team_codes.TEAM_NAME_TO_ABBR)
 
 MARKETS = [
     "player_points",
@@ -486,19 +451,31 @@ def _load_kalman_player_state() -> None:
 
 _load_kalman_player_state()
 
+def _artifact_for_season(artifact: dict, season: str) -> dict:
+    """v10: return `artifact` only for a season that starts after its training cutoff.
+
+    A correction or calibration fit through date T must not touch games on or
+    before T: NBA_SEASON=2025-26 backtests never see an artifact trained on their
+    own outcomes, while the live 2026-27 season (from Oct 1, 2026) does. That is
+    why the active probability model changes at the October rollover; tests that
+    check raw probabilities pin PROBABILITY_CALIBRATION explicitly. An artifact
+    without a readable cutoff is unproven and stays off.
+    """
+    if not artifact:
+        return {}
+    try:
+        cutoff = date.fromisoformat(str(artifact["training_cutoff"]))
+        season_start = date(int(str(season)[:4]), SEASON_START_MONTH, 1)
+    except (KeyError, TypeError, ValueError):
+        return {}
+    return artifact if season_start > cutoff else {}
+
+
 # v9: fit on unconditional as-of replay outcomes, not chosen sportsbook bets.
-RESIDUAL_CORRECTIONS = load_artifact()
-if RESIDUAL_CORRECTIONS and date(int(SEASON[:4]), 10, 1) <= date.fromisoformat(
-    RESIDUAL_CORRECTIONS["training_cutoff"]
-):
-    # NBA_SEASON backtests cannot see a correction trained on their own future.
-    RESIDUAL_CORRECTIONS = {}
+# NBA_SEASON backtests cannot see a correction trained on their own future.
+RESIDUAL_CORRECTIONS = _artifact_for_season(load_artifact(), SEASON)
 # v9: only apply a probability fit to a later season than its training data.
-PROBABILITY_CALIBRATION = load_probability_artifact()
-if PROBABILITY_CALIBRATION and date(int(SEASON[:4]), 10, 1) <= date.fromisoformat(
-    PROBABILITY_CALIBRATION["training_cutoff"]
-):
-    PROBABILITY_CALIBRATION = {}
+PROBABILITY_CALIBRATION = _artifact_for_season(load_probability_artifact(), SEASON)
 NULL_POS_PLAYERS = set()  # v8 Fix 6: players whose position lookup failed (DvP=1.0 for these)
 
 # v8 Fix 5: manual position overrides for players missing from the auto-detect roster fetch.
@@ -814,7 +791,7 @@ def prefetch_rosters_for_games(events):
     seen = set()
     for ev in events:
         for tname in [ev.get("home_team", ""), ev.get("away_team", "")]:
-            abbr = TEAM_NAME_TO_ABBR.get(tname, tname[:3].upper())
+            abbr = (_team_codes.normalize_team(tname) or tname[:3].upper())
             tid = get_team_id(abbr)
             if tid and tid not in seen:
                 seen.add(tid)
@@ -1045,6 +1022,7 @@ def get_player_id(name):
 
 
 def get_team_id(abbr):
+    abbr = _team_codes.normalize_team(abbr) or abbr  # v10: ESPN NY/UTAH/... too
     for t in teams.get_teams():
         if t["abbreviation"] == abbr:
             return t["id"]
@@ -2480,6 +2458,18 @@ def _build_prop_flags(
     return flags
 
 
+# v10: why the last process_game() call for an Odds API event returned what it
+# did — "ok", "market_unavailable" (the API answered, no usable lines) or
+# "fetch_failed" (the request failed). nba_combined.py writes it to run_log.jsonl.
+LAST_PROPS_STATUS: dict = {}
+
+
+def _set_props_status(odds_event, status: str, **detail) -> None:
+    event_id = (odds_event or {}).get("id")
+    if event_id:
+        LAST_PROPS_STATUS[event_id] = {"status": status, **detail}
+
+
 def process_game(
     home_name,
     away_name,
@@ -2496,6 +2486,7 @@ def process_game(
         pj = get_event_player_props(odds_event["id"])
     except (requests.exceptions.RequestException, json.JSONDecodeError, KeyError) as e:
         print(f"  Error fetching props: {e}")
+        _set_props_status(odds_event, "fetch_failed", error=type(e).__name__)
         return []
 
     bookmakers = pj.get("bookmakers", [])
@@ -2504,6 +2495,7 @@ def process_game(
         time_hint = f" (tip-off: {commence[:16].replace('T', ' ')} UTC)" if commence else ""
         print(f"  No bookmakers returned props — lines not posted yet{time_hint}.")
         print("  Props typically go up 2–4 hours before tip-off. Try again later.")
+        _set_props_status(odds_event, "market_unavailable", reason="no bookmakers")
         return []
 
     print(
@@ -2513,13 +2505,18 @@ def process_game(
     pdf = flatten_props(pj)
     if pdf.empty:
         print("  Props empty after parsing.")
+        _set_props_status(odds_event, "market_unavailable", reason="no parsable props")
         return []
     cdf = consensus_lines(pdf)
     if cdf.empty:
         print("  No consensus lines.")
+        _set_props_status(odds_event, "market_unavailable", reason="no consensus lines")
         return []
 
     print(f"  {len(cdf)} consensus lines, {cdf['player'].nunique()} players")
+    _set_props_status(
+        odds_event, "ok", lines=int(len(cdf)), players=int(cdf["player"].nunique())
+    )
 
     ctx = _build_player_context(
         cdf, home_name, away_name, home_abbr, away_abbr, home_tid, away_tid, injuries_by_team
@@ -2759,8 +2756,8 @@ def _prefetch_spreads(gday):
     for ev in gday:
         hn = ev.get("home_team", "")
         an = ev.get("away_team", "")
-        ha = TEAM_NAME_TO_ABBR.get(hn, hn[:3].upper())
-        aa = TEAM_NAME_TO_ABBR.get(an, an[:3].upper())
+        ha = (_team_codes.normalize_team(hn) or hn[:3].upper())
+        aa = (_team_codes.normalize_team(an) or an[:3].upper())
         game_key = f"{aa}@{ha}"
         if game_key not in GAME_SPREADS:
             # Only fetch if not already manually set — auto-fetch from API
@@ -2824,8 +2821,8 @@ def _print_flag_warnings(df):
 def _process_and_display_game(ev, injuries, verbose):
     hn = ev.get("home_team", "")
     an = ev.get("away_team", "")
-    ha = TEAM_NAME_TO_ABBR.get(hn, hn[:3].upper())
-    aa = TEAM_NAME_TO_ABBR.get(an, an[:3].upper())
+    ha = (_team_codes.normalize_team(hn) or hn[:3].upper())
+    aa = (_team_codes.normalize_team(an) or an[:3].upper())
 
     game_key = f"{aa}@{ha}"
     spread = GAME_SPREADS.get(game_key, 0.0)

@@ -35,13 +35,10 @@ TRACKER_FIELDS = [
 
 
 def normalize_team(team: str) -> str:
-    """Use the existing full-name/ESPN aliases; never truncate LA teams."""
-    model = oddstracker._props_model
-    if not isinstance(team, str):
-        return ""
-    abbr = model.TEAM_NAME_TO_ABBR.get(team, team.upper())
-    abbr = model.ESPN_TO_NBA_ABBR.get(abbr, abbr)
-    return abbr if abbr in model.TEAM_NAME_TO_ABBR.values() else ""
+    """Canonical NBA code via team_codes (v10); "" when unknown. Never truncates LA teams."""
+    import team_codes
+
+    return team_codes.normalize_team(team)
 
 
 def _timestamp(value: str) -> datetime:

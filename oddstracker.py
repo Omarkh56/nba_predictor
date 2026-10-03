@@ -166,6 +166,9 @@ def book_lean(devig_over: float) -> tuple:
 # ===========================================================================
 # ODDS API HELPERS
 # ===========================================================================
+import team_codes  # noqa: E402  (v10: canonical team codes and slate dates)
+
+
 def get_all_events() -> list:
     from datetime import datetime, timezone
 
@@ -364,6 +367,17 @@ def parse_props_to_snapshot_rows(props_json: dict, game_key: str, snap_date: str
 # ===========================================================================
 # SNAPSHOT — fetch and save today's odds
 # ===========================================================================
+# v10: outcome of the last snapshot() call for run_log.jsonl — "ok",
+# "market_unavailable" (the API answered, no lines for this slate) or
+# "fetch_failed" (a request failed, so the slate's odds are unknown).
+LAST_SNAPSHOT_STATUS: dict = {}
+
+
+def _set_snapshot_status(status: str, **detail) -> None:
+    LAST_SNAPSHOT_STATUS.clear()
+    LAST_SNAPSHOT_STATUS.update({"status": status, **detail})
+
+
 def snapshot(snap_date: date, *, events=None, now=None, tracker_path=None,
              snapshot_path=None):
     """Fetch all player prop odds for snap_date and log to odds_tracker.csv."""
@@ -379,20 +393,31 @@ def snapshot(snap_date: date, *, events=None, now=None, tracker_path=None,
             events = get_all_events()
         except (requests.exceptions.RequestException, json.JSONDecodeError) as e:
             print(f"  Error fetching events: {e}")
+            _set_snapshot_status("fetch_failed", error=type(e).__name__)
             return []
+
+    # v10: the feed lists every upcoming game. Stamping them all with snap_date
+    # filed other dates' odds under this slate, so keep only this slate's events.
+    slate_events = team_codes.events_for_date(events, snap_date)
+    if len(slate_events) != len(events or []):
+        print(f"  Ignoring {len(events or []) - len(slate_events)} event(s) "
+              f"not on {snap_date.isoformat()}.")
+    events = slate_events
 
     if not events:
         print("  No events found.")
+        _set_snapshot_status("market_unavailable", reason="no odds events for slate")
         return []
 
     print(f"  Found {len(events)} event(s).")
     all_rows = []
     all_snapshot_rows = []
+    failed_events = 0
 
     for ev in events:
         home = ev.get("home_team", "?")
         away = ev.get("away_team", "?")
-        gk = f"{away[:3].upper()}@{home[:3].upper()}"
+        gk = team_codes.game_key(away, home)  # v10: NYK@LAL, never "NEW@LOS"
         print(f"  Fetching props: {gk}…")
         try:
             props = get_event_props(ev["id"])
@@ -410,11 +435,16 @@ def snapshot(snap_date: date, *, events=None, now=None, tracker_path=None,
         except Exception:
             # intentionally broad: one bad event must not abort the rest of the snapshot batch
             logger.exception("Props fetch/parse failed for event %s (%s)", ev.get("id"), gk)
+            failed_events += 1
         time.sleep(0.8)  # rate-limit courtesy pause
 
     if not all_rows and not all_snapshot_rows:
         print("  No prop rows collected — lines may not be posted yet or have already closed.")
         print("  Tip: books post player props 2–6 hours before tip and close ~15 min before.")
+        _set_snapshot_status(
+            "fetch_failed" if failed_events == len(events) else "market_unavailable",
+            events=len(events), failed_events=failed_events,
+        )
         return []
 
     if all_rows:
@@ -422,6 +452,10 @@ def snapshot(snap_date: date, *, events=None, now=None, tracker_path=None,
     _append_snapshot_rows(all_snapshot_rows, path=snapshot_path)
     print(f"\n  Logged {len(all_rows)} consensus line(s) → {os.path.basename(tracker_path)}")
     print(f"  Logged {len(all_snapshot_rows)} book quote(s) → {os.path.basename(snapshot_path)}")
+    _set_snapshot_status(
+        "fetch_failed" if failed_events else "ok",
+        events=len(events), failed_events=failed_events, rows=len(all_rows),
+    )
     return all_rows
 
 
