@@ -29,6 +29,8 @@ prop_odds_snapshots.csv
 game_odds_tracker.csv
 bet_log.csv
 bet_log_finance_backfilled.csv
+bet_log_backfilled.csv
+run_log.jsonl
 game_log.csv
 ucl_predictions_*.csv
 
