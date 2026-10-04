@@ -74,6 +74,50 @@ def test_rollover_moves_season_and_validation_window(monkeypatch, today, season,
     assert config.training_seasons(5, today)[-1] == validation
 
 
+def test_gated_artifact_loader_failure_stays_off_not_a_crash(predictor):
+    def _boom():
+        raise ValueError("unsupported artifact")
+
+    assert predictor._load_gated_artifact(_boom, "2026-27", "test") == {}
+
+
+def test_gated_artifact_loader_oserror_and_keyerror_also_stay_off(predictor):
+    for exc in (OSError("disk error"), KeyError("version")):
+        def _raise(exc=exc):
+            raise exc
+
+        assert predictor._load_gated_artifact(_raise, "2026-27", "test") == {}
+
+
+def test_gated_artifact_loader_success_still_applies_the_season_gate(predictor):
+    assert predictor._load_gated_artifact(lambda: PLATT, "2025-26", "test") == {}
+    assert predictor._load_gated_artifact(lambda: PLATT, "2026-27", "test") == PLATT
+
+
+def test_corrupt_artifact_on_disk_does_not_crash_the_import(tmp_path):
+    """End-to-end: a stale/corrupted probability_calibration.json must not take down
+    nba_combined.py/checkresults.py, which import playerlinepredictor transitively.
+    `load_artifact`'s default `path=ARTIFACT_PATH` is bound at def-time, so this patches
+    the function itself (before playerlinepredictor's `from ... import` binds it) rather
+    than the module-level path constant, which a later assignment would not affect."""
+    script = tmp_path / "run.py"
+    script.write_text(
+        "import probability_calibration as pc\n"
+        "def _bad_load(path=None):\n"
+        "    raise ValueError('unsupported probability-calibration artifact')\n"
+        "pc.load_artifact = _bad_load\n"
+        "import playerlinepredictor as p\n"
+        "print(bool(p.PROBABILITY_CALIBRATION))\n"
+    )
+    env = {**os.environ, "NBA_SEASON": "2026-27", "PYTHONPATH": str(ROOT)}
+    out = subprocess.run(
+        [sys.executable, str(script)], cwd=ROOT, env=env, capture_output=True, text=True,
+        timeout=180,
+    )
+    assert out.returncode == 0, out.stderr[-2000:]
+    assert out.stdout.strip().splitlines()[-1] == "False"
+
+
 def _cutoff(name):
     path = ROOT / name
     if not path.is_file():

@@ -472,11 +472,26 @@ def _artifact_for_season(artifact: dict, season: str) -> dict:
     return artifact if season_start > cutoff else {}
 
 
+def _load_gated_artifact(loader, season: str, label: str) -> dict:
+    """v10 Fix: `loader()` itself raises on a malformed/unsupported artifact (by
+    design — see residual_correction.load_artifact / probability_calibration.load_artifact
+    and their tests), so that raise must be caught HERE, at the one import-time call
+    site that wants "unproven stays off", not inside the loaders themselves. Without
+    this, a stale or corrupted artifact file on disk crashes the whole module import
+    (and therefore nba_combined.py/checkresults.py) instead of leaving the artifact off."""
+    try:
+        artifact = loader()
+    except (OSError, ValueError, KeyError) as exc:
+        print(f"  [{label}] artifact failed to load, staying off: {exc}")
+        return {}
+    return _artifact_for_season(artifact, season)
+
+
 # v9: fit on unconditional as-of replay outcomes, not chosen sportsbook bets.
 # NBA_SEASON backtests cannot see a correction trained on their own future.
-RESIDUAL_CORRECTIONS = _artifact_for_season(load_artifact(), SEASON)
+RESIDUAL_CORRECTIONS = _load_gated_artifact(load_artifact, SEASON, "residual-correction")
 # v9: only apply a probability fit to a later season than its training data.
-PROBABILITY_CALIBRATION = _artifact_for_season(load_probability_artifact(), SEASON)
+PROBABILITY_CALIBRATION = _load_gated_artifact(load_probability_artifact, SEASON, "probability-calibration")
 NULL_POS_PLAYERS = set()  # v8 Fix 6: players whose position lookup failed (DvP=1.0 for these)
 
 # v8 Fix 5: manual position overrides for players missing from the auto-detect roster fetch.
