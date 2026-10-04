@@ -1084,7 +1084,7 @@ def _setup_odds_and_spreads(matchups: list, team_map: dict, game_date=None, run=
     except (requests.exceptions.RequestException, json.JSONDecodeError) as e:
         print(f"  ⚠  Odds API error: {e}")
         if run is not None:
-            run.stage("odds_events", "fetch_failed", error=type(e).__name__)
+            run.stage("odds_events", "fetch_failed", required=True, error=type(e).__name__)
         return []
     if game_date is not None:
         # v10: the feed lists every upcoming game; keep this slate's only.
@@ -1354,12 +1354,22 @@ def main(argv=None) -> int:
     run.stage("schedule", "ok", required=True, games=len(matchups))
     snap = dict(getattr(oddstracker, "LAST_SNAPSHOT_STATUS", {}) or {})
     if snap:
-        run.stage("odds_snapshot", snap.pop("status"), **snap)
+        status = snap.pop("status")
+        complete_failure = not snap.get("events") or snap.get("failed_events") == snap.get("events")
+        run.stage("odds_snapshot", status, required=complete_failure, **snap)
+        if status == "fetch_failed" and complete_failure:
+            print("  Odds snapshot failed: the slate's prices are unknown. Nothing was saved.")
+            run.finish()
+            return run.exit_code()
 
     team_injuries, props_injuries = _fetch_injuries()
     team_preds, team_map = _run_team_model(matchups, team_injuries)
     run.stage("team_model", "ok" if team_preds else "fetch_failed", games=len(team_preds))
     all_events = _setup_odds_and_spreads(matchups, team_map, game_date, run=run)
+    if run.overall_status() == "fetch_failed":
+        print("  Odds API unavailable: the slate's prices are unknown. Nothing was saved.")
+        run.finish()
+        return run.exit_code()
 
     print("\n  Loading player data (stats, USG%, DvP rosters)…")
     props_model.get_team_season_stats()

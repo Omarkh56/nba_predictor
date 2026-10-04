@@ -36,6 +36,7 @@ from dotenv import load_dotenv
 
 from odds_api import get_json as _get_odds_json
 from finance import american_to_decimal
+from run_log import RunLog
 
 load_dotenv()
 
@@ -188,22 +189,19 @@ def get_all_events() -> list:
 def get_event_props(event_id: str) -> dict:
     """Fetch player prop odds for a single event. Tries wider regions if needed."""
     for regions in ["us", "us,us2,uk,eu,au"]:
-        try:
-            data = _get_odds_json(
-                f"{BASE_URL}/sports/{SPORT}/events/{event_id}/odds",
-                params={
-                    "apiKey": ODDS_API_KEY,
-                    "regions": regions,
-                    "markets": ",".join(MARKETS),
-                    "oddsFormat": "american",
-                    "dateFormat": "iso",
-                },
-                timeout=25,
-            )
-            if data.get("bookmakers"):
-                return data
-        except (requests.exceptions.RequestException, json.JSONDecodeError) as e:
-            print(f"    Warning: props fetch ({regions}): {type(e).__name__}")
+        data = _get_odds_json(
+            f"{BASE_URL}/sports/{SPORT}/events/{event_id}/odds",
+            params={
+                "apiKey": ODDS_API_KEY,
+                "regions": regions,
+                "markets": ",".join(MARKETS),
+                "oddsFormat": "american",
+                "dateFormat": "iso",
+            },
+            timeout=25,
+        )
+        if data.get("bookmakers"):
+            return data
     return {}
 
 
@@ -442,7 +440,7 @@ def snapshot(snap_date: date, *, events=None, now=None, tracker_path=None,
         print("  No prop rows collected — lines may not be posted yet or have already closed.")
         print("  Tip: books post player props 2–6 hours before tip and close ~15 min before.")
         _set_snapshot_status(
-            "fetch_failed" if failed_events == len(events) else "market_unavailable",
+            "fetch_failed" if failed_events else "market_unavailable",
             events=len(events), failed_events=failed_events,
         )
         return []
@@ -877,8 +875,8 @@ def analyze_disagreements():
 # ===========================================================================
 # MAIN
 # ===========================================================================
-if __name__ == "__main__":
-    args = sys.argv[1:]
+def main(argv=None) -> int:
+    args = sys.argv[1:] if argv is None else argv
 
     # Parse date argument if provided
     snap_date = team_codes.today_slate_date()  # v10: US Eastern slate date, not local time
@@ -899,6 +897,22 @@ if __name__ == "__main__":
     elif "--show" in args:
         show_today(snap_date)
     else:
+        run = RunLog("oddstracker", snap_date)
         snapshot(snap_date)
-        update_results()
-        show_today(snap_date)
+        info = dict(LAST_SNAPSHOT_STATUS)
+        status = info.pop("status")
+        # A complete outage fails the command; a failed event alongside saved
+        # quotes is partial, retaining the shared run-log exit-code contract.
+        complete_failure = not info.get("events") or info.get("failed_events") == info.get("events")
+        run.stage("odds_snapshot", status, required=complete_failure, **info)
+        if status != "fetch_failed":
+            update_results()
+            show_today(snap_date)
+        record = run.finish()
+        print(f"  Run {record['run_id']}: {record['status']} → {run.path.name}")
+        return run.exit_code()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

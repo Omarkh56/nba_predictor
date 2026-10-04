@@ -83,6 +83,7 @@ import team_codes as _team_codes
 from env_config import require_env
 from finance import StakeDecision, recommend_stake
 from nba_api_utils import dataframe_call_result
+from odds_api import get_json as _get_odds_json
 from player_regression import predict_player_stat  # noqa: E402
 from residual_correction import apply_correction, load_artifact  # noqa: E402
 from probability_calibration import calibrate_over, load_artifact as load_probability_artifact  # noqa: E402
@@ -896,11 +897,9 @@ def get_dvp_factor(opp_team_id, pos_group, stat_col):
 def get_all_odds_events():
     from datetime import datetime, timezone
 
-    r = requests.get(
+    events = _get_odds_json(
         f"{BASE_URL}/sports/{SPORT}/events", params={"apiKey": ODDS_API_KEY}, timeout=20
     )
-    r.raise_for_status()
-    events = r.json()
     now = datetime.now(timezone.utc).isoformat()
     upcoming = [e for e in events if e.get("commence_time", "") > now]
     in_play = len(events) - len(upcoming)
@@ -911,7 +910,7 @@ def get_all_odds_events():
 
 def get_event_player_props(event_id):
     for regions in ["us", "us,us2,uk,eu,au"]:
-        r = requests.get(
+        data = _get_odds_json(
             f"{BASE_URL}/sports/{SPORT}/events/{event_id}/odds",
             params={
                 "apiKey": ODDS_API_KEY,
@@ -922,8 +921,6 @@ def get_event_player_props(event_id):
             },
             timeout=20,
         )
-        r.raise_for_status()
-        data = r.json()
         if data.get("bookmakers"):
             return data
     return data
@@ -935,7 +932,7 @@ def _auto_fetch_spread(event_id, home_name):
     Convention: Odds API 'point' for home team = negative when home is favorite;
     we negate it so GAME_SPREADS positive = home favored."""
     try:
-        r = requests.get(
+        data = _get_odds_json(
             f"{BASE_URL}/sports/{SPORT}/events/{event_id}/odds",
             params={
                 "apiKey": ODDS_API_KEY,
@@ -945,8 +942,6 @@ def _auto_fetch_spread(event_id, home_name):
             },
             timeout=15,
         )
-        r.raise_for_status()
-        data = r.json()
         for bk in data.get("bookmakers", []):
             for mkt in bk.get("markets", []):
                 if mkt.get("key") != "spreads":
