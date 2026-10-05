@@ -1365,10 +1365,17 @@ def main(argv=None) -> int:
 
     team_injuries, props_injuries = _fetch_injuries()
     team_preds, team_map = _run_team_model(matchups, team_injuries)
-    run.stage("team_model", "ok" if team_preds else "fetch_failed", games=len(team_preds))
+    # required=True: team_map feeds spread resolution and every per-game props call below
+    # it, so a total team-model failure (matchups is non-empty here, so an empty team_preds
+    # means every single game failed) is a complete failure of the run, not a partial one —
+    # and it's meant to be caught by the overall_status() check right below, the same as a
+    # total odds-feed failure is.
+    run.stage("team_model", "ok" if team_preds else "fetch_failed", required=not team_preds,
+              games=len(team_preds))
     all_events = _setup_odds_and_spreads(matchups, team_map, game_date, run=run)
     if run.overall_status() == "fetch_failed":
-        print("  Odds API unavailable: the slate's prices are unknown. Nothing was saved.")
+        why = "the team model failed" if not team_preds else "the slate's prices are unknown"
+        print(f"  Run FAILED: {why}. Nothing was saved.")
         run.finish()
         return run.exit_code()
 
