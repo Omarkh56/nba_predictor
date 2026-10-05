@@ -123,6 +123,17 @@ def valid_decimal_odds(value) -> bool:
         return False
 
 
+def verified_entry_price(row: Mapping[str, object]) -> bool:
+    """An explicit sourced price, not an assumed legacy decimal alias."""
+    if not valid_decimal_odds(row.get("entry_decimal_odds")):
+        return False
+    source = str(row.get("odds_source") or "").strip()
+    if source == "legacy_odds_tracker_exact_line_consensus":
+        return True
+    return bool(source and row.get("odds_event_id")
+                and _parse_utc_timestamp(row.get("odds_snapshot_at")))
+
+
 def _optional_probability(value) -> Optional[float]:
     return _finite(value) if valid_probability(value) else None
 

@@ -13,7 +13,7 @@ import pandas as pd
 
 from backfill_finance import backfill_rows
 from bet_log_utils import read_bet_rows
-from finance import normalize_result, recommend_stake, valid_decimal_odds, valid_probability
+from finance import normalize_result, recommend_stake, valid_decimal_odds, valid_probability, verified_entry_price
 from roi_analysis import maximum_drawdown
 
 
@@ -44,7 +44,12 @@ def _number(value):
 def verified_rows(bets: list[dict], odds: pd.DataFrame) -> tuple[list[dict], dict]:
     backfilled, backfill_report = backfill_rows(bets, odds)
     rows = []
-    for row in backfilled:
+    for original, row in zip(bets, backfilled):
+        # A later tracker consensus cannot replace the frozen entry price.
+        if verified_entry_price(original):
+            row = original
+        if not verified_entry_price(row):
+            continue
         price = _number(row.get("entry_decimal_odds"))
         probability = _number(row.get("p_model"))
         result = normalize_result(row.get("result"))
@@ -204,6 +209,9 @@ def simulate_policy(rows: list[dict], policy: dict, starting_bankroll: float = 1
 
 
 def build_report(rows: list[dict], backfill_report: dict) -> dict:
+    # This public reporting path cannot bypass run()'s verified-price filter.
+    rows = [r for r in rows if verified_entry_price(r) and valid_probability(r.get("p_model"))
+            and normalize_result(r.get("result")) in {"HIT", "MISS", "PUSH", "VOID"}]
     splits = chronological_splits(rows)
     split_report = {}
     for split, split_rows in splits.items():
@@ -224,32 +232,38 @@ def build_report(rows: list[dict], backfill_report: dict) -> dict:
         name: metrics for name, metrics in validation.items()
         if name.startswith("quarter_kelly") and metrics["roi"] is not None
     }
-    validation_best = max(
-        quarter_candidates,
-        key=lambda name: quarter_candidates[name]["roi"],
-        default=None,
-    )
     conclusive = (
         len(rows) >= MIN_CONCLUSIVE_REAL_ODDS
         and split_report["validation"]["real_odds_rows"] >= 50
         and split_report["test"]["real_odds_rows"] >= 50
+        and bool(quarter_candidates)
     )
-    conclusion = (
-        "conclusive" if conclusive else
-        f"inconclusive: {len(rows)} verified real-odds rows is below the "
-        f"{MIN_CONCLUSIVE_REAL_ODDS}-row minimum and chronological holdouts are thin"
-    )
+    shortfall = max(0, MIN_CONCLUSIVE_REAL_ODDS - len(rows))
+    reasons = []
+    if shortfall:
+        reasons.append(f"{shortfall} more verified rows needed for the {MIN_CONCLUSIVE_REAL_ODDS}-row minimum")
+    for split in ("validation", "test"):
+        if split_report[split]["real_odds_rows"] < 50:
+            reasons.append(f"{split} has fewer than 50 rows")
+    if not quarter_candidates:
+        reasons.append("no eligible validation policy outcomes")
+    conclusion = "conclusive" if conclusive else "inconclusive: " + "; ".join(reasons)
+    validation_best = max(quarter_candidates, key=lambda name: quarter_candidates[name]["roi"],
+                          default=None) if conclusive else None
     return {
         "real_odds_sample_size": len(rows),
         "source_backfill": backfill_report,
         "split_method": "whole dates in chronological 60/20/20 order",
         "minimum_conclusive_real_odds_rows": MIN_CONCLUSIVE_REAL_ODDS,
+        "verified_rows_needed": shortfall,
+        "recommendation_gate_passed": conclusive,
         "evidence_status": conclusion,
         "validation_best_quarter_kelly_policy": validation_best,
         "production_policy": {
             "kelly_multiplier": 0.25,
             "maximum_stake_pct": 0.05,
-            "decision": "unchanged because the real-odds policy comparison is inconclusive",
+            "decision": ("unchanged; paper comparison only, no production change authorized" if conclusive
+                         else "unchanged because the real-odds policy comparison is inconclusive"),
         },
         "splits": split_report,
         "overall_diagnostic": overall,
@@ -262,6 +276,8 @@ def report_markdown(report: dict) -> str:
         f"- Verified real-odds rows: {report['real_odds_sample_size']}",
         f"- Split: {report['split_method']}",
         f"- Evidence: {report['evidence_status']}",
+        f"- Verified rows still needed: {report['verified_rows_needed']}",
+        f"- Policy selection: {report['validation_best_quarter_kelly_policy'] or 'withheld by evidence gate'}",
         "- Production Kelly: 0.25 with a 5% cap (unchanged)",
         "- No missing prices were filled and no assumed -110 odds were used.", "",
     ]
@@ -301,9 +317,11 @@ def report_markdown(report: dict) -> str:
         lines.append("")
     lines.extend([
         "## Limits", "",
-        "The verified prices cover a small, playoff-heavy period. The validation and test "
-        "samples are too small to support a profitability or cap-selection conclusion. "
-        "Results are implementation diagnostics, not evidence of a profitable strategy.", "",
+        ("The minimum sample and holdout gates passed. Any policy selection remains a paper "
+         "comparison for review; it does not change production stakes or prove profitability."
+         if report["recommendation_gate_passed"] else
+         "The verified sample or chronological holdouts failed the evidence gate. "
+         "Policy selection is withheld; results are paper diagnostics, not evidence of profitability."), "",
     ])
     return "\n".join(lines)
 

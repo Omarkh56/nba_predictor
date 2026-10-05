@@ -134,6 +134,40 @@ these are upper estimates because billing depends on returned markets. See the
 Check the job's `run_log.jsonl` stages for `ok`, `market_unavailable`, `skipped`
 or `fetch_failed`. Scheduling this job is a manual deployment step.
 
+### Weekly paper evidence
+
+```bash
+python3 evidence_report.py
+python3 evidence_report.py --as-of 2026-10-05
+```
+
+This reads `bet_log.csv` and `run_log.jsonl` and writes
+`reports/evidence_weekly.md` and `.json`. It reports cumulative evidence and
+the trailing seven Eastern slate dates, with market, direction, model-version,
+entry-price and closing-quote coverage. The inputs stay unchanged.
+Only explicit sourced entry odds count; a legacy `decimal_odds` alias alone
+does not. Historical exact-line verified prices are counted separately from
+prospective run provenance. No price is invented or backfilled by this report.
+
+ROI uses one paper unit per settled priced pick at its actual decimal payout;
+pushes return zero profit and voids are excluded from staked units. Break-even
+is the average of each decision's actual `1 / decimal_odds`, rather than an
+assumed standard price. Win rates and positive-CLV rates have Wilson 95%
+intervals. ROI and mean CLV are continuous, so their intervals use a repeatable
+2,000-draw bootstrap of whole slate dates. With fewer than two dates those
+intervals are unavailable. Wilson rates assume independent trials; bets from
+the same game can be correlated.
+
+Missing entry-price reasons are linked to their prediction run where possible;
+mixed event statuses without a game identity stay ambiguous. Missing closing
+quotes are reported separately because they can overlap missing entry prices.
+Runs that produced no logged picks contribute event-stage counts, never
+invented pick counts. The report states how many more verified settled rows
+are needed to reach `MIN_CONCLUSIVE_REAL_ODDS = 200`. Reaching that number is
+not a production approval: staking-policy selection also requires at least
+50 validation and 50 test rows and eligible validation outcomes. All comparisons
+remain paper reporting and leave production Kelly, caps and edge thresholds unchanged.
+
 ### 5. (Optional) Train learned model weights
 
 ```bash

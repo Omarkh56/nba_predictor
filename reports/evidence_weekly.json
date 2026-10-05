@@ -1,0 +1,6807 @@
+{
+  "as_of": "2026-10-05",
+  "by_direction": [],
+  "by_market": [],
+  "by_market_direction": [],
+  "evidence_status": "inconclusive",
+  "interval_methods": {
+    "positive_clv_rate": "Wilson 95%",
+    "roi_and_mean_clv": "2000-draw whole-date percentile bootstrap 95%, fixed seed",
+    "win_rate": "Wilson 95%"
+  },
+  "invalid_identity_rows_excluded": 0,
+  "limits": [
+    "Wilson intervals assume independent binary trials; same-game bets can be correlated.",
+    "Bootstrap intervals need at least two dates and are descriptive with small samples.",
+    "Break-even is the mean of each actual price's 1/decimal_odds threshold.",
+    "Missing closing quotes can overlap missing entry prices; event-stage counts are not pick counts.",
+    "Historical exact-line prices are separate from prospective run provenance; no production stakes change."
+  ],
+  "method": "one paper unit per sourced entry; actual payout prices; no assumed odds",
+  "minimum_verified_rows": 200,
+  "missing_price_reasons": {
+    "unknown_price_reason": 956
+  },
+  "missing_price_rows": [
+    {
+      "date": "2026-04-18",
+      "market": "AST",
+      "player": "Dennis Schroder",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-18",
+      "market": "3PM",
+      "player": "Luke Kennard",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-18",
+      "market": "PTS+REB",
+      "player": "Collin Murray-Boyles",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-18",
+      "market": "REB",
+      "player": "Anthony Edwards",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-18",
+      "market": "PTS",
+      "player": "Bruce Brown",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-18",
+      "market": "AST",
+      "player": "Sam Merrill",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-18",
+      "market": "3PM",
+      "player": "Jabari Smith Jr",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-18",
+      "market": "PTS",
+      "player": "Marcus Smart",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-18",
+      "market": "PTS",
+      "player": "LeBron James",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-18",
+      "market": "PTS",
+      "player": "Collin Murray-Boyles",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-18",
+      "market": "AST",
+      "player": "Donte DiVincenzo",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-18",
+      "market": "PTS",
+      "player": "Nickeil Alexander-Walker",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-18",
+      "market": "PTS+AST",
+      "player": "Ayo Dosunmu",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-18",
+      "market": "AST",
+      "player": "Josh Hart",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-18",
+      "market": "REB",
+      "player": "Jakob Poeltl",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-18",
+      "market": "PTS",
+      "player": "Jake LaRavia",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-18",
+      "market": "3PM",
+      "player": "Jamal Shead",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-18",
+      "market": "REB",
+      "player": "Dyson Daniels",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-18",
+      "market": "3PM",
+      "player": "Ja'Kobe Walter",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-18",
+      "market": "REB+AST",
+      "player": "Sandro Mamukelashvili",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-18",
+      "market": "PTS",
+      "player": "Jaxson Hayes",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-18",
+      "market": "3PM",
+      "player": "Amen Thompson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-18",
+      "market": "REB+AST",
+      "player": "James Harden",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-18",
+      "market": "REB",
+      "player": "Jarred Vanderbilt",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-18",
+      "market": "PTS",
+      "player": "Scottie Barnes",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-18",
+      "market": "3PM",
+      "player": "Tari Eason",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-18",
+      "market": "REB",
+      "player": "Max Strus",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-18",
+      "market": "3PM",
+      "player": "Dean Wade",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-18",
+      "market": "REB",
+      "player": "Ayo Dosunmu",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-18",
+      "market": "REB",
+      "player": "Jalen Brunson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-18",
+      "market": "PTS",
+      "player": "Keon Ellis",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-18",
+      "market": "PRA",
+      "player": "Miles McBride",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-18",
+      "market": "3PM",
+      "player": "Miles McBride",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-18",
+      "market": "REB",
+      "player": "Jaden McDaniels",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-18",
+      "market": "PTS",
+      "player": "Aaron Gordon",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-18",
+      "market": "AST",
+      "player": "Aaron Gordon",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-18",
+      "market": "3PM",
+      "player": "Karl-Anthony Towns",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-18",
+      "market": "REB+AST",
+      "player": "Mikal Bridges",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-18",
+      "market": "REB",
+      "player": "Mikal Bridges",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-18",
+      "market": "PTS",
+      "player": "Rudy Gobert",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-18",
+      "market": "AST",
+      "player": "Jalen Johnson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-18",
+      "market": "AST",
+      "player": "Christian Braun",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-18",
+      "market": "3PM",
+      "player": "Christian Braun",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-18",
+      "market": "PTS",
+      "player": "Mitchell Robinson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-18",
+      "market": "3PM",
+      "player": "Jarred Vanderbilt",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-18",
+      "market": "3PM",
+      "player": "Cameron Johnson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-18",
+      "market": "AST",
+      "player": "Jarrett Allen",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-18",
+      "market": "3PM",
+      "player": "Bruce Brown",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-18",
+      "market": "3PM",
+      "player": "Jonathan Kuminga",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-18",
+      "market": "3PM",
+      "player": "Nikola Jokic",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-18",
+      "market": "3PM",
+      "player": "LeBron James",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-18",
+      "market": "3PM",
+      "player": "Max Strus",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-18",
+      "market": "3PM",
+      "player": "Dyson Daniels",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-18",
+      "market": "AST",
+      "player": "OG Anunoby",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-18",
+      "market": "AST",
+      "player": "Deandre Ayton",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-19",
+      "market": "AST",
+      "player": "Daniss Jenkins",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-19",
+      "market": "PTS+AST",
+      "player": "Devin Booker",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-19",
+      "market": "AST",
+      "player": "Baylor Scheierman",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-19",
+      "market": "AST",
+      "player": "Paolo Banchero",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-19",
+      "market": "REB",
+      "player": "Daniss Jenkins",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-19",
+      "market": "3PM",
+      "player": "Jerami Grant",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-19",
+      "market": "3PM",
+      "player": "Payton Pritchard",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-19",
+      "market": "PTS",
+      "player": "Devin Booker",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-19",
+      "market": "PRA",
+      "player": "Shaedon Sharpe",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-19",
+      "market": "REB+AST",
+      "player": "Devin Vassell",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-19",
+      "market": "PTS+REB",
+      "player": "Jerami Grant",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-19",
+      "market": "PRA",
+      "player": "Dylan Harper",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-19",
+      "market": "3PM",
+      "player": "Dylan Harper",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-19",
+      "market": "AST",
+      "player": "Andre Drummond",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-19",
+      "market": "AST",
+      "player": "Ausar Thompson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-19",
+      "market": "PTS+AST",
+      "player": "Deni Avdija",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-19",
+      "market": "PRA",
+      "player": "Matisse Thybulle",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-19",
+      "market": "AST",
+      "player": "Duncan Robinson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-19",
+      "market": "AST",
+      "player": "Franz Wagner",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-19",
+      "market": "AST",
+      "player": "Jalen Suggs",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-19",
+      "market": "PTS+REB",
+      "player": "Keldon Johnson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-19",
+      "market": "PTS+AST",
+      "player": "Toumani Camara",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-19",
+      "market": "3PM",
+      "player": "Ajay Mitchell",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-19",
+      "market": "PTS",
+      "player": "Shaedon Sharpe",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-19",
+      "market": "PRA",
+      "player": "Dominick Barlow",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-19",
+      "market": "PTS+REB",
+      "player": "Scoot Henderson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-19",
+      "market": "3PM",
+      "player": "Harrison Barnes",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-19",
+      "market": "PRA",
+      "player": "Tristan da Silva",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-19",
+      "market": "PRA",
+      "player": "Jalen Green",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-19",
+      "market": "REB",
+      "player": "Dominick Barlow",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-19",
+      "market": "PTS",
+      "player": "Cade Cunningham",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-19",
+      "market": "3PM",
+      "player": "Nikola Vucevic",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-19",
+      "market": "AST",
+      "player": "VJ Edgecombe",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-19",
+      "market": "3PM",
+      "player": "Cason Wallace",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-19",
+      "market": "AST",
+      "player": "Dillon Brooks",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-19",
+      "market": "REB",
+      "player": "Kelly Oubre Jr",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-19",
+      "market": "REB",
+      "player": "Devin Vassell",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-19",
+      "market": "AST",
+      "player": "Neemias Queta",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-19",
+      "market": "PRA",
+      "player": "Luguentz Dort",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-19",
+      "market": "PTS",
+      "player": "Jalen Green",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-19",
+      "market": "PTS+REB",
+      "player": "Tyrese Maxey",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-19",
+      "market": "PTS",
+      "player": "Scoot Henderson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-19",
+      "market": "AST",
+      "player": "Quentin Grimes",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-19",
+      "market": "AST",
+      "player": "Luguentz Dort",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-19",
+      "market": "REB",
+      "player": "Jrue Holiday",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-19",
+      "market": "PTS",
+      "player": "Keldon Johnson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-19",
+      "market": "AST",
+      "player": "Jalen Williams",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-19",
+      "market": "AST",
+      "player": "Jalen Duren",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-19",
+      "market": "REB",
+      "player": "Wendell Carter Jr",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-19",
+      "market": "PTS",
+      "player": "Isaiah Hartenstein",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-19",
+      "market": "REB",
+      "player": "Anthony Black",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-19",
+      "market": "REB",
+      "player": "Shai Gilgeous-Alexander",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-19",
+      "market": "PTS+AST",
+      "player": "Sam Hauser",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-19",
+      "market": "REB",
+      "player": "Quentin Grimes",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-19",
+      "market": "PTS",
+      "player": "Tristan da Silva",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-20",
+      "market": "REB+AST",
+      "player": "Anthony Edwards",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-20",
+      "market": "REB",
+      "player": "Jakob Poeltl",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-20",
+      "market": "REB",
+      "player": "Anthony Edwards",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-20",
+      "market": "PTS+AST",
+      "player": "Nickeil Alexander-Walker",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-20",
+      "market": "PTS+AST",
+      "player": "James Harden",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-20",
+      "market": "PTS+AST",
+      "player": "Cameron Johnson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-20",
+      "market": "PTS",
+      "player": "Ayo Dosunmu",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-20",
+      "market": "PTS+AST",
+      "player": "Evan Mobley",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-20",
+      "market": "REB",
+      "player": "Jonathan Kuminga",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-20",
+      "market": "PTS+AST",
+      "player": "Christian Braun",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-20",
+      "market": "REB",
+      "player": "Sandro Mamukelashvili",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-20",
+      "market": "PTS+AST",
+      "player": "Karl-Anthony Towns",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-20",
+      "market": "PRA",
+      "player": "Sam Merrill",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-20",
+      "market": "PTS+AST",
+      "player": "Donovan Mitchell",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-20",
+      "market": "REB+AST",
+      "player": "Dyson Daniels",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-20",
+      "market": "PTS",
+      "player": "James Harden",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-20",
+      "market": "REB",
+      "player": "Max Strus",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-20",
+      "market": "REB",
+      "player": "Nikola Jokic",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-20",
+      "market": "REB",
+      "player": "Collin Murray-Boyles",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-20",
+      "market": "PTS",
+      "player": "Nickeil Alexander-Walker",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-20",
+      "market": "3PM",
+      "player": "Donte DiVincenzo",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-20",
+      "market": "REB",
+      "player": "Dean Wade",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-20",
+      "market": "REB",
+      "player": "Jalen Johnson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-20",
+      "market": "REB+AST",
+      "player": "Jalen Brunson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-20",
+      "market": "PTS+AST",
+      "player": "Jarrett Allen",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-20",
+      "market": "REB+AST",
+      "player": "Aaron Gordon",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-20",
+      "market": "REB+AST",
+      "player": "Donte DiVincenzo",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-20",
+      "market": "AST",
+      "player": "Dyson Daniels",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-20",
+      "market": "AST",
+      "player": "Cameron Johnson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-20",
+      "market": "REB+AST",
+      "player": "OG Anunoby",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-20",
+      "market": "REB",
+      "player": "Bruce Brown",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-20",
+      "market": "REB",
+      "player": "Jamal Murray",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-20",
+      "market": "PTS",
+      "player": "Christian Braun",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-20",
+      "market": "AST",
+      "player": "Karl-Anthony Towns",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-20",
+      "market": "PTS",
+      "player": "Rudy Gobert",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-20",
+      "market": "AST",
+      "player": "Jalen Brunson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-20",
+      "market": "REB",
+      "player": "Ayo Dosunmu",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-20",
+      "market": "AST",
+      "player": "Naz Reid",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-20",
+      "market": "AST",
+      "player": "Jarrett Allen",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-20",
+      "market": "PTS",
+      "player": "Bruce Brown",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-20",
+      "market": "AST",
+      "player": "Scottie Barnes",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-20",
+      "market": "AST",
+      "player": "Aaron Gordon",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-20",
+      "market": "PTS",
+      "player": "Ja'Kobe Walter",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-20",
+      "market": "PTS",
+      "player": "Keon Ellis",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-20",
+      "market": "PTS",
+      "player": "Collin Murray-Boyles",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-20",
+      "market": "PTS",
+      "player": "Dennis Schroder",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-20",
+      "market": "PTS",
+      "player": "Miles McBride",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-20",
+      "market": "AST",
+      "player": "OG Anunoby",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-20",
+      "market": "PTS",
+      "player": "Landry Shamet",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-20",
+      "market": "3PM",
+      "player": "Jamal Murray",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-21",
+      "market": "PTS+AST",
+      "player": "Deni Avdija",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-21",
+      "market": "REB+AST",
+      "player": "Stephon Castle",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-21",
+      "market": "AST",
+      "player": "Quentin Grimes",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-21",
+      "market": "REB+AST",
+      "player": "Deandre Ayton",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-21",
+      "market": "REB",
+      "player": "Stephon Castle",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-21",
+      "market": "3PM",
+      "player": "Jabari Smith Jr",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-21",
+      "market": "REB",
+      "player": "Kevin Durant",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-21",
+      "market": "AST",
+      "player": "Tyrese Maxey",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-21",
+      "market": "PTS+AST",
+      "player": "Amen Thompson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-21",
+      "market": "REB+AST",
+      "player": "Devin Vassell",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-21",
+      "market": "REB",
+      "player": "Jrue Holiday",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-21",
+      "market": "PRA",
+      "player": "Dylan Harper",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-21",
+      "market": "REB+AST",
+      "player": "Julian Champagnie",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-21",
+      "market": "PTS+AST",
+      "player": "Victor Wembanyama",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-21",
+      "market": "PTS",
+      "player": "Marcus Smart",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-21",
+      "market": "PTS+AST",
+      "player": "Jaylen Brown",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-21",
+      "market": "3PM",
+      "player": "Payton Pritchard",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-21",
+      "market": "REB",
+      "player": "Luke Kennard",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-21",
+      "market": "PTS+AST",
+      "player": "Donovan Clingan",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-21",
+      "market": "REB+AST",
+      "player": "Andre Drummond",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-21",
+      "market": "REB+AST",
+      "player": "VJ Edgecombe",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-21",
+      "market": "PRA",
+      "player": "Toumani Camara",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-21",
+      "market": "REB",
+      "player": "Devin Vassell",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-21",
+      "market": "PTS+AST",
+      "player": "De'Aaron Fox",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-21",
+      "market": "REB",
+      "player": "Tari Eason",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-21",
+      "market": "PTS+AST",
+      "player": "Sam Hauser",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-21",
+      "market": "PTS+AST",
+      "player": "Scoot Henderson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-21",
+      "market": "AST",
+      "player": "Amen Thompson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-21",
+      "market": "REB+AST",
+      "player": "Nikola Vucevic",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-21",
+      "market": "AST",
+      "player": "Kevin Durant",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-21",
+      "market": "PTS+AST",
+      "player": "Neemias Queta",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-21",
+      "market": "PRA",
+      "player": "Rui Hachimura",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-21",
+      "market": "PTS",
+      "player": "Rui Hachimura",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-21",
+      "market": "REB",
+      "player": "Derrick White",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-21",
+      "market": "PTS",
+      "player": "Shaedon Sharpe",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-21",
+      "market": "PTS",
+      "player": "Jabari Smith Jr",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-21",
+      "market": "PTS",
+      "player": "Jake LaRavia",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-21",
+      "market": "PTS",
+      "player": "Jerami Grant",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-21",
+      "market": "REB",
+      "player": "Dylan Harper",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-21",
+      "market": "REB",
+      "player": "Jarred Vanderbilt",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-21",
+      "market": "PTS",
+      "player": "Payton Pritchard",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-21",
+      "market": "PTS",
+      "player": "Keldon Johnson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-21",
+      "market": "PTS",
+      "player": "Toumani Camara",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-21",
+      "market": "AST",
+      "player": "VJ Edgecombe",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-21",
+      "market": "PTS",
+      "player": "Nikola Vucevic",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-21",
+      "market": "PTS",
+      "player": "Jaxson Hayes",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-22",
+      "market": "PTS+AST",
+      "player": "Devin Booker",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-22",
+      "market": "AST",
+      "player": "Franz Wagner",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-22",
+      "market": "REB",
+      "player": "Paolo Banchero",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-22",
+      "market": "PTS",
+      "player": "Cade Cunningham",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-22",
+      "market": "PTS+AST",
+      "player": "Jalen Duren",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-22",
+      "market": "REB",
+      "player": "Anthony Black",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-22",
+      "market": "PTS",
+      "player": "Devin Booker",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-22",
+      "market": "REB+AST",
+      "player": "Wendell Carter Jr",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-22",
+      "market": "REB",
+      "player": "Daniss Jenkins",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-22",
+      "market": "REB",
+      "player": "Dillon Brooks",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-22",
+      "market": "PTS+AST",
+      "player": "Jalen Suggs",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-22",
+      "market": "PTS+AST",
+      "player": "Duncan Robinson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-22",
+      "market": "PTS",
+      "player": "Luguentz Dort",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-22",
+      "market": "3PM",
+      "player": "Isaiah Joe",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-22",
+      "market": "PTS",
+      "player": "Isaiah Hartenstein",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-22",
+      "market": "PTS+AST",
+      "player": "Ajay Mitchell",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-22",
+      "market": "AST",
+      "player": "Jalen Suggs",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-22",
+      "market": "PTS",
+      "player": "Isaiah Joe",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-22",
+      "market": "PTS+AST",
+      "player": "Jalen Green",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-22",
+      "market": "REB",
+      "player": "Cason Wallace",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-22",
+      "market": "AST",
+      "player": "Daniss Jenkins",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-22",
+      "market": "REB",
+      "player": "Shai Gilgeous-Alexander",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-22",
+      "market": "REB",
+      "player": "Desmond Bane",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-22",
+      "market": "AST",
+      "player": "Duncan Robinson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-22",
+      "market": "AST",
+      "player": "Paolo Banchero",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-22",
+      "market": "REB",
+      "player": "Tristan da Silva",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-22",
+      "market": "PTS",
+      "player": "Anthony Black",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-22",
+      "market": "PTS",
+      "player": "Kevin Huerter",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-22",
+      "market": "AST",
+      "player": "Jalen Green",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-22",
+      "market": "3PM",
+      "player": "Alex Caruso",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-22",
+      "market": "AST",
+      "player": "Ausar Thompson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-22",
+      "market": "REB",
+      "player": "Goga Bitadze",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-22",
+      "market": "AST",
+      "player": "Ajay Mitchell",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-23",
+      "market": "REB",
+      "player": "Sandro Mamukelashvili",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-23",
+      "market": "AST",
+      "player": "Mitchell Robinson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-23",
+      "market": "REB",
+      "player": "Rudy Gobert",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-23",
+      "market": "3PM",
+      "player": "James Harden",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-23",
+      "market": "REB",
+      "player": "Dyson Daniels",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-23",
+      "market": "AST",
+      "player": "Jarrett Allen",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-23",
+      "market": "REB",
+      "player": "Scottie Barnes",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-23",
+      "market": "REB+AST",
+      "player": "Josh Hart",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-23",
+      "market": "REB",
+      "player": "Max Strus",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-23",
+      "market": "3PM",
+      "player": "Donte DiVincenzo",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-23",
+      "market": "REB",
+      "player": "Sam Merrill",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-23",
+      "market": "PTS+AST",
+      "player": "Collin Murray-Boyles",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-23",
+      "market": "REB+AST",
+      "player": "Anthony Edwards",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-23",
+      "market": "PTS+AST",
+      "player": "Nickeil Alexander-Walker",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-23",
+      "market": "AST",
+      "player": "Dean Wade",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-23",
+      "market": "PTS+AST",
+      "player": "Evan Mobley",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-23",
+      "market": "REB",
+      "player": "OG Anunoby",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-23",
+      "market": "PTS+AST",
+      "player": "Karl-Anthony Towns",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-23",
+      "market": "PTS+AST",
+      "player": "Cameron Johnson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-23",
+      "market": "PRA",
+      "player": "Ayo Dosunmu",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-23",
+      "market": "PRA",
+      "player": "Bruce Brown",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-23",
+      "market": "REB",
+      "player": "Jamal Murray",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-23",
+      "market": "REB+AST",
+      "player": "Mikal Bridges",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-23",
+      "market": "PTS+AST",
+      "player": "Christian Braun",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-23",
+      "market": "PTS+AST",
+      "player": "Brandon Ingram",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-23",
+      "market": "REB",
+      "player": "James Harden",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-23",
+      "market": "REB",
+      "player": "Tim Hardaway Jr",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-23",
+      "market": "AST",
+      "player": "Dyson Daniels",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-23",
+      "market": "REB+AST",
+      "player": "Jalen Brunson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-23",
+      "market": "REB",
+      "player": "Mikal Bridges",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-23",
+      "market": "PTS",
+      "player": "Bruce Brown",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-23",
+      "market": "PTS",
+      "player": "Jarrett Allen",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-23",
+      "market": "PTS",
+      "player": "Collin Murray-Boyles",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-23",
+      "market": "REB",
+      "player": "Ayo Dosunmu",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-23",
+      "market": "AST",
+      "player": "Jalen Brunson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-23",
+      "market": "AST",
+      "player": "Jamal Murray",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-23",
+      "market": "PTS+REB",
+      "player": "Tim Hardaway Jr",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-23",
+      "market": "REB",
+      "player": "Miles McBride",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-23",
+      "market": "3PM",
+      "player": "Jonathan Kuminga",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-23",
+      "market": "PTS",
+      "player": "Cameron Johnson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-23",
+      "market": "PTS",
+      "player": "Christian Braun",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-23",
+      "market": "PTS",
+      "player": "Miles McBride",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-23",
+      "market": "AST",
+      "player": "Karl-Anthony Towns",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-23",
+      "market": "PTS",
+      "player": "Jordan Clarkson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-23",
+      "market": "AST",
+      "player": "OG Anunoby",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-23",
+      "market": "AST",
+      "player": "Jonathan Kuminga",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-23",
+      "market": "AST",
+      "player": "Scottie Barnes",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-23",
+      "market": "PTS",
+      "player": "Sam Merrill",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-23",
+      "market": "PTS",
+      "player": "Dennis Schroder",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-23",
+      "market": "PTS",
+      "player": "Ja'Kobe Walter",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-23",
+      "market": "AST",
+      "player": "Sandro Mamukelashvili",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-23",
+      "market": "PTS",
+      "player": "Max Strus",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-23",
+      "market": "PTS",
+      "player": "Donte DiVincenzo",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-24",
+      "market": "AST",
+      "player": "Tyrese Maxey",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-24",
+      "market": "REB",
+      "player": "Donovan Clingan",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-24",
+      "market": "REB",
+      "player": "Tari Eason",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-24",
+      "market": "REB",
+      "player": "Quentin Grimes",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-24",
+      "market": "REB",
+      "player": "Devin Vassell",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-24",
+      "market": "REB",
+      "player": "Sam Hauser",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-24",
+      "market": "3PM",
+      "player": "Jayson Tatum",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-24",
+      "market": "PTS+AST",
+      "player": "Scoot Henderson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-24",
+      "market": "AST",
+      "player": "Paul George",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-24",
+      "market": "AST",
+      "player": "Kelly Oubre Jr",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-24",
+      "market": "REB+AST",
+      "player": "Deandre Ayton",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-24",
+      "market": "AST",
+      "player": "Stephon Castle",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-24",
+      "market": "REB",
+      "player": "Jrue Holiday",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-24",
+      "market": "PTS+AST",
+      "player": "Toumani Camara",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-24",
+      "market": "REB",
+      "player": "Keldon Johnson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-24",
+      "market": "REB",
+      "player": "Jaxson Hayes",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-24",
+      "market": "REB",
+      "player": "Jake LaRavia",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-24",
+      "market": "REB",
+      "player": "Josh Okogie",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-24",
+      "market": "REB",
+      "player": "Neemias Queta",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-24",
+      "market": "3PM",
+      "player": "Payton Pritchard",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-24",
+      "market": "PTS+AST",
+      "player": "Payton Pritchard",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-24",
+      "market": "PTS+AST",
+      "player": "Jaylen Brown",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-24",
+      "market": "REB",
+      "player": "De'Aaron Fox",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-24",
+      "market": "PRA",
+      "player": "Marcus Smart",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-24",
+      "market": "3PM",
+      "player": "Reed Sheppard",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-24",
+      "market": "PTS+REB",
+      "player": "Marcus Smart",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-24",
+      "market": "PRA",
+      "player": "Dylan Harper",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-24",
+      "market": "REB+AST",
+      "player": "Sam Hauser",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-24",
+      "market": "PTS+REB",
+      "player": "Shaedon Sharpe",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-24",
+      "market": "REB",
+      "player": "Derrick White",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-24",
+      "market": "PTS+REB",
+      "player": "Luke Kennard",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-24",
+      "market": "3PM",
+      "player": "Alperen Sengun",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-24",
+      "market": "PTS",
+      "player": "Scoot Henderson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-24",
+      "market": "AST",
+      "player": "Jayson Tatum",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-24",
+      "market": "PTS",
+      "player": "Keldon Johnson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-24",
+      "market": "AST",
+      "player": "VJ Edgecombe",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-24",
+      "market": "PTS",
+      "player": "Dylan Harper",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-24",
+      "market": "PTS",
+      "player": "Justin Edwards",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-24",
+      "market": "PTS",
+      "player": "Quentin Grimes",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-24",
+      "market": "AST",
+      "player": "Nikola Vucevic",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-24",
+      "market": "AST",
+      "player": "Neemias Queta",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-24",
+      "market": "AST",
+      "player": "Andre Drummond",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-24",
+      "market": "PTS",
+      "player": "Jaxson Hayes",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-24",
+      "market": "AST",
+      "player": "Deandre Ayton",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-24",
+      "market": "AST",
+      "player": "Rui Hachimura",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-24",
+      "market": "PTS",
+      "player": "Reed Sheppard",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-24",
+      "market": "PTS",
+      "player": "Jerami Grant",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-25",
+      "market": "REB",
+      "player": "Naz Reid",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-25",
+      "market": "3PM",
+      "player": "Donte DiVincenzo",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-25",
+      "market": "REB",
+      "player": "OG Anunoby",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-25",
+      "market": "AST",
+      "player": "Christian Braun",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-25",
+      "market": "REB",
+      "player": "Karl-Anthony Towns",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-25",
+      "market": "REB",
+      "player": "Dyson Daniels",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-25",
+      "market": "PTS+AST",
+      "player": "Ayo Dosunmu",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-25",
+      "market": "REB",
+      "player": "Josh Hart",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-25",
+      "market": "REB",
+      "player": "Jaden McDaniels",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-25",
+      "market": "PTS+AST",
+      "player": "Jalen Duren",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-25",
+      "market": "REB",
+      "player": "Tristan da Silva",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-25",
+      "market": "3PM",
+      "player": "Devin Booker",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-25",
+      "market": "REB",
+      "player": "Anthony Black",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-25",
+      "market": "REB",
+      "player": "Luguentz Dort",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-25",
+      "market": "REB",
+      "player": "Bruce Brown",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-25",
+      "market": "PTS+AST",
+      "player": "Donte DiVincenzo",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-25",
+      "market": "REB",
+      "player": "Ausar Thompson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-25",
+      "market": "REB",
+      "player": "Goga Bitadze",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-25",
+      "market": "AST",
+      "player": "Paolo Banchero",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-25",
+      "market": "3PM",
+      "player": "Jamal Murray",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-25",
+      "market": "REB+AST",
+      "player": "Karl-Anthony Towns",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-25",
+      "market": "PTS",
+      "player": "Cade Cunningham",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-25",
+      "market": "REB",
+      "player": "Shai Gilgeous-Alexander",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-25",
+      "market": "REB",
+      "player": "Collin Gillespie",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-25",
+      "market": "PTS+AST",
+      "player": "Nickeil Alexander-Walker",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-25",
+      "market": "REB",
+      "player": "Duncan Robinson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-25",
+      "market": "REB+AST",
+      "player": "Mikal Bridges",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-25",
+      "market": "REB",
+      "player": "Cameron Johnson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-25",
+      "market": "REB+AST",
+      "player": "Rudy Gobert",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-25",
+      "market": "PTS",
+      "player": "Ajay Mitchell",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-25",
+      "market": "REB",
+      "player": "Franz Wagner",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-25",
+      "market": "PRA",
+      "player": "Jonathan Kuminga",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-25",
+      "market": "AST",
+      "player": "Jalen Suggs",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-25",
+      "market": "3PM",
+      "player": "Jalen Johnson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-25",
+      "market": "3PM",
+      "player": "Onyeka Okongwu",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-25",
+      "market": "PTS",
+      "player": "Devin Booker",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-25",
+      "market": "PTS+AST",
+      "player": "Dillon Brooks",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-25",
+      "market": "3PM",
+      "player": "Chet Holmgren",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-25",
+      "market": "AST",
+      "player": "Ausar Thompson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-25",
+      "market": "PTS",
+      "player": "Bruce Brown",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-25",
+      "market": "REB+AST",
+      "player": "Aaron Gordon",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-25",
+      "market": "PTS",
+      "player": "Nickeil Alexander-Walker",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-25",
+      "market": "3PM",
+      "player": "Royce O'Neale",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-25",
+      "market": "AST",
+      "player": "Aaron Gordon",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-25",
+      "market": "REB",
+      "player": "Ayo Dosunmu",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-25",
+      "market": "PTS",
+      "player": "Anthony Black",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-25",
+      "market": "PTS",
+      "player": "Daniss Jenkins",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-25",
+      "market": "PTS",
+      "player": "Tristan da Silva",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-25",
+      "market": "PTS",
+      "player": "Goga Bitadze",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-25",
+      "market": "AST",
+      "player": "Duncan Robinson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-25",
+      "market": "AST",
+      "player": "Jalen Duren",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-25",
+      "market": "AST",
+      "player": "Isaiah Hartenstein",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-25",
+      "market": "AST",
+      "player": "Collin Gillespie",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-25",
+      "market": "AST",
+      "player": "Dillon Brooks",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-25",
+      "market": "PTS",
+      "player": "Oso Ighodaro",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-25",
+      "market": "AST",
+      "player": "Jalen Green",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-25",
+      "market": "PTS",
+      "player": "Gabe Vincent",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-25",
+      "market": "PTS",
+      "player": "Miles McBride",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-25",
+      "market": "PTS",
+      "player": "Jonathan Kuminga",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-25",
+      "market": "AST",
+      "player": "Cameron Johnson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-25",
+      "market": "AST",
+      "player": "Rudy Gobert",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-25",
+      "market": "PTS",
+      "player": "Tim Hardaway Jr",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-26",
+      "market": "3PM",
+      "player": "Jabari Smith Jr",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-26",
+      "market": "AST",
+      "player": "Reed Sheppard",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-26",
+      "market": "REB",
+      "player": "Alperen Sengun",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-26",
+      "market": "3PM",
+      "player": "Jayson Tatum",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-26",
+      "market": "PTS+AST",
+      "player": "LeBron James",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-26",
+      "market": "AST",
+      "player": "Kelly Oubre Jr",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-26",
+      "market": "REB",
+      "player": "Rui Hachimura",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-26",
+      "market": "PTS+AST",
+      "player": "Amen Thompson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-26",
+      "market": "REB",
+      "player": "VJ Edgecombe",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-26",
+      "market": "PRA",
+      "player": "Luke Kennard",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-26",
+      "market": "REB+AST",
+      "player": "Marcus Smart",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-26",
+      "market": "REB",
+      "player": "Joel Embiid",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-26",
+      "market": "REB",
+      "player": "Quentin Grimes",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-26",
+      "market": "REB",
+      "player": "Jaxson Hayes",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-26",
+      "market": "PTS+REB",
+      "player": "Reed Sheppard",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-26",
+      "market": "AST",
+      "player": "LeBron James",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-26",
+      "market": "3PM",
+      "player": "Payton Pritchard",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-26",
+      "market": "PTS+AST",
+      "player": "Neemias Queta",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-26",
+      "market": "PTS+AST",
+      "player": "Jaylen Brown",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-26",
+      "market": "REB",
+      "player": "Tyrese Maxey",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-26",
+      "market": "3PM",
+      "player": "Joel Embiid",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-26",
+      "market": "AST",
+      "player": "Luke Kennard",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-26",
+      "market": "AST",
+      "player": "Marcus Smart",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-26",
+      "market": "AST",
+      "player": "Payton Pritchard",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-26",
+      "market": "PTS+REB",
+      "player": "Kelly Oubre Jr",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-26",
+      "market": "AST",
+      "player": "VJ Edgecombe",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-26",
+      "market": "3PM",
+      "player": "Nikola Vucevic",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-26",
+      "market": "PRA",
+      "player": "Jordan Walsh",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-26",
+      "market": "PRA",
+      "player": "Baylor Scheierman",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-26",
+      "market": "PTS+REB",
+      "player": "Quentin Grimes",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-26",
+      "market": "AST",
+      "player": "Neemias Queta",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-26",
+      "market": "PTS",
+      "player": "Bronny James",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-26",
+      "market": "AST",
+      "player": "Rui Hachimura",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-26",
+      "market": "AST",
+      "player": "Deandre Ayton",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-26",
+      "market": "PTS",
+      "player": "Josh Okogie",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-26",
+      "market": "PTS",
+      "player": "Jaxson Hayes",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-27",
+      "market": "AST",
+      "player": "Christian Braun",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-27",
+      "market": "AST",
+      "player": "Mike Conley",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-27",
+      "market": "AST",
+      "player": "Anthony Black",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-27",
+      "market": "AST",
+      "player": "Cade Cunningham",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-27",
+      "market": "REB",
+      "player": "Rudy Gobert",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-27",
+      "market": "REB",
+      "player": "Oso Ighodaro",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-27",
+      "market": "REB+AST",
+      "player": "Paolo Banchero",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-27",
+      "market": "REB",
+      "player": "Dillon Brooks",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-27",
+      "market": "PTS+AST",
+      "player": "Shai Gilgeous-Alexander",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-27",
+      "market": "3PM",
+      "player": "Jalen Suggs",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-27",
+      "market": "AST",
+      "player": "Paolo Banchero",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-27",
+      "market": "PTS+AST",
+      "player": "Jalen Green",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-27",
+      "market": "REB",
+      "player": "Jaden McDaniels",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-27",
+      "market": "REB",
+      "player": "Tobias Harris",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-27",
+      "market": "REB",
+      "player": "Wendell Carter Jr",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-27",
+      "market": "PTS+AST",
+      "player": "Devin Booker",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-27",
+      "market": "REB",
+      "player": "Cameron Johnson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-27",
+      "market": "PRA",
+      "player": "Mike Conley",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-27",
+      "market": "PTS+AST",
+      "player": "Franz Wagner",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-27",
+      "market": "REB+AST",
+      "player": "Collin Gillespie",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-27",
+      "market": "3PM",
+      "player": "Cason Wallace",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-27",
+      "market": "REB+AST",
+      "player": "Tobias Harris",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-27",
+      "market": "PTS+AST",
+      "player": "Bones Hyland",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-27",
+      "market": "REB",
+      "player": "Ajay Mitchell",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-27",
+      "market": "REB",
+      "player": "Tim Hardaway Jr",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-27",
+      "market": "REB",
+      "player": "Jaylin Williams",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-27",
+      "market": "REB",
+      "player": "Naz Reid",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-27",
+      "market": "REB+AST",
+      "player": "Ausar Thompson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-27",
+      "market": "3PM",
+      "player": "Desmond Bane",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-27",
+      "market": "PTS+REB",
+      "player": "Javonte Green",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-27",
+      "market": "REB",
+      "player": "Julius Randle",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-27",
+      "market": "REB",
+      "player": "Collin Gillespie",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-27",
+      "market": "3PM",
+      "player": "Bruce Brown",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-27",
+      "market": "3PM",
+      "player": "Jaylin Williams",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-27",
+      "market": "PTS+REB",
+      "player": "Bones Hyland",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-27",
+      "market": "PTS",
+      "player": "Isaiah Joe",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-27",
+      "market": "PTS",
+      "player": "Dillon Brooks",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-27",
+      "market": "PRA",
+      "player": "Tristan da Silva",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-27",
+      "market": "PRA",
+      "player": "Kevin Huerter",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-27",
+      "market": "PRA",
+      "player": "Jamal Cain",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-27",
+      "market": "AST",
+      "player": "Jalen Duren",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-27",
+      "market": "3PM",
+      "player": "Javonte Green",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-27",
+      "market": "PTS",
+      "player": "Goga Bitadze",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-27",
+      "market": "AST",
+      "player": "Ausar Thompson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-27",
+      "market": "PTS",
+      "player": "Grayson Allen",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-27",
+      "market": "AST",
+      "player": "Alex Caruso",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-27",
+      "market": "PTS",
+      "player": "Royce O'Neale",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-27",
+      "market": "PTS",
+      "player": "Oso Ighodaro",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-27",
+      "market": "AST",
+      "player": "Bruce Brown",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-27",
+      "market": "AST",
+      "player": "Rudy Gobert",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-28",
+      "market": "AST",
+      "player": "Paul George",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-28",
+      "market": "AST",
+      "player": "Mikal Bridges",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-28",
+      "market": "AST",
+      "player": "Onyeka Okongwu",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-28",
+      "market": "AST",
+      "player": "Derrick White",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-28",
+      "market": "3PM",
+      "player": "Jayson Tatum",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-28",
+      "market": "AST",
+      "player": "Julian Champagnie",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-28",
+      "market": "AST",
+      "player": "Kelly Oubre Jr",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-28",
+      "market": "AST",
+      "player": "Jordan Clarkson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-28",
+      "market": "REB+AST",
+      "player": "Jerami Grant",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-28",
+      "market": "3PM",
+      "player": "Payton Pritchard",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-28",
+      "market": "REB",
+      "player": "Robert Williams",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-28",
+      "market": "PTS+AST",
+      "player": "Scoot Henderson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-28",
+      "market": "REB",
+      "player": "Donovan Clingan",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-28",
+      "market": "PTS+AST",
+      "player": "Joel Embiid",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-28",
+      "market": "REB",
+      "player": "Dyson Daniels",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-28",
+      "market": "PTS+AST",
+      "player": "Dylan Harper",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-28",
+      "market": "PTS+AST",
+      "player": "De'Aaron Fox",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-28",
+      "market": "AST",
+      "player": "Jerami Grant",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-28",
+      "market": "PTS+AST",
+      "player": "Jrue Holiday",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-28",
+      "market": "REB",
+      "player": "Nikola Vucevic",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-28",
+      "market": "PRA",
+      "player": "Shaedon Sharpe",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-28",
+      "market": "PTS+REB",
+      "player": "Shaedon Sharpe",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-28",
+      "market": "REB",
+      "player": "Keldon Johnson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-28",
+      "market": "REB",
+      "player": "Kelly Oubre Jr",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-28",
+      "market": "REB+AST",
+      "player": "Neemias Queta",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-28",
+      "market": "PTS+AST",
+      "player": "VJ Edgecombe",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-28",
+      "market": "REB",
+      "player": "Josh Hart",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-28",
+      "market": "REB",
+      "player": "OG Anunoby",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-28",
+      "market": "REB",
+      "player": "Jalen Brunson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-28",
+      "market": "PTS+AST",
+      "player": "Miles McBride",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-28",
+      "market": "PTS+AST",
+      "player": "Jonathan Kuminga",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-28",
+      "market": "PTS+AST",
+      "player": "Karl-Anthony Towns",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-28",
+      "market": "REB",
+      "player": "Devin Vassell",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-28",
+      "market": "AST",
+      "player": "Karl-Anthony Towns",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-28",
+      "market": "PTS",
+      "player": "Scoot Henderson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-28",
+      "market": "3PM",
+      "player": "Baylor Scheierman",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-28",
+      "market": "AST",
+      "player": "Neemias Queta",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-28",
+      "market": "REB",
+      "player": "Dylan Harper",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-28",
+      "market": "REB",
+      "player": "Miles McBride",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-28",
+      "market": "PRA",
+      "player": "Luke Kornet",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-28",
+      "market": "AST",
+      "player": "Sam Hauser",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-28",
+      "market": "PRA",
+      "player": "Jordan Walsh",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-28",
+      "market": "3PM",
+      "player": "Nikola Vucevic",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-28",
+      "market": "PRA",
+      "player": "Corey Kispert",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-28",
+      "market": "PRA",
+      "player": "Mouhamed Gueye",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-28",
+      "market": "PTS",
+      "player": "Mitchell Robinson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-28",
+      "market": "3PM",
+      "player": "Gabe Vincent",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-28",
+      "market": "3PM",
+      "player": "Jordan Clarkson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-28",
+      "market": "AST",
+      "player": "Keldon Johnson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-28",
+      "market": "3PM",
+      "player": "Donovan Clingan",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-28",
+      "market": "3PM",
+      "player": "Toumani Camara",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-29",
+      "market": "AST",
+      "player": "Anthony Black",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-29",
+      "market": "PTS+AST",
+      "player": "Scottie Barnes",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-29",
+      "market": "REB",
+      "player": "Paolo Banchero",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-29",
+      "market": "AST",
+      "player": "Desmond Bane",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-29",
+      "market": "PTS+AST",
+      "player": "Austin Reaves",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-29",
+      "market": "REB",
+      "player": "Wendell Carter Jr",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-29",
+      "market": "3PM",
+      "player": "James Harden",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-29",
+      "market": "PTS+AST",
+      "player": "Marcus Smart",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-29",
+      "market": "PTS+AST",
+      "player": "Luke Kennard",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-29",
+      "market": "AST",
+      "player": "Scottie Barnes",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-29",
+      "market": "3PM",
+      "player": "Jabari Smith Jr",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-29",
+      "market": "REB",
+      "player": "Cade Cunningham",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-29",
+      "market": "REB",
+      "player": "Daniss Jenkins",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-29",
+      "market": "AST",
+      "player": "LeBron James",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-29",
+      "market": "REB+AST",
+      "player": "Daniss Jenkins",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-29",
+      "market": "3PM",
+      "player": "Reed Sheppard",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-29",
+      "market": "3PM",
+      "player": "Jalen Suggs",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-29",
+      "market": "AST",
+      "player": "Jarrett Allen",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-29",
+      "market": "PTS+AST",
+      "player": "Rui Hachimura",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-29",
+      "market": "PRA",
+      "player": "Javonte Green",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-29",
+      "market": "PTS+REB",
+      "player": "Collin Murray-Boyles",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-29",
+      "market": "PTS+AST",
+      "player": "Amen Thompson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-29",
+      "market": "REB",
+      "player": "Dean Wade",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-29",
+      "market": "3PM",
+      "player": "Donovan Mitchell",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-29",
+      "market": "REB",
+      "player": "Sam Merrill",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-29",
+      "market": "REB",
+      "player": "Jaxson Hayes",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-29",
+      "market": "PTS+AST",
+      "player": "Evan Mobley",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-29",
+      "market": "REB",
+      "player": "Caris LeVert",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-29",
+      "market": "PTS+AST",
+      "player": "Ausar Thompson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-29",
+      "market": "REB",
+      "player": "Max Strus",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-29",
+      "market": "PTS+REB",
+      "player": "Jaylon Tyson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-29",
+      "market": "REB",
+      "player": "Jaylon Tyson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-29",
+      "market": "REB",
+      "player": "Dorian Finney-Smith",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-29",
+      "market": "AST",
+      "player": "Paolo Banchero",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-29",
+      "market": "PTS+REB",
+      "player": "Jaxson Hayes",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-29",
+      "market": "AST",
+      "player": "Marcus Smart",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-29",
+      "market": "REB",
+      "player": "Goga Bitadze",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-29",
+      "market": "PRA",
+      "player": "Aaron Holiday",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-29",
+      "market": "PRA",
+      "player": "Sandro Mamukelashvili",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-29",
+      "market": "REB+AST",
+      "player": "Tristan da Silva",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-29",
+      "market": "REB",
+      "player": "Desmond Bane",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-29",
+      "market": "REB",
+      "player": "Austin Reaves",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-29",
+      "market": "REB+AST",
+      "player": "Ja'Kobe Walter",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-29",
+      "market": "PTS+REB",
+      "player": "Javonte Green",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-29",
+      "market": "AST",
+      "player": "Wendell Carter Jr",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-29",
+      "market": "PRA",
+      "player": "Jamison Battle",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-29",
+      "market": "PRA",
+      "player": "Dennis Schroder",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-29",
+      "market": "AST",
+      "player": "Collin Murray-Boyles",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-29",
+      "market": "AST",
+      "player": "Luke Kennard",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-29",
+      "market": "REB",
+      "player": "Josh Okogie",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-29",
+      "market": "AST",
+      "player": "Deandre Ayton",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-29",
+      "market": "AST",
+      "player": "Rui Hachimura",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-30",
+      "market": "AST",
+      "player": "Mike Conley",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-30",
+      "market": "AST",
+      "player": "Mikal Bridges",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-30",
+      "market": "REB",
+      "player": "OG Anunoby",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-30",
+      "market": "AST",
+      "player": "Mitchell Robinson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-30",
+      "market": "AST",
+      "player": "Christian Braun",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-30",
+      "market": "PRA",
+      "player": "Jayson Tatum",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-30",
+      "market": "REB",
+      "player": "Sam Hauser",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-30",
+      "market": "AST",
+      "player": "Kelly Oubre Jr",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-30",
+      "market": "3PM",
+      "player": "Bones Hyland",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-30",
+      "market": "AST",
+      "player": "Payton Pritchard",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-30",
+      "market": "REB+AST",
+      "player": "Neemias Queta",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-30",
+      "market": "3PM",
+      "player": "Paul George",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-30",
+      "market": "3PM",
+      "player": "Nickeil Alexander-Walker",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-30",
+      "market": "PTS+AST",
+      "player": "Karl-Anthony Towns",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-30",
+      "market": "PTS",
+      "player": "Jaden McDaniels",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-30",
+      "market": "PTS",
+      "player": "Derrick White",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-30",
+      "market": "3PM",
+      "player": "Joel Embiid",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-30",
+      "market": "REB",
+      "player": "VJ Edgecombe",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-30",
+      "market": "PRA",
+      "player": "Andre Drummond",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-30",
+      "market": "PTS",
+      "player": "Julius Randle",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-30",
+      "market": "REB",
+      "player": "Bruce Brown",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-30",
+      "market": "REB",
+      "player": "Cameron Johnson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-30",
+      "market": "PTS",
+      "player": "Rudy Gobert",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-30",
+      "market": "REB",
+      "player": "Nickeil Alexander-Walker",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-30",
+      "market": "REB",
+      "player": "Jaden McDaniels",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-30",
+      "market": "REB",
+      "player": "Tim Hardaway Jr",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-30",
+      "market": "REB+AST",
+      "player": "Bones Hyland",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-30",
+      "market": "AST",
+      "player": "Rudy Gobert",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-30",
+      "market": "PTS+AST",
+      "player": "Quentin Grimes",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-30",
+      "market": "PRA",
+      "player": "Jonathan Kuminga",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-30",
+      "market": "REB",
+      "player": "Spencer Jones",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-30",
+      "market": "REB",
+      "player": "Dyson Daniels",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-30",
+      "market": "PRA",
+      "player": "Miles McBride",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-30",
+      "market": "PRA",
+      "player": "Jose Alvarado",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-30",
+      "market": "REB",
+      "player": "Jalen Brunson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-30",
+      "market": "REB",
+      "player": "Miles McBride",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-30",
+      "market": "PRA",
+      "player": "Luka Garza",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-30",
+      "market": "PTS+AST",
+      "player": "Neemias Queta",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-30",
+      "market": "PRA",
+      "player": "Jordan Walsh",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-30",
+      "market": "AST",
+      "player": "Bruce Brown",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-30",
+      "market": "AST",
+      "player": "Karl-Anthony Towns",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-30",
+      "market": "PRA",
+      "player": "Corey Kispert",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-30",
+      "market": "PTS",
+      "player": "Mitchell Robinson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-30",
+      "market": "PTS",
+      "player": "Jonathan Kuminga",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-30",
+      "market": "3PM",
+      "player": "Gabe Vincent",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-30",
+      "market": "PRA",
+      "player": "Baylor Scheierman",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-04-30",
+      "market": "REB",
+      "player": "Nikola Vucevic",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-01",
+      "market": "AST",
+      "player": "Max Strus",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-01",
+      "market": "AST",
+      "player": "Anthony Black",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-01",
+      "market": "REB",
+      "player": "Cade Cunningham",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-01",
+      "market": "3PM",
+      "player": "Donovan Mitchell",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-01",
+      "market": "REB",
+      "player": "Tobias Harris",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-01",
+      "market": "REB",
+      "player": "Ausar Thompson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-01",
+      "market": "3PM",
+      "player": "Reed Sheppard",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-01",
+      "market": "REB",
+      "player": "Paolo Banchero",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-01",
+      "market": "3PM",
+      "player": "James Harden",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-01",
+      "market": "REB",
+      "player": "Dean Wade",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-01",
+      "market": "3PM",
+      "player": "Jalen Suggs",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-01",
+      "market": "REB",
+      "player": "Sandro Mamukelashvili",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-01",
+      "market": "AST",
+      "player": "Scottie Barnes",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-01",
+      "market": "REB",
+      "player": "Desmond Bane",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-01",
+      "market": "AST",
+      "player": "LeBron James",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-01",
+      "market": "PTS+AST",
+      "player": "Marcus Smart",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-01",
+      "market": "PTS",
+      "player": "Austin Reaves",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-01",
+      "market": "REB",
+      "player": "Tristan da Silva",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-01",
+      "market": "3PM",
+      "player": "Rui Hachimura",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-01",
+      "market": "PRA",
+      "player": "Caris LeVert",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-01",
+      "market": "REB",
+      "player": "Daniss Jenkins",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-01",
+      "market": "REB",
+      "player": "Jamal Shead",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-01",
+      "market": "AST",
+      "player": "Marcus Smart",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-01",
+      "market": "AST",
+      "player": "Daniss Jenkins",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-01",
+      "market": "PTS+AST",
+      "player": "Luke Kennard",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-01",
+      "market": "AST",
+      "player": "Sam Merrill",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-01",
+      "market": "PTS",
+      "player": "Ja'Kobe Walter",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-01",
+      "market": "REB",
+      "player": "Tari Eason",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-01",
+      "market": "PTS+AST",
+      "player": "Collin Murray-Boyles",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-01",
+      "market": "REB",
+      "player": "Caris LeVert",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-01",
+      "market": "REB",
+      "player": "Max Strus",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-01",
+      "market": "REB",
+      "player": "Jaxson Hayes",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-01",
+      "market": "REB",
+      "player": "Dorian Finney-Smith",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-01",
+      "market": "AST",
+      "player": "Evan Mobley",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-01",
+      "market": "REB",
+      "player": "Goga Bitadze",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-01",
+      "market": "REB",
+      "player": "Josh Okogie",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-01",
+      "market": "REB",
+      "player": "Jaylon Tyson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-01",
+      "market": "REB+AST",
+      "player": "Luke Kennard",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-01",
+      "market": "AST",
+      "player": "Dennis Schroder",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-01",
+      "market": "PRA",
+      "player": "Tristan da Silva",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-01",
+      "market": "PRA",
+      "player": "Javonte Green",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-01",
+      "market": "AST",
+      "player": "Wendell Carter Jr",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-01",
+      "market": "AST",
+      "player": "Jalen Duren",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-01",
+      "market": "PTS",
+      "player": "Dean Wade",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-01",
+      "market": "AST",
+      "player": "Collin Murray-Boyles",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-01",
+      "market": "PRA",
+      "player": "Jake LaRavia",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-01",
+      "market": "PTS",
+      "player": "Jaxson Hayes",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-01",
+      "market": "AST",
+      "player": "Rui Hachimura",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-01",
+      "market": "AST",
+      "player": "Deandre Ayton",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-01",
+      "market": "AST",
+      "player": "Jabari Smith Jr",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-02",
+      "market": "REB",
+      "player": "Sam Hauser",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-02",
+      "market": "AST",
+      "player": "Jaylen Brown",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-02",
+      "market": "REB+AST",
+      "player": "Derrick White",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-02",
+      "market": "AST",
+      "player": "Kelly Oubre Jr",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-02",
+      "market": "3PM",
+      "player": "Tyrese Maxey",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-02",
+      "market": "REB",
+      "player": "VJ Edgecombe",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-02",
+      "market": "REB",
+      "player": "Neemias Queta",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-02",
+      "market": "REB",
+      "player": "Quentin Grimes",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-02",
+      "market": "PRA",
+      "player": "Andre Drummond",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-02",
+      "market": "PRA",
+      "player": "Justin Edwards",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-02",
+      "market": "PRA",
+      "player": "Jordan Walsh",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-02",
+      "market": "PRA",
+      "player": "Luka Garza",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-02",
+      "market": "PRA",
+      "player": "Baylor Scheierman",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-03",
+      "market": "REB",
+      "player": "Ausar Thompson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-03",
+      "market": "AST",
+      "player": "Collin Murray-Boyles",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-03",
+      "market": "REB+AST",
+      "player": "Jamal Shead",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-03",
+      "market": "REB+AST",
+      "player": "Wendell Carter Jr",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-03",
+      "market": "PTS+REB",
+      "player": "Cade Cunningham",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-03",
+      "market": "AST",
+      "player": "Max Strus",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-03",
+      "market": "PRA",
+      "player": "Jalen Duren",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-03",
+      "market": "REB+AST",
+      "player": "Donovan Mitchell",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-03",
+      "market": "AST",
+      "player": "Anthony Black",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-03",
+      "market": "REB+AST",
+      "player": "Paolo Banchero",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-03",
+      "market": "PTS+REB",
+      "player": "Tobias Harris",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-03",
+      "market": "REB",
+      "player": "Jamal Shead",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-03",
+      "market": "AST",
+      "player": "Evan Mobley",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-03",
+      "market": "REB+AST",
+      "player": "Ja'Kobe Walter",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-03",
+      "market": "PTS",
+      "player": "Scottie Barnes",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-03",
+      "market": "REB",
+      "player": "Jakob Poeltl",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-03",
+      "market": "PTS",
+      "player": "Desmond Bane",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-03",
+      "market": "AST",
+      "player": "Daniss Jenkins",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-03",
+      "market": "AST",
+      "player": "Jarrett Allen",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-03",
+      "market": "3PM",
+      "player": "Jalen Suggs",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-03",
+      "market": "AST",
+      "player": "Duncan Robinson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-03",
+      "market": "PRA",
+      "player": "Sandro Mamukelashvili",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-03",
+      "market": "PTS+AST",
+      "player": "Jalen Duren",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-03",
+      "market": "PTS",
+      "player": "Cade Cunningham",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-03",
+      "market": "AST",
+      "player": "Ausar Thompson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-03",
+      "market": "REB",
+      "player": "Tristan da Silva",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-03",
+      "market": "PRA",
+      "player": "Javonte Green",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-03",
+      "market": "AST",
+      "player": "Tobias Harris",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-03",
+      "market": "PRA",
+      "player": "Sam Merrill",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-03",
+      "market": "AST",
+      "player": "Dennis Schroder",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-04",
+      "market": "REB",
+      "player": "Naz Reid",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-04",
+      "market": "REB",
+      "player": "OG Anunoby",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-04",
+      "market": "AST",
+      "player": "Josh Hart",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-04",
+      "market": "REB+AST",
+      "player": "Mikal Bridges",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-04",
+      "market": "AST",
+      "player": "Mikal Bridges",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-04",
+      "market": "REB",
+      "player": "Andre Drummond",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-04",
+      "market": "AST",
+      "player": "De'Aaron Fox",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-04",
+      "market": "REB",
+      "player": "Jaden McDaniels",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-04",
+      "market": "REB",
+      "player": "Luke Kornet",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-04",
+      "market": "REB",
+      "player": "Julius Randle",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-04",
+      "market": "REB",
+      "player": "Mike Conley",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-04",
+      "market": "REB",
+      "player": "Mitchell Robinson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-04",
+      "market": "PTS+AST",
+      "player": "VJ Edgecombe",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-04",
+      "market": "REB",
+      "player": "Keldon Johnson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-04",
+      "market": "AST",
+      "player": "Dylan Harper",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-04",
+      "market": "REB+AST",
+      "player": "Rudy Gobert",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-04",
+      "market": "REB+AST",
+      "player": "Victor Wembanyama",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-04",
+      "market": "REB",
+      "player": "Joel Embiid",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-04",
+      "market": "REB",
+      "player": "Dylan Harper",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-04",
+      "market": "PTS+AST",
+      "player": "Anthony Edwards",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-04",
+      "market": "REB",
+      "player": "Kelly Oubre Jr",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-04",
+      "market": "AST",
+      "player": "VJ Edgecombe",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-04",
+      "market": "PTS+AST",
+      "player": "Miles McBride",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-04",
+      "market": "REB",
+      "player": "Quentin Grimes",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-04",
+      "market": "AST",
+      "player": "Karl-Anthony Towns",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-04",
+      "market": "PTS",
+      "player": "Quentin Grimes",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-04",
+      "market": "REB",
+      "player": "Miles McBride",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-04",
+      "market": "PTS+AST",
+      "player": "Kelly Oubre Jr",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-04",
+      "market": "REB",
+      "player": "Tyrese Maxey",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-04",
+      "market": "PTS",
+      "player": "Luke Kornet",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-04",
+      "market": "AST",
+      "player": "Rudy Gobert",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-05",
+      "market": "AST",
+      "player": "Donovan Mitchell",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-05",
+      "market": "REB",
+      "player": "Dean Wade",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-05",
+      "market": "REB",
+      "player": "Tobias Harris",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-05",
+      "market": "PTS",
+      "player": "Jalen Duren",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-05",
+      "market": "AST",
+      "player": "Jarrett Allen",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-05",
+      "market": "REB",
+      "player": "Rui Hachimura",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-05",
+      "market": "REB+AST",
+      "player": "Max Strus",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-05",
+      "market": "REB",
+      "player": "Deandre Ayton",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-05",
+      "market": "AST",
+      "player": "Evan Mobley",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-05",
+      "market": "REB",
+      "player": "Ausar Thompson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-05",
+      "market": "REB",
+      "player": "Shai Gilgeous-Alexander",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-05",
+      "market": "AST",
+      "player": "LeBron James",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-05",
+      "market": "PTS+AST",
+      "player": "Ajay Mitchell",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-05",
+      "market": "AST",
+      "player": "Luguentz Dort",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-05",
+      "market": "REB+AST",
+      "player": "Marcus Smart",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-05",
+      "market": "AST",
+      "player": "Sam Merrill",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-05",
+      "market": "REB+AST",
+      "player": "Duncan Robinson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-05",
+      "market": "AST",
+      "player": "Luke Kennard",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-05",
+      "market": "REB",
+      "player": "Jaxson Hayes",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-05",
+      "market": "REB",
+      "player": "Isaiah Hartenstein",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-05",
+      "market": "REB",
+      "player": "Jake LaRavia",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-05",
+      "market": "REB",
+      "player": "Cason Wallace",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-05",
+      "market": "AST",
+      "player": "Marcus Smart",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-05",
+      "market": "AST",
+      "player": "Daniss Jenkins",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-05",
+      "market": "AST",
+      "player": "Jalen Duren",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-05",
+      "market": "REB+AST",
+      "player": "Luke Kennard",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-05",
+      "market": "AST",
+      "player": "Duncan Robinson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-05",
+      "market": "REB",
+      "player": "Jaylon Tyson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-05",
+      "market": "AST",
+      "player": "Rui Hachimura",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-05",
+      "market": "PTS",
+      "player": "Isaiah Joe",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-05",
+      "market": "REB",
+      "player": "Alex Caruso",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-05",
+      "market": "REB",
+      "player": "Jaylin Williams",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-06",
+      "market": "AST",
+      "player": "De'Aaron Fox",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-06",
+      "market": "PTS+AST",
+      "player": "Josh Hart",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-06",
+      "market": "AST",
+      "player": "Dylan Harper",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-06",
+      "market": "3PM",
+      "player": "Paul George",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-06",
+      "market": "REB",
+      "player": "Karl-Anthony Towns",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-06",
+      "market": "REB",
+      "player": "Julius Randle",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-06",
+      "market": "PTS+AST",
+      "player": "Kelly Oubre Jr",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-06",
+      "market": "REB+AST",
+      "player": "Jalen Brunson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-06",
+      "market": "PTS",
+      "player": "Kelly Oubre Jr",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-06",
+      "market": "REB+AST",
+      "player": "Naz Reid",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-06",
+      "market": "REB+AST",
+      "player": "Quentin Grimes",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-06",
+      "market": "3PM",
+      "player": "Stephon Castle",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-06",
+      "market": "REB+AST",
+      "player": "Mike Conley",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-06",
+      "market": "REB",
+      "player": "OG Anunoby",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-06",
+      "market": "REB",
+      "player": "Jaden McDaniels",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-06",
+      "market": "AST",
+      "player": "Karl-Anthony Towns",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-06",
+      "market": "REB+AST",
+      "player": "Devin Vassell",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-06",
+      "market": "REB+AST",
+      "player": "Rudy Gobert",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-06",
+      "market": "PTS+AST",
+      "player": "Julian Champagnie",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-06",
+      "market": "AST",
+      "player": "Naz Reid",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-06",
+      "market": "AST",
+      "player": "Quentin Grimes",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-06",
+      "market": "REB",
+      "player": "Adem Bona",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-06",
+      "market": "AST",
+      "player": "Mike Conley",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-06",
+      "market": "AST",
+      "player": "Miles McBride",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-06",
+      "market": "3PM",
+      "player": "Andre Drummond",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-06",
+      "market": "REB",
+      "player": "Anthony Edwards",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-06",
+      "market": "REB",
+      "player": "Luke Kornet",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-06",
+      "market": "PRA",
+      "player": "Jose Alvarado",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-06",
+      "market": "REB",
+      "player": "Ayo Dosunmu",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-06",
+      "market": "REB",
+      "player": "Tyrese Maxey",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-06",
+      "market": "PRA",
+      "player": "Miles McBride",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-06",
+      "market": "PRA",
+      "player": "Terrence Shannon Jr.",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-06",
+      "market": "REB",
+      "player": "Devin Vassell",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-06",
+      "market": "AST",
+      "player": "Rudy Gobert",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-08",
+      "market": "AST",
+      "player": "Devin Vassell",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-08",
+      "market": "REB",
+      "player": "Jalen Brunson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-08",
+      "market": "PTS+AST",
+      "player": "Josh Hart",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-08",
+      "market": "AST",
+      "player": "Anthony Edwards",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-08",
+      "market": "REB+AST",
+      "player": "Mikal Bridges",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-08",
+      "market": "AST",
+      "player": "Jaden McDaniels",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-08",
+      "market": "PTS+AST",
+      "player": "Miles McBride",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-08",
+      "market": "REB",
+      "player": "Stephon Castle",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-08",
+      "market": "REB+AST",
+      "player": "Quentin Grimes",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-08",
+      "market": "PTS",
+      "player": "Josh Hart",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-08",
+      "market": "REB+AST",
+      "player": "Kelly Oubre Jr",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-08",
+      "market": "REB+AST",
+      "player": "Keldon Johnson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-08",
+      "market": "PTS+AST",
+      "player": "Julian Champagnie",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-08",
+      "market": "REB",
+      "player": "Naz Reid",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-08",
+      "market": "REB+AST",
+      "player": "Rudy Gobert",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-08",
+      "market": "REB",
+      "player": "Miles McBride",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-08",
+      "market": "REB+AST",
+      "player": "Dylan Harper",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-08",
+      "market": "AST",
+      "player": "Karl-Anthony Towns",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-08",
+      "market": "PRA",
+      "player": "Terrence Shannon Jr.",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-08",
+      "market": "REB",
+      "player": "Dylan Harper",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-08",
+      "market": "3PM",
+      "player": "Paul George",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-08",
+      "market": "AST",
+      "player": "Joel Embiid",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-08",
+      "market": "REB",
+      "player": "Tyrese Maxey",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-08",
+      "market": "AST",
+      "player": "Quentin Grimes",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-08",
+      "market": "REB",
+      "player": "Luke Kornet",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-08",
+      "market": "REB",
+      "player": "Devin Vassell",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-08",
+      "market": "PTS",
+      "player": "Terrence Shannon Jr.",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-08",
+      "market": "PTS",
+      "player": "Ayo Dosunmu",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-08",
+      "market": "AST",
+      "player": "Rudy Gobert",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-08",
+      "market": "REB",
+      "player": "Mike Conley",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-08",
+      "market": "PRA",
+      "player": "Harrison Barnes",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-09",
+      "market": "REB",
+      "player": "Donovan Mitchell",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-09",
+      "market": "REB",
+      "player": "Max Strus",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-09",
+      "market": "REB",
+      "player": "Tobias Harris",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-09",
+      "market": "REB+AST",
+      "player": "Marcus Smart",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-09",
+      "market": "3PM",
+      "player": "Duncan Robinson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-09",
+      "market": "REB",
+      "player": "Dean Wade",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-09",
+      "market": "REB",
+      "player": "Alex Caruso",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-09",
+      "market": "AST",
+      "player": "Ajay Mitchell",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-09",
+      "market": "REB+AST",
+      "player": "Cason Wallace",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-09",
+      "market": "REB",
+      "player": "Ausar Thompson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-09",
+      "market": "REB+AST",
+      "player": "Deandre Ayton",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-09",
+      "market": "REB",
+      "player": "Chet Holmgren",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-09",
+      "market": "REB",
+      "player": "Shai Gilgeous-Alexander",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-09",
+      "market": "3PM",
+      "player": "Rui Hachimura",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-09",
+      "market": "REB",
+      "player": "Luke Kennard",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-09",
+      "market": "AST",
+      "player": "Daniss Jenkins",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-09",
+      "market": "AST",
+      "player": "Cade Cunningham",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-09",
+      "market": "PTS",
+      "player": "Jaylon Tyson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-09",
+      "market": "AST",
+      "player": "Cason Wallace",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-09",
+      "market": "AST",
+      "player": "Dean Wade",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-09",
+      "market": "AST",
+      "player": "Duncan Robinson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-09",
+      "market": "PTS+REB",
+      "player": "Luguentz Dort",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-09",
+      "market": "AST",
+      "player": "Marcus Smart",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-09",
+      "market": "PRA",
+      "player": "Jared McCain",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-09",
+      "market": "REB",
+      "player": "Daniss Jenkins",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-09",
+      "market": "AST",
+      "player": "Jalen Duren",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-09",
+      "market": "AST",
+      "player": "Luguentz Dort",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-09",
+      "market": "PRA",
+      "player": "Caris LeVert",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-09",
+      "market": "AST",
+      "player": "Jaylon Tyson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-09",
+      "market": "PTS",
+      "player": "Isaiah Joe",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-09",
+      "market": "AST",
+      "player": "Deandre Ayton",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-10",
+      "market": "AST",
+      "player": "Devin Vassell",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-10",
+      "market": "AST",
+      "player": "Anthony Edwards",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-10",
+      "market": "AST",
+      "player": "Victor Wembanyama",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-10",
+      "market": "AST",
+      "player": "Stephon Castle",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-10",
+      "market": "AST",
+      "player": "Jaden McDaniels",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-10",
+      "market": "AST",
+      "player": "Dylan Harper",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-10",
+      "market": "REB",
+      "player": "Naz Reid",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-10",
+      "market": "AST",
+      "player": "De'Aaron Fox",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-10",
+      "market": "REB",
+      "player": "Jaden McDaniels",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-10",
+      "market": "REB+AST",
+      "player": "Julian Champagnie",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-10",
+      "market": "REB",
+      "player": "Dylan Harper",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-10",
+      "market": "REB",
+      "player": "Terrence Shannon Jr.",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-10",
+      "market": "REB",
+      "player": "Keldon Johnson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-10",
+      "market": "REB",
+      "player": "Julian Champagnie",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-10",
+      "market": "PTS",
+      "player": "Terrence Shannon Jr.",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-10",
+      "market": "REB",
+      "player": "Devin Vassell",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-10",
+      "market": "AST",
+      "player": "Naz Reid",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-10",
+      "market": "AST",
+      "player": "Rudy Gobert",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-11",
+      "market": "AST",
+      "player": "Donovan Mitchell",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-11",
+      "market": "REB",
+      "player": "Shai Gilgeous-Alexander",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-11",
+      "market": "REB",
+      "player": "Max Strus",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-11",
+      "market": "3PM",
+      "player": "Rui Hachimura",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-11",
+      "market": "REB+AST",
+      "player": "Ajay Mitchell",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-11",
+      "market": "REB",
+      "player": "Austin Reaves",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-11",
+      "market": "AST",
+      "player": "LeBron James",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-11",
+      "market": "AST",
+      "player": "Ajay Mitchell",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-11",
+      "market": "PTS+AST",
+      "player": "Tobias Harris",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-11",
+      "market": "AST",
+      "player": "Tobias Harris",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-11",
+      "market": "REB",
+      "player": "Alex Caruso",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-11",
+      "market": "PRA",
+      "player": "Duncan Robinson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-11",
+      "market": "3PM",
+      "player": "Duncan Robinson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-11",
+      "market": "AST",
+      "player": "Evan Mobley",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-11",
+      "market": "AST",
+      "player": "Rui Hachimura",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-11",
+      "market": "REB+AST",
+      "player": "Cade Cunningham",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-11",
+      "market": "PRA",
+      "player": "Cason Wallace",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-11",
+      "market": "3PM",
+      "player": "Luguentz Dort",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-11",
+      "market": "REB+AST",
+      "player": "Marcus Smart",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-11",
+      "market": "AST",
+      "player": "Daniss Jenkins",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-11",
+      "market": "PTS",
+      "player": "Daniss Jenkins",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-11",
+      "market": "REB+AST",
+      "player": "Deandre Ayton",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-11",
+      "market": "AST",
+      "player": "Ausar Thompson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-11",
+      "market": "REB",
+      "player": "Luke Kennard",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-11",
+      "market": "REB",
+      "player": "Cade Cunningham",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-11",
+      "market": "REB",
+      "player": "James Harden",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-11",
+      "market": "PRA",
+      "player": "Dean Wade",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-11",
+      "market": "AST",
+      "player": "Cason Wallace",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-11",
+      "market": "AST",
+      "player": "Deandre Ayton",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-11",
+      "market": "PTS",
+      "player": "Dean Wade",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-11",
+      "market": "3PM",
+      "player": "Jaylon Tyson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-11",
+      "market": "AST",
+      "player": "Marcus Smart",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-11",
+      "market": "PTS",
+      "player": "Isaiah Joe",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-11",
+      "market": "AST",
+      "player": "Luguentz Dort",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-12",
+      "market": "AST",
+      "player": "Anthony Edwards",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-12",
+      "market": "AST",
+      "player": "Devin Vassell",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-12",
+      "market": "AST",
+      "player": "Naz Reid",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-12",
+      "market": "AST",
+      "player": "Victor Wembanyama",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-12",
+      "market": "AST",
+      "player": "Dylan Harper",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-12",
+      "market": "REB",
+      "player": "Rudy Gobert",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-12",
+      "market": "REB",
+      "player": "Julian Champagnie",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-12",
+      "market": "REB",
+      "player": "Julius Randle",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-12",
+      "market": "REB",
+      "player": "Dylan Harper",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-12",
+      "market": "REB",
+      "player": "Keldon Johnson",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-12",
+      "market": "REB",
+      "player": "Terrence Shannon Jr.",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-12",
+      "market": "PTS",
+      "player": "Mike Conley",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-12",
+      "market": "PTS",
+      "player": "Terrence Shannon Jr.",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-12",
+      "market": "REB",
+      "player": "Luke Kornet",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    },
+    {
+      "date": "2026-05-12",
+      "market": "AST",
+      "player": "Rudy Gobert",
+      "reason": "unknown_price_reason",
+      "run_id": null
+    }
+  ],
+  "model_version_counts": {
+    "UNKNOWN": 956
+  },
+  "no_closing_snapshot_rows": 0,
+  "overall": {
+    "break_even_win_rate_at_actual_prices": null,
+    "clv": {
+      "implied_probability_clv": {
+        "mean": null,
+        "mean_bootstrap_95": null,
+        "positive_rate": null,
+        "positive_rate_wilson_95": null,
+        "rows": 0
+      },
+      "line_clv": {
+        "mean": null,
+        "mean_bootstrap_95": null,
+        "positive_rate": null,
+        "positive_rate_wilson_95": null,
+        "rows": 0
+      },
+      "raw_implied_probability_clv": {
+        "mean": null,
+        "mean_bootstrap_95": null,
+        "positive_rate": null,
+        "positive_rate_wilson_95": null,
+        "rows": 0
+      }
+    },
+    "decisions": 0,
+    "hits": 0,
+    "misses": 0,
+    "paper_roi": null,
+    "paper_roi_bootstrap_95": null,
+    "paper_units_staked": 0,
+    "verified_price_rows": 0,
+    "win_rate": null,
+    "win_rate_wilson_95": null
+  },
+  "paper_only": true,
+  "prospective_verified_rows": 0,
+  "unavailable_prop_event_stages": {
+    "market_unavailable": 2
+  },
+  "unique_bet_rows": 956,
+  "verified_model_version_counts": {},
+  "verified_price_rows": 0,
+  "verified_rows_needed": 200,
+  "verified_settled_rows": 0,
+  "week_start": "2026-09-29",
+  "weekly": {
+    "by_market_direction": [],
+    "overall": {
+      "break_even_win_rate_at_actual_prices": null,
+      "clv": {
+        "implied_probability_clv": {
+          "mean": null,
+          "mean_bootstrap_95": null,
+          "positive_rate": null,
+          "positive_rate_wilson_95": null,
+          "rows": 0
+        },
+        "line_clv": {
+          "mean": null,
+          "mean_bootstrap_95": null,
+          "positive_rate": null,
+          "positive_rate_wilson_95": null,
+          "rows": 0
+        },
+        "raw_implied_probability_clv": {
+          "mean": null,
+          "mean_bootstrap_95": null,
+          "positive_rate": null,
+          "positive_rate_wilson_95": null,
+          "rows": 0
+        }
+      },
+      "decisions": 0,
+      "hits": 0,
+      "misses": 0,
+      "paper_roi": null,
+      "paper_roi_bootstrap_95": null,
+      "paper_units_staked": 0,
+      "verified_price_rows": 0,
+      "win_rate": null,
+      "win_rate_wilson_95": null
+    }
+  }
+}

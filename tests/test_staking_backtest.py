@@ -15,6 +15,7 @@ def row(day="2026-05-01", result="HIT", **updates):
         "date": day, "market": "PTS", "pick": "OVER", "result": result,
         "p_model": 0.60, "p_market": 0.50, "vig_pct": 4.0,
         "entry_decimal_odds": 2.0,
+        "odds_source": "legacy_odds_tracker_exact_line_consensus",
     }
     value.update(updates)
     return value
