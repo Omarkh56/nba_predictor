@@ -1091,7 +1091,11 @@ def main(check_date=None, predictions=None) -> int:
         game_results = build_game_results(check_date)
         if game_results is None:
             print("\n  ⚠  Game grading FAILED: stats.nba.com unreachable. Nothing was written.")
-            run.stage("game_results", "fetch_failed", error="stats.nba.com unreachable")
+            # required=True: this branch only runs when there ARE game_preds waiting to be
+            # graded, so a fetch failure here means nothing gradable that day got graded at
+            # all — the same complete-failure shape as the box_scores stage above, not a
+            # partial day.
+            run.stage("game_results", "fetch_failed", required=True, error="stats.nba.com unreachable")
         else:
             graded_games = check_game_predictions(game_preds, game_results)
             print_game_results(graded_games, check_date)
