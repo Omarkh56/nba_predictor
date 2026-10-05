@@ -960,7 +960,7 @@ def export_game_picks_db(team_preds: list, game_date: date) -> None:
     print(f"  Saved {n} game pick(s) → predictions.db")
 
 
-def export_picks_db(all_picks: list, game_date: date) -> None:
+def export_picks_db(all_picks: list, game_date: date, *, run_id=None) -> None:
     """Deduplicate and upsert prop picks into predictions.db."""
     if not all_picks:
         return
@@ -977,7 +977,8 @@ def export_picks_db(all_picks: list, game_date: date) -> None:
         if key not in seen or p["confidence"] > seen[key]["confidence"]:
             seen[key] = p
     final = sorted(seen.values(), key=lambda x: x["confidence"], reverse=True)
-    n = pred_db.upsert_prop_predictions(final, game_date)
+    kwargs = {"run_id": run_id} if run_id is not None else {}
+    n = pred_db.upsert_prop_predictions(final, game_date, **kwargs)
     print(f"\n  Saved {n} pick(s) → predictions.db")
 
 
@@ -1198,7 +1199,7 @@ def _process_single_game(
 
 
 def _print_global_summary(
-    team_preds: list, all_props_results: list, all_picks_export: list, game_date
+    team_preds: list, all_props_results: list, all_picks_export: list, game_date, *, run_id=None
 ) -> None:
     """Print the end-of-run summary: game picks table + top props + exports."""
     print(f"\n{'═' * WIDTH}")
@@ -1276,7 +1277,7 @@ def _print_global_summary(
         _print_top("TOP 10 BY CONFIDENCE  most likely to hit", top_conf)
         _print_top("TOP 10 — RANKED  mkt-edge vs. devig market, else Edge%", top_edge)
 
-    export_picks_db(all_picks_export, game_date)
+    export_picks_db(all_picks_export, game_date, run_id=run_id)
     export_game_picks_db(team_preds, game_date)
     if all_picks_export:
         print("  Run calibrate.py after grading to keep the model improving.")
@@ -1384,7 +1385,7 @@ def main(argv=None) -> int:
         all_props_results.extend(results)
     _record_props_stages(run, matchups, all_events)
 
-    _print_global_summary(team_preds, all_props_results, all_picks_export, game_date)
+    _print_global_summary(team_preds, all_props_results, all_picks_export, game_date, run_id=run.run_id)
     record = run.finish(picks=len(all_picks_export), props_analyzed=len(all_props_results))
     print(f"  Run {record['run_id']}: {record['status']} → {run.path.name}")
     print(f"{'═' * WIDTH}\n")

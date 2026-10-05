@@ -3,14 +3,17 @@ predictions_db.py — SQLite persistence for NBA predictions.
 
 Replaces the per-day predictions_YYYY-MM-DD.json and
 game_predictions_YYYY-MM-DD.json files with a single predictions.db
-database.  Writing upserts on (date, player, market) / (date, home, away)
-so re-running the same day overwrites cleanly.
+database. Props freeze the first priced entry and retain each run's proposal;
+game predictions still upsert on (date, home, away).
 """
 
 import sqlite3
 from datetime import date
 from pathlib import Path
 from typing import List
+
+from finance import ensure_finance_fields, valid_decimal_odds
+from run_log import RunLog
 
 DB_PATH = Path(__file__).parent / "predictions.db"
 
@@ -25,6 +28,7 @@ PROP_FINANCE_FIELDS = (
 )
 
 PROP_PROVENANCE_FIELDS = (
+    "run_id",
     "rs_raw_count",
     "rs_usable_count",
     "po_raw_count",
@@ -43,7 +47,7 @@ PROP_PROVENANCE_FIELDS = (
 )
 
 PROP_WRITE_FIELDS = (
-    "game", "player", "market", "line", "pick", "projection", "confidence",
+    "run_id", "game", "player", "market", "line", "pick", "projection", "confidence",
     "p_model", "edge_pct", "flags", "po_count", "avg_min", "book_count",
     "usg_pct", "game_spread", "game_total", "game_pace", "fav_win_pct",
     "p_market", "decimal_odds", "stake_pct", "rs_raw_count", "rs_usable_count",
@@ -100,6 +104,7 @@ CREATE TABLE IF NOT EXISTS prop_predictions (
 # EXISTS is a no-op on an already-existing table, so a real DB created before
 # a given column existed needs an explicit ALTER TABLE. Add new columns here.
 _MIGRATIONS = [
+    ("prop_predictions", "run_id", "TEXT"),
     ("prop_predictions", "p_model", "REAL"),
     ("prop_predictions", "p_market", "REAL"),
     ("prop_predictions", "decimal_odds", "REAL"),
@@ -177,29 +182,61 @@ def _connect(path: Path = DB_PATH) -> sqlite3.Connection:
         existing = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
         if col not in existing:
             conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {coltype}")
+    identity = {"run_id", "date", "player", "market"}
+    definitions = [f"{row[1]} {row[2]}" + (" NOT NULL" if row[1] in identity else "")
+                   for row in conn.execute("PRAGMA table_info(prop_predictions)")]
+    conn.execute("CREATE TABLE IF NOT EXISTS pick_runs (" + ", ".join(definitions) +
+                 ", paper_stake REAL, PRIMARY KEY (run_id, date, player, market))")
+    for operation in ("UPDATE", "DELETE"):
+        conn.execute(f"CREATE TRIGGER IF NOT EXISTS pick_runs_no_{operation.lower()} "
+                     f"BEFORE {operation} ON pick_runs BEGIN "
+                     "SELECT RAISE(ABORT, 'pick_runs is append-only'); END")
     conn.commit()
     return conn
 
 
-def upsert_prop_predictions(rows: List[dict], game_date: date, path: Path = DB_PATH) -> int:
-    """Insert or replace prop pick rows for game_date. Returns row count written."""
+def upsert_prop_predictions(rows: List[dict], game_date: date, path: Path = DB_PATH,
+                            *, run_id=None) -> int:
+    """Freeze the first priced pick; append every run's proposal atomically.
+
+    Unpriced proposals may change until the first valid entry price arrives.
+    Once priced, the whole pick stays fixed so reruns cannot change grading.
+    Direct callers get their own RunLog; the daily CLI passes its run_id.
+    """
     if not rows:
         return 0
     date_str = game_date.isoformat()
+    own_run = None
+    if run_id is None:
+        own_run = RunLog("prop_predictions", game_date, path=Path(path).parent / "run_log.jsonl")
+        run_id = own_run.run_id
+    if not isinstance(run_id, str) or not run_id.strip():
+        raise ValueError("run_id must be a nonempty RunLog ID")
     columns = ("date",) + PROP_WRITE_FIELDS
     placeholders = ",".join("?" for _ in columns)
     column_sql = ",".join(columns)
     with _connect(path) as conn:
-        conn.executemany(
-            f"INSERT OR REPLACE INTO prop_predictions ({column_sql}) VALUES ({placeholders})",
-            [
-                (date_str,) + tuple(
-                    r.get(field, "" if field in ("game", "flags") else None)
-                    for field in PROP_WRITE_FIELDS
-                )
-                for r in rows
-            ],
-        )
+        for original in rows:
+            row = ensure_finance_fields({**original, "date": date_str, "run_id": run_id})
+            values = (date_str,) + tuple(row.get(f, "" if f in ("game", "flags") else None)
+                                        for f in PROP_WRITE_FIELDS)
+            inserted = conn.execute(f"INSERT OR IGNORE INTO pick_runs ({column_sql}, paper_stake) "
+                                    f"VALUES ({placeholders}, ?)", values + (row.get("stake_amount"),))
+            if not inserted.rowcount:
+                continue  # A retry of this run cannot rewrite its proposal.
+            existing = conn.execute(
+                "SELECT COALESCE(entry_decimal_odds, decimal_odds) FROM prop_predictions "
+                "WHERE date=? AND player=? AND market=?",
+                (date_str, row["player"], row["market"]),
+            ).fetchone()
+            if existing and valid_decimal_odds(existing[0]):
+                continue
+            conn.execute(f"INSERT INTO prop_predictions ({column_sql}) VALUES ({placeholders}) "
+                         "ON CONFLICT(date, player, market) DO UPDATE SET " +
+                         ", ".join(f"{f}=excluded.{f}" for f in PROP_WRITE_FIELDS), values)
+    if own_run:
+        own_run.stage("prop_predictions", "ok", required=True, picks=len(rows))
+        own_run.finish()
     return len(rows)
 
 
@@ -252,7 +289,7 @@ def load_prop_predictions(target_date: date, path: Path = DB_PATH) -> List[dict]
             "po_usable_count, fetch_status, source_last_game_date, data_as_of_utc, "
             "data_age_days, active_season, season_mode, model_version, book_spread, model_margin, p_model, "
             "residual_correction_version, probability_calibration_version, "
-            + ", ".join(PROP_FINANCE_FIELDS) + " "
+            + ", ".join(PROP_FINANCE_FIELDS) + ", run_id, game "
             "FROM prop_predictions WHERE date = ? ORDER BY confidence DESC",
             (date_str,),
         )
@@ -285,6 +322,8 @@ def load_prop_predictions(target_date: date, path: Path = DB_PATH) -> List[dict]
                 "residual_correction_version": row[24],
                 "probability_calibration_version": row[25],
                 **{field: row[26 + index] for index, field in enumerate(PROP_FINANCE_FIELDS)},
+                "run_id": row[26 + len(PROP_FINANCE_FIELDS)],
+                "game": row[27 + len(PROP_FINANCE_FIELDS)],
             }
             for row in cur.fetchall()
         ]

@@ -82,6 +82,58 @@ Each run appends one line to `run_log.jsonl`, with a status for every stage:
 
 Exit codes: `0` ok or no games, `2` failed (nothing saved, rerun later), `3` partial (some games' odds failed). Grading writes nothing when stats.nba.com can't be reached or a game isn't final, and regrading a date never duplicates rows in `bet_log.csv` or `game_log.csv`.
 
+### Auditable prop cycle (paper stakes)
+
+Run the entry snapshot and prediction on the same Eastern slate date, then
+collect closing quotes and grade after the games are final:
+
+```bash
+python3 oddstracker.py YYYY-MM-DD
+python3 nba_combined.py --date YYYY-MM-DD
+python3 oddstracker.py --closing YYYY-MM-DD          # next 30 minutes only
+python3 oddstracker.py --closing YYYY-MM-DD --minutes 45
+python3 checkresults.py YYYY-MM-DD
+python3 calibrate.py
+```
+
+`prop_predictions` keeps the entire first priced entry for each
+`(date, player, market)`, including its line, direction, price, timestamp,
+model version and prediction run ID. Until priced, a proposal can update.
+Every prediction run also appends its proposal to `pick_runs`, keyed by
+`(run_id, date, player, market)`; retries with the same run ID cannot rewrite it.
+`paper_stake` records the proposed amount when a paper bankroll is configured,
+and `stake_pct` retains the proposal's fraction. No wagers are placed.
+Historical rows without run provenance are left unlabelled.
+
+Closing collection reads event IDs and start times from saved picks, so it
+does not fetch the full event feed. It quotes each eligible event once per
+invocation, excludes started games and other slate dates, and appends only to
+`prop_odds_snapshots.csv`. Entry and closing observations are tagged separately;
+an entry observation alone leaves `clv_unmatched_reason="no_closing_snapshot"`.
+Old untagged snapshots retain their existing CLV behavior. Grading carries the
+frozen entry's `run_id` and `model_version` into `bet_log.csv`.
+
+Example cron entry (replace both absolute paths; create the log directory first):
+
+```cron
+*/15 * * * * cd /absolute/path/to/project && /absolute/path/to/python3 oddstracker.py --closing >> /absolute/path/to/closing.log 2>&1
+```
+
+This checks every 15 minutes through every game window. Outside the 30-minute
+window, or without saved picks, it makes no Odds API requests. Omitting DATE
+uses the current Eastern slate date, including when local time is past midnight.
+The scheduler host must be awake and its environment must load the repo's `.env`.
+
+Credit estimate: the current request includes eight markets. A populated US
+response costs up to 8 credits per event per check; two checks in the 30-minute
+window cost up to 16 per picked event (160 for ten games). If US books are empty,
+the existing five-region fallback can cost up to 40 credits per populated
+response, or 80 per event over two checks. Empty responses do not consume quota;
+these are upper estimates because billing depends on returned markets. See the
+[Odds API usage rules](https://the-odds-api.com/liveapi/guides/v4/).
+Check the job's `run_log.jsonl` stages for `ok`, `market_unavailable`, `skipped`
+or `fetch_failed`. Scheduling this job is a manual deployment step.
+
 ### 5. (Optional) Train learned model weights
 
 ```bash

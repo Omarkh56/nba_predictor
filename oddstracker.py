@@ -24,13 +24,14 @@ date, it updates the 'result' column so accuracy can be measured.
 """
 
 import csv
+import argparse
 import json
 import logging
 import os
 import sys
 import time
 import warnings
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timezone, timedelta
 
 from dotenv import load_dotenv
 
@@ -100,7 +101,7 @@ SNAPSHOT_FIELDS = [
     "book_key", "book_title", "player", "market", "line", "side",
     "american_odds", "decimal_odds", "raw_implied_probability",
     "opposing_american_odds", "devig_probability", "vig_pct", "k_value",
-    "odds_source",
+    "odds_source", "snapshot_kind",
 ]
 
 
@@ -447,6 +448,8 @@ def snapshot(snap_date: date, *, events=None, now=None, tracker_path=None,
 
     if all_rows:
         _append_rows(all_rows, snap_date.isoformat(), path=tracker_path)
+    for row in all_snapshot_rows:
+        row["snapshot_kind"] = "entry"
     _append_snapshot_rows(all_snapshot_rows, path=snapshot_path)
     print(f"\n  Logged {len(all_rows)} consensus line(s) → {os.path.basename(tracker_path)}")
     print(f"  Logged {len(all_snapshot_rows)} book quote(s) → {os.path.basename(snapshot_path)}")
@@ -500,31 +503,100 @@ def _append_snapshot_rows(rows: list, path=None):
     path = path or SNAPSHOT_FILE
     if not rows:
         return 0
+    fields = list(SNAPSHOT_FIELDS)
+    def quote_key(row, key_fields):
+        return tuple("" if pd.isna(row.get(f, "")) else str(row.get(f, "")) for f in key_fields)
+    if os.path.isfile(path) and os.path.getsize(path) > 0:
+        # Extend the old header atomically before appending the new quote kind.
+        from bet_log_utils import read_bet_rows, write_bet_rows
+        old_fields, old_rows = read_bet_rows(path)
+        fields = list(dict.fromkeys([*old_fields, *SNAPSHOT_FIELDS]))
+        if fields != old_fields:
+            write_bet_rows(path, fields, old_rows)
     existing_keys = set()
     if os.path.isfile(path) and os.path.getsize(path) > 0:
         try:
             existing = pd.read_csv(path)
-            key_fields = ["snapshot_at", "event_id", "book_key", "player", "market", "line", "side"]
+            key_fields = ["snapshot_at", "event_id", "book_key", "player", "market", "line", "side", "snapshot_kind"]
             existing_keys = {
-                tuple(str(row.get(field, "")) for field in key_fields)
+                quote_key(row, key_fields)
                 for _, row in existing.iterrows()
             }
         except (OSError, pd.errors.ParserError):
             existing_keys = set()
-    key_fields = ["snapshot_at", "event_id", "book_key", "player", "market", "line", "side"]
+    key_fields = ["snapshot_at", "event_id", "book_key", "player", "market", "line", "side", "snapshot_kind"]
     additions = [
         row for row in rows
-        if tuple(str(row.get(field, "")) for field in key_fields) not in existing_keys
+        if quote_key(row, key_fields) not in existing_keys
     ]
     if not additions:
         return 0
     file_exists = os.path.isfile(path) and os.path.getsize(path) > 0
     with open(path, "a", newline="", encoding="utf-8") as fh:
-        writer = csv.DictWriter(fh, fieldnames=SNAPSHOT_FIELDS, extrasaction="ignore")
+        writer = csv.DictWriter(fh, fieldnames=fields, extrasaction="ignore")
         if not file_exists:
             writer.writeheader()
         writer.writerows(additions)
     return len(additions)
+
+
+def closing_snapshot(snap_date: date, *, minutes=30, now=None, predictions=None,
+                     db_path=None, snapshot_path=None) -> int:
+    """Quote only picked events about to tip; never change entry consensus."""
+    import predictions_db
+    if minutes <= 0:
+        raise ValueError("closing window must be positive")
+    observed = now or datetime.now(timezone.utc)
+    if observed.tzinfo is None:
+        observed = observed.replace(tzinfo=timezone.utc)
+    observed = observed.astimezone(timezone.utc)
+    run = RunLog("oddstracker --closing", snap_date)
+    picks = predictions if predictions is not None else predictions_db.load_prop_predictions(
+        snap_date, path=db_path or predictions_db.DB_PATH)
+    eligible = {}
+    for pick in picks:
+        event_id = pick.get("odds_event_id")
+        start = team_codes._parse_utc(pick.get("game_start_at"))
+        if (event_id and start and pick.get("pick") in ("OVER", "UNDER")
+                and team_codes.slate_date_of(pick.get("game_start_at")) == snap_date
+                and observed < start <= observed + timedelta(minutes=minutes)):
+            eligible.setdefault(event_id, pick)
+    if not eligible:
+        run.stage("closing_snapshot", "skipped", reason="no picked events in closing window")
+        run.finish(events=0, quotes=0)
+        return run.exit_code()
+    quotes = []
+    failures = 0
+    started = 0
+    for event_id, pick in eligible.items():
+        try:
+            props = get_event_props(event_id)
+            # A slow response must not be backdated to the batch start and
+            # mistaken for a pregame close. Tests can inject a fixed clock.
+            quote_time = observed if now is not None else datetime.now(timezone.utc)
+            if quote_time >= team_codes._parse_utc(pick["game_start_at"]):
+                started += 1
+                run.stage(f"closing:{event_id}", "skipped", reason="game started during fetch")
+                continue
+            rows = parse_props_to_snapshot_rows(
+                props, pick.get("game", ""), snap_date.isoformat(), quote_time.isoformat(),
+                event_id, pick["game_start_at"],
+            )
+            for row in rows:
+                row["snapshot_kind"] = "closing"
+            quotes.extend(rows)
+            run.stage(f"closing:{event_id}", "ok" if rows else "market_unavailable", quotes=len(rows))
+        except (requests.RequestException, json.JSONDecodeError) as exc:
+            failures += 1
+            run.stage(f"closing:{event_id}", "fetch_failed", error=type(exc).__name__)
+    written = _append_snapshot_rows(quotes, path=snapshot_path or SNAPSHOT_FILE)
+    status = ("fetch_failed" if failures else "ok" if quotes else
+              "skipped" if started == len(eligible) else "market_unavailable")
+    run.stage("closing_snapshot", status, required=failures == len(eligible),
+              events=len(eligible), failed_events=failures, quotes=written)
+    record = run.finish()
+    print(f"  Closing: {written} quote(s); run {run.run_id}: {record['status']}")
+    return run.exit_code()
 
 
 # ===========================================================================
@@ -877,6 +949,15 @@ def analyze_disagreements():
 # ===========================================================================
 def main(argv=None) -> int:
     args = sys.argv[1:] if argv is None else argv
+    if "--closing" in args:
+        parser = argparse.ArgumentParser(description="Closing quotes for picked NBA events")
+        parser.add_argument("--closing", action="store_true")
+        parser.add_argument("date", nargs="?", type=date.fromisoformat, default=team_codes.today_slate_date())
+        parser.add_argument("--minutes", type=int, default=30)
+        parsed = parser.parse_args(args)
+        if parsed.minutes <= 0:
+            parser.error("--minutes must be positive")
+        return closing_snapshot(parsed.date, minutes=parsed.minutes)
 
     # Parse date argument if provided
     snap_date = team_codes.today_slate_date()  # v10: US Eastern slate date, not local time

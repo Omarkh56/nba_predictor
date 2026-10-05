@@ -22,6 +22,8 @@ from finance import FINANCE_FIELDS, ensure_finance_fields
 
 
 BET_LOG_FIELDS = [
+    "run_id",
+    "model_version",
     "date",
     "player",
     "market",

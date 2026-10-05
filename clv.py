@@ -65,6 +65,10 @@ def closing_for_bet(bet: Mapping[str, object], snapshots: pd.DataFrame) -> dict:
         return _blank_clv("no_closing_snapshot")
 
     frame = snapshots.copy()
+    if "snapshot_kind" in frame:
+        # Old untagged quotes retain their historical behavior. New entry
+        # observations cannot stand in for a scheduled closing observation.
+        frame = frame[frame["snapshot_kind"].fillna("").astype(str) != "entry"].copy()
     frame["_player"] = frame["player"].map(_name)
     frame["_market"] = frame["market"].astype(str).str.strip().str.upper()
     frame["_side"] = frame["side"].astype(str).str.strip().str.upper()
