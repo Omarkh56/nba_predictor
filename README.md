@@ -265,3 +265,31 @@ The season decides which fitted artifacts are active: `probability_calibration.j
 - **Odds API key required.** Copy `.env.example` to `.env` and set `ODDS_API_KEY`. Without it, scripts exit immediately instead of calling the Odds API.
 - **LibreSSL on macOS Python 3.9** may produce TLS warnings. `pip install --upgrade certifi` resolves this.
 - **No live score integration.** The model is pre-game only; it does not update based on in-game events.
+
+
+## Experimental minutes forecast (Phase 3)
+
+`playerlinepredictor.MINUTES_FORECAST_ENABLED` controls the minutes forecast and
+low-games rate prior together. It stays off unless the chronological gate passes;
+see `reports/phase3_minutes_gate.md` for the evaluated decision and numbers.
+It does not alter paper stake, edge thresholds, or Kelly settings.
+
+The fixed forecast uses EWM played minutes (20 appearances, half-life four), an
+explicit starter flag when provided, rest days, favored-team blowout risk, and a
+ramp after a gap of at least three scheduled team games. Without a lineup flag it
+records `starter_source="minutes_proxy"`; without team-game dates it records
+absence evidence as unavailable. A calendar gap alone never establishes an injury.
+The schedule feature measures gaps in appearances and cannot prove roster or
+injury status. `project_prop(..., minutes_context={...})` accepts pregame `cutoff`,
+`starter`, and `team_game_dates`; current-season game count comes from full logs.
+
+For fewer than ten current-season appearances, the same flag shrinks the current
+per-minute rate toward the previous regular season's rate: current weight is
+`games / 10`. At ten games the prior has no effect. Missing previous history leaves
+current rates unchanged; an unavailable required NBA request fails closed. With
+zero current appearances, prior-season minutes and rates can supply a forecast.
+The replay evaluates players after at least one current-season appearance, so it
+does not claim evidence for opening-game predictions without current history.
+
+Replay commands, paired coverage, first-three-week diagnostics, and source hashes
+are recorded in the Phase 3 report. See `scripts/replay/README.md` for reproduction.

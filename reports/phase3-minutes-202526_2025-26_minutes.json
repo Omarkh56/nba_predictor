@@ -1,0 +1,315 @@
+{
+  "candidate_rows": 217680,
+  "baseline_rows": 212928,
+  "regimes": {
+    "Playoffs": {
+      "candidate": {
+        "rows": 15096,
+        "player_games": 1887,
+        "minutes_mae": 5.14006359300477,
+        "macro_bias_pct": 19.91282519004394,
+        "bias_pct_by_market": {
+          "3PM": 25.83456425406204,
+          "AST": 26.7414314516129,
+          "PRA": 18.443699641140228,
+          "PTS": 18.42001962708538,
+          "PTS+AST": 19.99506947557149,
+          "PTS+REB": 17.066093077825577,
+          "REB": 14.175428887659102,
+          "REB+AST": 18.626295105394785
+        },
+        "projection_mae": 3.5903285638579754,
+        "minutes_error_buckets": {
+          "<-10": {
+            "rows": 616,
+            "bias_pct": -32.282044628956925
+          },
+          "-10:-5": {
+            "rows": 1824,
+            "bias_pct": -15.348035211906703
+          },
+          "-5:-2": {
+            "rows": 2264,
+            "bias_pct": 3.1580838323353286
+          },
+          "-2:2": {
+            "rows": 3792,
+            "bias_pct": 14.883769633507852
+          },
+          "2:5": {
+            "rows": 2640,
+            "bias_pct": 35.50608056751963
+          },
+          "5:10": {
+            "rows": 2728,
+            "bias_pct": 75.7179992122883
+          },
+          ">10": {
+            "rows": 1232,
+            "bias_pct": 207.92181661396953
+          }
+        }
+      },
+      "baseline": {
+        "rows": 15096,
+        "player_games": 1887,
+        "minutes_mae": 5.313407525172231,
+        "macro_bias_pct": 18.843397424560948,
+        "bias_pct_by_market": {
+          "3PM": 25.02708025603151,
+          "AST": 25.501512096774192,
+          "PRA": 17.308213149163787,
+          "PTS": 17.240213717151892,
+          "PTS+AST": 18.781264007171675,
+          "PTS+REB": 15.964411419632382,
+          "REB": 13.306585500830105,
+          "REB+AST": 17.61789924973205
+        },
+        "projection_mae": 3.58363804981452,
+        "minutes_error_buckets": {
+          "<-10": {
+            "rows": 704,
+            "bias_pct": -30.396117819659175
+          },
+          "-10:-5": {
+            "rows": 1928,
+            "bias_pct": -15.177901023890785
+          },
+          "-5:-2": {
+            "rows": 2416,
+            "bias_pct": 1.3716622042115927
+          },
+          "-2:2": {
+            "rows": 3704,
+            "bias_pct": 15.633951744689032
+          },
+          "2:5": {
+            "rows": 2192,
+            "bias_pct": 35.54577333432814
+          },
+          "5:10": {
+            "rows": 2896,
+            "bias_pct": 80.132123527539
+          },
+          ">10": {
+            "rows": 1256,
+            "bias_pct": 233.44850065189047
+          }
+        }
+      }
+    },
+    "Regular Season": {
+      "candidate": {
+        "rows": 197832,
+        "player_games": 24729,
+        "minutes_mae": 4.931586396538478,
+        "macro_bias_pct": 9.18608201197132,
+        "bias_pct_by_market": {
+          "3PM": 15.666404158135137,
+          "AST": 9.282371539027405,
+          "PRA": 7.946212527429942,
+          "PTS": 7.8855747528285685,
+          "PTS+AST": 8.129085592238036,
+          "PTS+REB": 7.741724939271042,
+          "REB": 8.215481413068575,
+          "REB+AST": 8.621801173771859
+        },
+        "projection_mae": 3.7072081361963676,
+        "minutes_error_buckets": {
+          "<-10": {
+            "rows": 12608,
+            "bias_pct": -42.37287201047626
+          },
+          "-10:-5": {
+            "rows": 28792,
+            "bias_pct": -18.30210167617239
+          },
+          "-5:-2": {
+            "rows": 35608,
+            "bias_pct": -3.864036421843133
+          },
+          "-2:2": {
+            "rows": 53448,
+            "bias_pct": 10.475299328993723
+          },
+          "2:5": {
+            "rows": 31120,
+            "bias_pct": 31.723082557287857
+          },
+          "5:10": {
+            "rows": 26872,
+            "bias_pct": 68.0320652173913
+          },
+          ">10": {
+            "rows": 9384,
+            "bias_pct": 176.03666036660366
+          }
+        }
+      },
+      "baseline": {
+        "rows": 197832,
+        "player_games": 24729,
+        "minutes_mae": 4.945606373084233,
+        "macro_bias_pct": 12.486182792264513,
+        "bias_pct_by_market": {
+          "3PM": 18.88423373759647,
+          "AST": 12.311749698705608,
+          "PRA": 11.21288790559143,
+          "PTS": 11.052050010325225,
+          "PTS+AST": 11.259495048747624,
+          "PTS+REB": 11.0521966381291,
+          "REB": 11.993573462633723,
+          "REB+AST": 12.123275836386926
+        },
+        "projection_mae": 3.8081796675967485,
+        "minutes_error_buckets": {
+          "<-10": {
+            "rows": 9376,
+            "bias_pct": -39.8820695451749
+          },
+          "-10:-5": {
+            "rows": 25120,
+            "bias_pct": -17.785349459687435
+          },
+          "-5:-2": {
+            "rows": 33360,
+            "bias_pct": -3.9386526878068833
+          },
+          "-2:2": {
+            "rows": 53488,
+            "bias_pct": 9.854883703744758
+          },
+          "2:5": {
+            "rows": 32384,
+            "bias_pct": 31.19132610778491
+          },
+          "5:10": {
+            "rows": 30816,
+            "bias_pct": 66.41007969746771
+          },
+          ">10": {
+            "rows": 13288,
+            "bias_pct": 194.59286998940598
+          }
+        }
+      }
+    }
+  },
+  "limitations": [
+    "Historical starter flag uses a minutes proxy.",
+    "Historical book spreads are held at zero; blowout feature is unit-tested only.",
+    "Returns are scheduled-game absences, not inferred injury diagnoses.",
+    "Replay population is conditional on playing; unavailable projections are reported separately."
+  ],
+  "paired_rows": 212928,
+  "candidate_only_rows": 4752,
+  "baseline_only_rows": 0,
+  "feature_coverage": {
+    "starter_source": {
+      "minutes_proxy": 26616
+    },
+    "absence_source": {
+      "team_schedule": 26616
+    }
+  },
+  "first_three_weeks_low_games": {
+    "from": "2025-10-21",
+    "through": "2025-11-10",
+    "candidate": {
+      "rows": 19792,
+      "player_games": 2474,
+      "minutes_mae": 4.595513338722716,
+      "macro_bias_pct": 7.801095074819136,
+      "bias_pct_by_market": {
+        "3PM": 13.4014598540146,
+        "AST": 6.3689776733254995,
+        "PRA": 6.927435262517312,
+        "PTS": 6.887257366991854,
+        "PTS+AST": 6.789584300024566,
+        "PTS+REB": 7.033002007540518,
+        "REB": 7.763456476354724,
+        "REB+AST": 7.237587657784011
+      },
+      "projection_mae": 3.745594179466451,
+      "minutes_error_buckets": {
+        "<-10": {
+          "rows": 824,
+          "bias_pct": -45.3969396939694
+        },
+        "-10:-5": {
+          "rows": 2664,
+          "bias_pct": -17.701313820056544
+        },
+        "-5:-2": {
+          "rows": 3944,
+          "bias_pct": -6.575374482099225
+        },
+        "-2:2": {
+          "rows": 5832,
+          "bias_pct": 7.966377891218675
+        },
+        "2:5": {
+          "rows": 2848,
+          "bias_pct": 26.627724202387526
+        },
+        "5:10": {
+          "rows": 2840,
+          "bias_pct": 57.612047131373195
+        },
+        ">10": {
+          "rows": 840,
+          "bias_pct": 143.69351173945972
+        }
+      }
+    },
+    "baseline": {
+      "rows": 19792,
+      "player_games": 2474,
+      "minutes_mae": 4.5799919159256275,
+      "macro_bias_pct": 7.96537236109776,
+      "bias_pct_by_market": {
+        "3PM": 12.385401459854014,
+        "AST": 5.2012338425381905,
+        "PRA": 7.457296344483149,
+        "PTS": 7.691843507995575,
+        "PTS+AST": 7.2372192046292,
+        "PTS+REB": 7.8281839102972155,
+        "REB": 8.584914223472815,
+        "REB+AST": 7.336886395511922
+      },
+      "projection_mae": 3.9794058205335494,
+      "minutes_error_buckets": {
+        "<-10": {
+          "rows": 688,
+          "bias_pct": -46.591426796438185
+        },
+        "-10:-5": {
+          "rows": 2368,
+          "bias_pct": -19.051677828313572
+        },
+        "-5:-2": {
+          "rows": 3800,
+          "bias_pct": -6.751764398361941
+        },
+        "-2:2": {
+          "rows": 5904,
+          "bias_pct": 8.072995279231833
+        },
+        "2:5": {
+          "rows": 3032,
+          "bias_pct": 22.995384241638998
+        },
+        "5:10": {
+          "rows": 2944,
+          "bias_pct": 52.87885985748219
+        },
+        ">10": {
+          "rows": 1056,
+          "bias_pct": 149.4968689267977
+        }
+      }
+    }
+  },
+  "label": "phase3-minutes-202526",
+  "season": "2025-26"
+}

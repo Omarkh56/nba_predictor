@@ -175,3 +175,41 @@ fixed. Two runs on the same code and cache produce identical per-row output.
 `replay_props.py` CLI · `replay_engine.py` worker/driver · `replay_data.py` loading, as-of filter, as-of usage ·
 `replay_cache.py` API cache · `replay_metrics.py` metrics, splits, paired bootstrap · `replay_report.py` summaries ·
 `replay_provenance.py` commit/fingerprint/artifact hashes · `replay_config.py` versioned configuration.
+
+
+## Phase 3 paired minutes experiment
+
+Use a fresh baseline under the same explicit eligibility floor as the candidate.
+The default floor remains ten; `--min-prior-games 1` includes the low-games regime
+without changing the ordinary replay or live model defaults. Missing baseline
+projections are counted as coverage differences; gate metrics use shared
+(date, game, player, market) keys and never silently compare different rows.
+
+```sh
+python3 scripts/replay/replay_props.py run --label minutes-control-202425 --season 2024-25 --min-prior-games 1 --set MINUTES_FORECAST_ENABLED=False
+python3 scripts/replay/replay_props.py run --label minutes-candidate-202425 --compare minutes-control-202425 --season 2024-25 --min-prior-games 1 --set MINUTES_FORECAST_ENABLED=True
+python3 scripts/replay/replay_props.py run --label minutes-control-202526 --season 2025-26 --min-prior-games 1 --set MINUTES_FORECAST_ENABLED=False
+python3 scripts/replay/replay_props.py run --label minutes-candidate-202526 --compare minutes-control-202526 --season 2025-26 --min-prior-games 1 --set MINUTES_FORECAST_ENABLED=True
+```
+
+`--cache-only` refuses a required response missing from cache without a network
+request; `--skip-rosters` makes missing roster/position coverage explicit in the
+ordinary report. Candidate runs also require the previous regular season's player
+logs, never future-season logs. Replay workers block network calls and filter all
+histories to strictly before each game's date. Historical book spreads are zero;
+lineup flags are unavailable, so the starter feature uses a recorded minutes proxy.
+
+Each run writes `<label>_<season>_minutes.json` and `.md` alongside ordinary reports.
+Minutes MAE counts each player-game once; overall bias is the macro average of
+market percentage biases. Buckets use signed minutes error (forecast minus actual),
+with pooled projection bias per bucket, separately for regular season and playoffs.
+The low-games summary includes the first 21 calendar days from the true season
+opener, restricted to fewer than ten prior appearances. Saved per-row outputs allow
+recomputing diagnostics without repeating a model run.
+
+The predeclared conservative gate requires both minutes MAE and projection MAE to
+improve in each regime of both seasons, plus held-out absolute macro bias below
+2.3% for regular season and 4.2% for playoffs. Equality or missing/nonfinite evidence
+fails. The deployed correction is disabled in both raw replays to avoid historical
+artifact leakage; its reported biases are the fixed external comparison benchmark.
+No parameters were tuned against the 2025–26 held-out results.

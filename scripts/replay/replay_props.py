@@ -10,6 +10,7 @@ See scripts/replay/README.md for the cold/warm cache commands and the full metho
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import shutil
 import sys
@@ -36,18 +37,24 @@ from replay_config import (  # noqa: E402
     DEFAULT_OUT_DIR,
     DEFAULT_SEASON,
     ELIGIBILITY_VERSION,
+    ELIG_MIN_PRIOR_GAMES,
     REPLAY_CONFIG_VERSION,
     REPORTS_DIR,
     SEASON_TYPE_PO,
     SEASON_TYPE_RS,
 )
-from replay_data import load_season_bundle  # noqa: E402
+from replay_data import load_season_bundle, load_previous_regular  # noqa: E402
 
 SEASON_TYPES = {"regular": [SEASON_TYPE_RS], "playoffs": [SEASON_TYPE_PO], "both": [SEASON_TYPE_RS, SEASON_TYPE_PO]}
 
 
 def _out_path(out_dir: str, label: str, season: str) -> str:
     return os.path.join(out_dir, "%s_%s.csv.gz" % (label, season))
+
+
+def read_replay(path):
+    """NBA game IDs are identifiers, including significant leading zeroes."""
+    return pd.read_csv(path, dtype={"game_id": str})
 
 
 def cmd_run(a: argparse.Namespace) -> int:
@@ -57,17 +64,26 @@ def cmd_run(a: argparse.Namespace) -> int:
     if a.cold:
         cache_dir = tempfile.mkdtemp(prefix="replay-cache-cold-")
         log("COLD run: using an empty temporary cache at %s" % cache_dir)
-    client = NBACache(cache_dir, min_interval_s=a.min_interval)
+    def offline_fetch(*_args):
+        raise ValueError("cache-only replay: required response is not cached")
+    client = NBACache(cache_dir, min_interval_s=a.min_interval,
+                      fetcher=offline_fetch if a.cache_only else None,
+                      retries=1 if a.cache_only else 3)
     entries_before = client.entry_count() if os.path.isdir(cache_dir) else 0
 
     t0 = time.perf_counter()
-    bundle = load_season_bundle(client, a.season)
+    bundle = load_season_bundle(client, a.season, want_rosters=not a.skip_rosters)
     load_s = time.perf_counter() - t0
     log("data loaded in %.1fs: %s" % (load_s, bundle.meta["rows_by_season_type"]))
 
     overrides = engine.parse_overrides(a.set)
+    if overrides.get("MINUTES_FORECAST_ENABLED"):
+        year = int(a.season[:4]) - 1
+        previous_season = "%d-%02d" % (year, (year + 1) % 100)
+        bundle.previous_players = load_previous_regular(client, previous_season)
+        bundle.meta["previous_season"] = previous_season
     df, info = engine.run_replay(bundle, SEASON_TYPES[a.season_type], a.workers, overrides, ROOT,
-                                 a.date_from, a.date_to, log=log)
+                                 a.date_from, a.date_to, log=log, min_prior_games=a.min_prior_games)
     if df.empty:
         log("no observations produced")
         return 1
@@ -78,7 +94,7 @@ def cmd_run(a: argparse.Namespace) -> int:
     if a.compare:
         pp = _out_path(a.out_dir, a.compare, a.season)
         if os.path.exists(pp):
-            prev, prev_label = pd.read_csv(pp), a.compare
+            prev, prev_label = read_replay(pp), a.compare
         else:
             log("WARNING: previous per-row output %s not found; no comparison written" % pp)
 
@@ -101,8 +117,15 @@ def cmd_run(a: argparse.Namespace) -> int:
     }
     runtime = {"load_s": round(load_s, 2), "replay_wall_s": info["wall_s"], "workers": info["workers"],
                "worker_busy_s": info["worker_busy_s"], "total_s": round(total_s, 2)}
+    manifest = {"info": info, "provenance": prov, "cache": cache, "runtime": runtime,
+                "bundle_meta": bundle.meta, "season_start": bundle.meta["date_range"][SEASON_TYPE_RS][0]}
+    with open(os.path.join(a.out_dir, a.label + "_" + a.season + "_run.json"), "w") as handle:
+        json.dump(manifest, handle, indent=2, default=str)
     summary = rpt.build_summary(a.label, df, info, prov, a.season, [s for s in SEASON_TYPES[a.season_type]],
                                 bundle.meta, cache, runtime, splits, prev, prev_label)
+    from minutes_diagnostics import write_diagnostics
+    write_diagnostics(df, prev, a.label, a.season, a.reports_dir,
+                      bundle.meta["date_range"][SEASON_TYPE_RS][0])
     paths = rpt.write_reports(summary, a.reports_dir)
     log("wrote %s and %s (%.1fs total)" % (paths["json"], paths["markdown"], total_s))
     if a.cold:
@@ -112,8 +135,8 @@ def cmd_run(a: argparse.Namespace) -> int:
 
 def cmd_report(a: argparse.Namespace) -> int:
     """Rebuild a report from a saved per-row output (no model run, no API)."""
-    df = pd.read_csv(_out_path(a.out_dir, a.label, a.season))
-    prev = pd.read_csv(_out_path(a.out_dir, a.compare, a.season)) if a.compare else None
+    df = read_replay(_out_path(a.out_dir, a.label, a.season))
+    prev = read_replay(_out_path(a.out_dir, a.compare, a.season)) if a.compare else None
     splits = load_or_create_splits(df, a.season)
     info = {"counts": {}, "failures": {}, "overrides": {}, "wall_s": 0, "workers": 0, "worker_busy_s": 0}
     prov = {"git": provenance.git_info(ROOT), "code_fingerprint": provenance.code_fingerprint(ROOT),
@@ -123,7 +146,18 @@ def cmd_report(a: argparse.Namespace) -> int:
              "stats": {k: 0 for k in ("requests", "retries", "failures", "cache_hits", "cache_misses", "cache_writes",
                                       "rate_limit_delay_s", "backoff_delay_s")}}
     runtime = {"load_s": 0, "replay_wall_s": 0, "workers": 0, "worker_busy_s": 0, "total_s": 0}
-    s = rpt.build_summary(a.label, df, info, prov, a.season, sorted(df["season_type"].unique()), {}, cache, runtime,
+    bundle_meta = {}
+    manifest_path = os.path.join(a.out_dir, a.label + "_" + a.season + "_run.json")
+    season_start = a.season_start
+    if os.path.exists(manifest_path):
+        with open(manifest_path) as handle:
+            manifest = json.load(handle)
+        info, prov, cache, runtime = (manifest[k] for k in ("info", "provenance", "cache", "runtime"))
+        bundle_meta = manifest["bundle_meta"]
+        season_start = season_start or manifest.get("season_start")
+    from minutes_diagnostics import write_diagnostics
+    write_diagnostics(df, prev, a.label, a.season, a.reports_dir, season_start)
+    s = rpt.build_summary(a.label, df, info, prov, a.season, sorted(df["season_type"].unique()), bundle_meta, cache, runtime,
                           splits, prev, a.compare)
     print(rpt.write_reports(s, a.reports_dir))
     return 0
@@ -142,14 +176,19 @@ def main(argv=None) -> int:
     r.add_argument("--season-type", choices=sorted(SEASON_TYPES), default="both")
     r.add_argument("--workers", type=int, default=max(1, (os.cpu_count() or 2) - 1))
     r.add_argument("--cache-dir", default=DEFAULT_CACHE_DIR)
+    r.add_argument("--skip-rosters", action="store_true", help="use manual positions only; record absent roster coverage")
+    r.add_argument("--cache-only", action="store_true", help="fail on a required cache miss without networking")
     r.add_argument("--cold", action="store_true", help="use an empty temporary cache (measures cold-cache runtime)")
     r.add_argument("--min-interval", type=float, default=1.2, help="minimum seconds between live NBA API requests")
+    r.add_argument("--min-prior-games", type=int, default=ELIG_MIN_PRIOR_GAMES,
+                   help="explicit replay population floor; use 1 for early-season experiments")
     r.add_argument("--date-from")
     r.add_argument("--date-to")
     r.add_argument("--set", action="append", default=[], metavar="NAME=VALUE",
                    help="override a playerlinepredictor module attribute for this run (repeatable)")
     r.set_defaults(fn=cmd_run)
     p = sub.add_parser("report", parents=[common], help="rebuild a report from saved per-row output")
+    p.add_argument("--season-start", help="true opener for old outputs without a run manifest")
     p.set_defaults(fn=cmd_report)
     args = ap.parse_args(argv)
     return args.fn(args)

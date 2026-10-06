@@ -1,0 +1,163 @@
+{
+  "candidate_rows": 207240,
+  "baseline_rows": null,
+  "regimes": {
+    "Playoffs": {
+      "candidate": {
+        "rows": 14192,
+        "player_games": 1774,
+        "minutes_mae": 5.3723224351747465,
+        "macro_bias_pct": 20.50879009051001,
+        "bias_pct_by_market": {
+          "3PM": 26.840843720038354,
+          "AST": 29.00711087700816,
+          "PRA": 18.693801908161163,
+          "PTS": 18.458244111349035,
+          "PTS+AST": 20.337119491140392,
+          "PTS+REB": 17.110216644962705,
+          "REB": 14.25364758698092,
+          "REB+AST": 19.36933638443936
+        },
+        "projection_mae": 3.8386485343855687,
+        "minutes_error_buckets": {
+          "<-10": {
+            "rows": 472,
+            "bias_pct": -34.80314960629921
+          },
+          "-10:-5": {
+            "rows": 1928,
+            "bias_pct": -12.691178403961612
+          },
+          "-5:-2": {
+            "rows": 2352,
+            "bias_pct": 0.7775741481841635
+          },
+          "-2:2": {
+            "rows": 3224,
+            "bias_pct": 8.888400978608619
+          },
+          "2:5": {
+            "rows": 2408,
+            "bias_pct": 43.43717683557394
+          },
+          "5:10": {
+            "rows": 2440,
+            "bias_pct": 77.04062371768568
+          },
+          ">10": {
+            "rows": 1368,
+            "bias_pct": 230.49804141018467
+          }
+        }
+      }
+    },
+    "Regular Season": {
+      "candidate": {
+        "rows": 193048,
+        "player_games": 24131,
+        "minutes_mae": 4.987306783805064,
+        "macro_bias_pct": 11.730089520526501,
+        "bias_pct_by_market": {
+          "3PM": 17.22725445945528,
+          "AST": 11.553878393495832,
+          "PRA": 10.556901001694126,
+          "PTS": 10.262085867897241,
+          "PTS+AST": 10.487127472330778,
+          "PTS+REB": 10.407507015902715,
+          "REB": 11.696972595533024,
+          "REB+AST": 11.648989357903007
+        },
+        "projection_mae": 3.8559591396958273,
+        "minutes_error_buckets": {
+          "<-10": {
+            "rows": 9840,
+            "bias_pct": -38.86582425804306
+          },
+          "-10:-5": {
+            "rows": 25424,
+            "bias_pct": -17.976271795793636
+          },
+          "-5:-2": {
+            "rows": 32632,
+            "bias_pct": -4.567274838537306
+          },
+          "-2:2": {
+            "rows": 52272,
+            "bias_pct": 9.73551219152311
+          },
+          "2:5": {
+            "rows": 30256,
+            "bias_pct": 32.203642505374994
+          },
+          "5:10": {
+            "rows": 30328,
+            "bias_pct": 68.90249155226071
+          },
+          ">10": {
+            "rows": 12296,
+            "bias_pct": 195.2778382497007
+          }
+        }
+      }
+    }
+  },
+  "limitations": [
+    "Historical starter flag uses a minutes proxy.",
+    "Historical book spreads are held at zero; blowout feature is unit-tested only.",
+    "Returns are scheduled-game absences, not inferred injury diagnoses.",
+    "Replay population is conditional on playing; unavailable projections are reported separately."
+  ],
+  "first_three_weeks_low_games": {
+    "from": "2024-10-22",
+    "through": "2024-11-11",
+    "candidate": {
+      "rows": 19208,
+      "player_games": 2401,
+      "minutes_mae": 4.5413161182840485,
+      "macro_bias_pct": 7.26533559498205,
+      "bias_pct_by_market": {
+        "3PM": 13.241872949597376,
+        "AST": 5.022107028510444,
+        "PRA": 6.4390180486642254,
+        "PTS": 6.491509466857282,
+        "PTS+AST": 6.240138486860776,
+        "PTS+REB": 6.661110269232712,
+        "REB": 7.45487860742098,
+        "REB+AST": 6.572049902712602
+      },
+      "projection_mae": 3.8936120366513953,
+      "minutes_error_buckets": {
+        "<-10": {
+          "rows": 904,
+          "bias_pct": -31.992905815364516
+        },
+        "-10:-5": {
+          "rows": 2704,
+          "bias_pct": -16.952648426647343
+        },
+        "-5:-2": {
+          "rows": 3632,
+          "bias_pct": -6.476628132404682
+        },
+        "-2:2": {
+          "rows": 5832,
+          "bias_pct": 4.992132953092733
+        },
+        "2:5": {
+          "rows": 2816,
+          "bias_pct": 29.030523001574256
+        },
+        "5:10": {
+          "rows": 2472,
+          "bias_pct": 59.085075290679214
+        },
+        ">10": {
+          "rows": 848,
+          "bias_pct": 188.9035087719298
+        }
+      }
+    }
+  },
+  "label": "phase3-control-202425",
+  "season": "2024-25"
+}

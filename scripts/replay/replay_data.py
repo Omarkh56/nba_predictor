@@ -50,6 +50,7 @@ class SeasonBundle:
     positions: Dict[str, str] = field(default_factory=dict)
     name_to_pid: Dict[str, int] = field(default_factory=dict)
     meta: Dict[str, Any] = field(default_factory=dict)
+    previous_players: pd.DataFrame = field(default_factory=pd.DataFrame)
 
 
 def _lgf(client: NBACache, who: str, season: str, season_type: str):
@@ -151,3 +152,13 @@ def load_season_bundle(client: NBACache, season: str, want_rosters: bool = True)
         "rows_by_season_type": players["SEASON_TYPE"].value_counts().to_dict(),
     }
     return SeasonBundle(season, players, teams, positions, name_to_pid, meta)
+
+
+def load_previous_regular(client: NBACache, season: str) -> pd.DataFrame:
+    """Previous regular season is a rate prior, not another evaluation population."""
+    result = _lgf(client, "P", season, SEASON_TYPE_RS)
+    if not result.ok:
+        raise ReplayDataError("previous-season rate history unavailable: " + result.error)
+    if result.frame.empty:
+        return pd.DataFrame()
+    return _normalize(result.frame, SEASON_TYPE_RS)

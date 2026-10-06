@@ -186,6 +186,7 @@ MIN_MINUTES_PO = (
 )
 # v9: rate estimates still require reliable-minute samples, while expected
 # minutes can use every played appearance so role collapses are not hidden.
+MINUTES_FORECAST_ENABLED = False  # Phase 3 gate; opt in via replay --set
 MINUTES_HISTORY_MODE = "robust"  # replay winner: every appearance, reduced leverage for extreme shorts
 SHORT_APPEARANCE_REFERENCE_MIN = 15.0
 SHORT_APPEARANCE_WEIGHT_FLOOR = 0.35
@@ -1788,6 +1789,8 @@ def project_stat(
     po_minute_logs=None,
     rs_minute_logs=None,
     po_minute_count=None,
+    minutes_context=None,
+    previous_rate_logs=None,
 ):
     po_minute_logs = po_logs if po_minute_logs is None else po_minute_logs
     rs_minute_logs = rs_logs if rs_minute_logs is None else rs_minute_logs
@@ -1799,7 +1802,27 @@ def project_stat(
 
     # Fix 3: thread matchup-specific pace_factor through rate and minute blending
     rate = _blend_rate(po_rate, rs_rate, po_count, pace_factor=pace_factor)
-    avg_min = _blend_minutes(po_min, rs_min, po_minute_count, pace_factor=pace_factor)
+    forecast_features = {}
+    if MINUTES_FORECAST_ENABLED:
+        from minutes_forecast import forecast_minutes, shrink_rate
+        from zoneinfo import ZoneInfo
+        context = minutes_context or {}
+        played = pd.concat([rs_minute_logs, po_minute_logs], ignore_index=True)
+        if played.empty and previous_rate_logs is not None:
+            played = previous_rate_logs.copy()
+        played = played.copy()
+        if not played.empty:
+            played["MIN"] = played["MIN"].apply(_parse_minutes)
+        cutoff = context.get("cutoff", datetime.now(ZoneInfo("America/New_York")).date())
+        avg_min, forecast_features = forecast_minutes(
+            played, cutoff, spread, is_home, context.get("starter"),
+            context.get("team_game_dates"), IS_PLAYOFF_SEASON)
+        games = int(context.get("current_games", len(played)))
+        if games < 10 and previous_rate_logs is not None and not previous_rate_logs.empty:
+            previous_rate, _ = _per_min_rate(previous_rate_logs, stat_col)
+            rate = shrink_rate(rate, previous_rate, games)
+    else:
+        avg_min = _blend_minutes(po_min, rs_min, po_minute_count, pace_factor=pace_factor)
 
     if rate is None or avg_min is None:
         return None, {}
@@ -1817,7 +1840,7 @@ def project_stat(
         rust_discount = 0.0   # ensure consistent type for detail dict
 
     mins_reduced = 0.0
-    if abs(spread) > BLOWOUT_SPREAD_THRESHOLD and avg_min >= STARTER_MIN_THRESHOLD:
+    if not MINUTES_FORECAST_ENABLED and abs(spread) > BLOWOUT_SPREAD_THRESHOLD and avg_min >= STARTER_MIN_THRESHOLD:
         favored_is_home = spread > 0
         player_is_favored = is_home == favored_is_home
         if player_is_favored:
@@ -1903,6 +1926,7 @@ def project_stat(
                 logger.warning("Skipping learned player projection for %s: %s", stat_col, exc)
 
     detail = {
+        "minutes_forecast": forecast_features,
         "pos_group": pos_group,
         "rate": round(rate, 4),
         "min": round(avg_min, 1),
@@ -2065,6 +2089,7 @@ def project_prop(
     team_abbr,
     spread=0.0,
     pace_factor=None,
+    minutes_context=None,
 ):
     """Returns (projection, details, sd, metadata)."""
     stat_cols = MARKET_TO_STATS.get(market_key)
@@ -2084,7 +2109,16 @@ def project_prop(
     po_minute_logs, rs_minute_logs = history.po_minutes, history.rs_minutes
     using_playoffs = history.using_playoffs
     po_count, po_raw_count = history.po_rate_count, history.po_raw_count
-    if po_logs.empty and rs_logs.empty:
+    previous_logs = None
+    if MINUTES_FORECAST_ENABLED:
+        minutes_context = dict(minutes_context or {})
+        current_all = _fetch_logs(pid, SEASON, SEASON_TYPE_RS, 0)
+        minutes_context.setdefault("current_games", len(current_all) + po_raw_count)
+        if minutes_context["current_games"] < 10:
+            year = int(SEASON[:4]) - 1
+            previous_season = "%d-%02d" % (year, (year + 1) % 100)
+            previous_logs = _fetch_logs(pid, previous_season, SEASON_TYPE_RS, MIN_MINUTES_RS).head(20)
+    if po_logs.empty and rs_logs.empty and (previous_logs is None or previous_logs.empty):
         return None, None, None, None
 
     proj_low, proj_high = _compute_prop_range(
@@ -2112,6 +2146,8 @@ def project_prop(
             po_minute_logs=po_minute_logs,
             rs_minute_logs=rs_minute_logs,
             po_minute_count=(po_count if MINUTES_HISTORY_MODE == "filtered" else po_raw_count),
+            minutes_context=minutes_context,
+            previous_rate_logs=previous_logs,
         )
         if p is None:
             return None, None, None, None

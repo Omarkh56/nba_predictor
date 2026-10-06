@@ -108,6 +108,8 @@ def init_worker(bundle: SeasonBundle, overrides: Dict[str, Any], project_root: s
     pl_players["_i"] = pl_players.groupby("PLAYER_ID").cumcount()
     _W["pgroups"] = {pid: g.reset_index(drop=True) for pid, g in pl_players.groupby("PLAYER_ID", sort=False)}
     _W["by_date"] = {d: list(zip(g["PLAYER_ID"].tolist(), g["_i"].tolist())) for d, g in pl_players.groupby("GAME_DATE")}
+    _W["previous_groups"] = {pid: g for pid, g in bundle.previous_players.groupby("PLAYER_ID")} if not bundle.previous_players.empty else {}
+    _W["team_dates"] = {tid: g.GAME_DATE.unique() for tid, g in bundle.teams.groupby("TEAM_ID")} if not bundle.teams.empty else {}
     _W["min_prior_games"] = min_prior_games
     _W["include_voids"] = include_voids
     if include_voids:
@@ -135,7 +137,16 @@ def init_worker(bundle: SeasonBundle, overrides: Dict[str, Any], project_root: s
     def _fetch_logs_asof(pid, season, season_type, min_minutes, retries=3):
         if pid != _CTX["pid"]:
             raise AssertionError("replay history requested for a different player than the one being predicted")
-        df = _CTX["prior_rs"] if season_type == pl.SEASON_TYPE_RS else _CTX["prior_po"]
+        if season != bundle.season:
+            expected = "%d-%02d" % (int(bundle.season[:4]) - 1, int(bundle.season[:4]) % 100)
+            if season != expected:
+                raise AssertionError("unexpected historical season")
+            df = _W["previous_groups"].get(pid, pd.DataFrame())
+            if not df.empty:
+                df = asof_before(df, _CTX["cutoff"])
+                df = df.sort_values("GAME_DATE", ascending=False)
+        else:
+            df = _CTX["prior_rs"] if season_type == pl.SEASON_TYPE_RS else _CTX["prior_po"]
         if df is None or df.empty:
             return pd.DataFrame()
         out = df.copy()
@@ -265,7 +276,7 @@ def run_chunk(dates: List[pd.Timestamp]):
                 if len(prior) and prior["GAME_DATE"].max() >= d:
                     raise AssertionError("lookahead: prior history contains a game on/after %s" % d.date())
                 _CTX.update(
-                    pid=pid,
+                    pid=pid, cutoff=d,
                     prior_rs=prior[prior["SEASON_TYPE"] == SEASON_TYPE_RS].reset_index(drop=True),
                     prior_po=prior[prior["SEASON_TYPE"] == SEASON_TYPE_PO].reset_index(drop=True),
                 )
@@ -283,6 +294,9 @@ def run_chunk(dates: List[pd.Timestamp]):
                     proj, details, sd, meta = pl.project_prop(
                         name, mkt_key, opp, opp_tid, [], None, is_home, team,
                         spread=NEUTRAL_SPREAD, pace_factor=NEUTRAL_PACE_FACTOR,
+                        **({"minutes_context": {"cutoff": d, "current_games": i,
+                             "team_game_dates": _W["team_dates"].get(int(row["TEAM_ID"]))}}
+                           if pl.MINUTES_FORECAST_ENABLED else {}),
                     )
                     if proj is None:
                         failures["project_prop_returned_none"] = failures.get("project_prop_returned_none", 0) + 1
@@ -313,6 +327,9 @@ def run_chunk(dates: List[pd.Timestamp]):
                         "usg_used": float(row["USG_ASOF"]) if not pd.isna(row["USG_ASOF"]) else np.nan,
                         "rust_discount": float(details[cols[0]].get("rust_discount", 0.0) or 0.0),
                         "games_since_return": details[cols[0]].get("games_since_return"),
+                        "starter_source": details[cols[0]].get("minutes_forecast", {}).get("starter_source"),
+                        "absence_source": details[cols[0]].get("minutes_forecast", {}).get("absence_source"),
+                        "games_since_absence_return": details[cols[0]].get("minutes_forecast", {}).get("games_since_absence_return"),
                     })
     return rows, counts, failures, time.perf_counter() - t0
 
