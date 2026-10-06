@@ -2287,9 +2287,12 @@ def determine_team(po_logs, rs_logs, home_abbr, away_abbr):
     playoffs every recent game is vs the SAME opponent, so counting o creates a
     tie on every row and makes the function fall through to wrong data.
     Normalizes ESPN abbreviations (SA→SAS, GS→GSW, etc.) before comparing against
-    the NBA API MATCHUP field which always uses canonical 3-letter codes."""
-    h = ESPN_TO_NBA_ABBR.get(home_abbr, home_abbr)
-    a = ESPN_TO_NBA_ABBR.get(away_abbr, away_abbr)
+    the NBA API MATCHUP field which always uses canonical 3-letter codes. Uses
+    team_codes.normalize_team() like every other team-code site in this file (v10
+    fix: this one was still on the bare ESPN_TO_NBA_ABBR dict lookup, which unlike
+    normalize_team() is case-sensitive and has no full-team-name fallback)."""
+    h = _team_codes.normalize_team(home_abbr) or home_abbr
+    a = _team_codes.normalize_team(away_abbr) or away_abbr
     for logs in [po_logs, rs_logs]:
         if logs.empty or "MATCHUP" not in logs.columns:
             continue

@@ -164,3 +164,27 @@ def test_process_game_declining_over_penalty_can_reduce_confidence_below_fifty(
     assert row["Pick"] == "OVER"
     assert row["Confidence"] == 45.8
     assert "TREND↓" in row["Flags"]
+
+
+def _logs(matchup):
+    import pandas as pd
+
+    return pd.DataFrame({"MATCHUP": [matchup] * 3})
+
+
+def test_determine_team_normalizes_via_team_codes_not_the_bare_dict(predictor):
+    """v10 fix: determine_team() used a bare ESPN_TO_NBA_ABBR.get() lookup, which is
+    case-sensitive and has no full-team-name fallback, unlike every other team-code
+    site in this file (team_codes.normalize_team()). Canonical codes must still work,
+    and now a lowercase code or a full team name must resolve too."""
+    rs = _logs("UTA vs. LAL")
+    empty = _logs("").iloc[0:0]
+
+    canonical = predictor.determine_team(empty, rs, "UTA", "LAL")
+    assert canonical == {"team_abbr": "UTA", "opp_abbr": "LAL", "is_home": True}
+
+    espn_code = predictor.determine_team(empty, rs, "utah", "LAL")
+    assert espn_code == {"team_abbr": "utah", "opp_abbr": "LAL", "is_home": True}
+
+    full_name = predictor.determine_team(empty, _logs("GSW vs. LAL"), "Golden State Warriors", "LAL")
+    assert full_name == {"team_abbr": "Golden State Warriors", "opp_abbr": "LAL", "is_home": True}
