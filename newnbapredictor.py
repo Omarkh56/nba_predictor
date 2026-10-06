@@ -460,8 +460,9 @@ def get_todays_games() -> List[Dict]:
     instead of returning [] — an outage is not an empty schedule.
     """
     failures = 0
+    anchor = team_codes.today_slate_date()  # US Eastern, not UTC/local — see v10 fix
     for days_ahead in range(-1, 45):  # include preseason / early-season slate
-        target = date.today() + timedelta(days=days_ahead)
+        target = anchor + timedelta(days=days_ahead)
         try:
             matchups = get_games_for_date(target)
         except ScheduleFetchError as e:
@@ -1672,7 +1673,7 @@ def main(season=None):
         return
 
     gd = matchups[0]["game_date"]
-    tag = "TODAY" if gd == date.today() else gd.strftime("%A %B %d")
+    tag = "TODAY" if gd == team_codes.today_slate_date() else gd.strftime("%A %B %d")
     print(f"\n{'=' * 62}")
     print(f"  NBA — {tag}  ({len(matchups)} games)")
     print(f"{'=' * 62}")

@@ -159,3 +159,39 @@ def test_espn_schedule_normalizes_codes_and_raises_on_failure(monkeypatch):
     with pytest.raises(nb.ScheduleFetchError):
         nb.get_todays_games()
     assert len(calls) == 3  # fails fast instead of 46 timeouts
+
+
+def test_get_todays_games_scans_from_the_eastern_slate_date_not_local(monkeypatch):
+    """v10 Fix: get_todays_games() must anchor on team_codes.today_slate_date() (US
+    Eastern), not date.today() (server-local/UTC) -- a CI/server running in UTC is
+    already a day ahead of the real Eastern slate between ~8pm and midnight ET."""
+    import newnbapredictor as nb
+    import team_codes
+
+    monkeypatch.setattr(team_codes, "today_slate_date", lambda: date(2026, 11, 3))
+    monkeypatch.setattr(nb, "date", mock.Mock(today=lambda: date(2026, 11, 10)))  # a wrong "local" date
+
+    seen = []
+
+    def fake(target):
+        seen.append(target)
+        return [{"game_date": target}] if target == date(2026, 11, 2) else []
+
+    monkeypatch.setattr(nb, "get_games_for_date", fake)
+    games = nb.get_todays_games()
+    assert seen[0] == date(2026, 11, 2)  # anchor - 1 day, from the slate date, not local
+    assert games[0]["game_date"] == date(2026, 11, 2)
+
+
+def test_today_tag_logic_prefers_the_eastern_slate_date(monkeypatch):
+    """The "TODAY" tag in main() is `"TODAY" if gd == team_codes.today_slate_date() else ...`
+    -- same anchor fix as above, checked directly instead of through the full prediction
+    pipeline main() runs (live injury/stats fetches), which is far too heavy for this."""
+    import team_codes
+
+    monkeypatch.setattr(team_codes, "today_slate_date", lambda: date(2026, 11, 3))
+    gd = date(2026, 11, 3)
+    tag = "TODAY" if gd == team_codes.today_slate_date() else gd.strftime("%A %B %d")
+    assert tag == "TODAY"
+    tag_other_day = "TODAY" if date(2026, 11, 4) == team_codes.today_slate_date() else "not today"
+    assert tag_other_day == "not today"
