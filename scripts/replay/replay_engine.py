@@ -180,8 +180,10 @@ def _setup_date(d: pd.Timestamp) -> str:
     pl.PLAYER_STD_CACHE.clear()
     pl.dvp_engine.clear_cache()
     if league.empty:
-        # Nothing has been played yet (season opener): no player can be eligible, and building the DvP table
-        # would make dvp.py fall back to a LIVE fetch because inject_logs() ignores empty frames.
+        # Season opener: nothing played yet. inject_logs() ignores empty frames, so dvp.py would otherwise fall
+        # back to a LIVE fetch (blocked here). Live, that fetch returns an empty season and get_dvp_factor() is
+        # neutral (1.0); seed the same empty table so prior-season-path players replay exactly as live.
+        pl.dvp_engine._DVP_TABLE[window] = pd.DataFrame()
         return mode
     pl.dvp_engine.inject_logs(league, window)
     pl.dvp_engine.build_dvp_table(window)
@@ -294,9 +296,12 @@ def run_chunk(dates: List[pd.Timestamp]):
                     proj, details, sd, meta = pl.project_prop(
                         name, mkt_key, opp, opp_tid, [], None, is_home, team,
                         spread=NEUTRAL_SPREAD, pace_factor=NEUTRAL_PACE_FACTOR,
+                        # The early-season rule gets no team schedule: live callers never pass one, so
+                        # it must replay exactly as it runs live. The full experimental feature keeps it.
                         **({"minutes_context": {"cutoff": d, "current_games": i,
-                             "team_game_dates": _W["team_dates"].get(int(row["TEAM_ID"]))}}
-                           if pl.MINUTES_FORECAST_ENABLED else {}),
+                             **({"team_game_dates": _W["team_dates"].get(int(row["TEAM_ID"]))}
+                                if pl.MINUTES_FORECAST_ENABLED else {})}}
+                           if (pl.MINUTES_FORECAST_ENABLED or pl.EARLY_SEASON_FALLBACK_ENABLED) else {}),
                     )
                     if proj is None:
                         failures["project_prop_returned_none"] = failures.get("project_prop_returned_none", 0) + 1

@@ -187,6 +187,21 @@ MIN_MINUTES_PO = (
 # v9: rate estimates still require reliable-minute samples, while expected
 # minutes can use every played appearance so role collapses are not hidden.
 MINUTES_FORECAST_ENABLED = False  # Phase 3 gate; opt in via replay --set
+# v10: the prior-season path (minutes_forecast + prior-season rate shrinkage) ONLY for
+# regular-season players with fewer than 10 current-season games -- the regime where it
+# was validated. The full feature above stays gated off (it failed a playoff check).
+EARLY_SEASON_FALLBACK_ENABLED = False
+EARLY_SEASON_MAX_GAMES = 10  # same threshold as project_prop's prior-season load and shrink_rate
+
+
+def _use_forecast_path(current_games: int, playoffs: bool) -> bool:
+    """Which minutes/rate path one player-game uses. Reads the flags at call time so
+    replay `--set` overrides apply."""
+    if MINUTES_FORECAST_ENABLED:
+        return True
+    return bool(EARLY_SEASON_FALLBACK_ENABLED and not playoffs
+                and current_games < EARLY_SEASON_MAX_GAMES)
+
 MINUTES_HISTORY_MODE = "robust"  # replay winner: every appearance, reduced leverage for extreme shorts
 SHORT_APPEARANCE_REFERENCE_MIN = 15.0
 SHORT_APPEARANCE_WEIGHT_FLOOR = 0.35
@@ -1833,7 +1848,11 @@ def project_stat(
     po_minute_count=None,
     minutes_context=None,
     previous_rate_logs=None,
+    use_forecast=None,
 ):
+    # v10: project_prop decides the path per player-game (_use_forecast_path); None keeps
+    # the old global behaviour for direct callers.
+    forecast_on = MINUTES_FORECAST_ENABLED if use_forecast is None else bool(use_forecast)
     po_minute_logs = po_logs if po_minute_logs is None else po_minute_logs
     rs_minute_logs = rs_logs if rs_minute_logs is None else rs_minute_logs
     po_minute_count = po_count if po_minute_count is None else po_minute_count
@@ -1845,7 +1864,7 @@ def project_stat(
     # Fix 3: thread matchup-specific pace_factor through rate and minute blending
     rate = _blend_rate(po_rate, rs_rate, po_count, pace_factor=pace_factor)
     forecast_features = {}
-    if MINUTES_FORECAST_ENABLED:
+    if forecast_on:
         from minutes_forecast import forecast_minutes, shrink_rate
         from zoneinfo import ZoneInfo
         context = minutes_context or {}
@@ -1882,7 +1901,7 @@ def project_stat(
         rust_discount = 0.0   # ensure consistent type for detail dict
 
     mins_reduced = 0.0
-    if MINUTES_FORECAST_ENABLED:
+    if forecast_on:
         # forecast_minutes() already folded its own blowout cut into avg_min above;
         # surface it the same way the legacy path does, so _build_prop_flags()'s
         # 'BLW-Xm' flag and the console '[blowout -Xmin]' annotation still fire.
@@ -2157,14 +2176,15 @@ def project_prop(
     using_playoffs = history.using_playoffs
     po_count, po_raw_count = history.po_rate_count, history.po_raw_count
     previous_logs = None
-    if MINUTES_FORECAST_ENABLED:
-        minutes_context = dict(minutes_context or {})
-        current_all = _fetch_logs(pid, SEASON, SEASON_TYPE_RS, 0)
-        minutes_context.setdefault("current_games", len(current_all) + po_raw_count)
-        if minutes_context["current_games"] < 10:
-            year = int(SEASON[:4]) - 1
-            previous_season = "%d-%02d" % (year, (year + 1) % 100)
-            previous_logs = _fetch_logs(pid, previous_season, SEASON_TYPE_RS, MIN_MINUTES_RS).head(20)
+    minutes_context = dict(minutes_context or {})
+    # From the history already fetched (no extra call). rs_minutes is the current RS capped at
+    # 20 games; current_games is only ever compared with EARLY_SEASON_MAX_GAMES, so the cap is exact.
+    minutes_context.setdefault("current_games", len(rs_minute_logs) + po_raw_count)
+    use_forecast = _use_forecast_path(minutes_context["current_games"], IS_PLAYOFF_SEASON)
+    if use_forecast and minutes_context["current_games"] < EARLY_SEASON_MAX_GAMES:
+        year = int(SEASON[:4]) - 1
+        previous_season = "%d-%02d" % (year, (year + 1) % 100)
+        previous_logs = _fetch_logs(pid, previous_season, SEASON_TYPE_RS, MIN_MINUTES_RS).head(20)
     if po_logs.empty and rs_logs.empty and (previous_logs is None or previous_logs.empty):
         return None, None, None, None
 
@@ -2195,6 +2215,7 @@ def project_prop(
             po_minute_count=(po_count if MINUTES_HISTORY_MODE == "filtered" else po_raw_count),
             minutes_context=minutes_context,
             previous_rate_logs=previous_logs,
+            use_forecast=use_forecast,
         )
         if p is None:
             return None, None, None, None

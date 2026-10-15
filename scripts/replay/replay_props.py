@@ -52,6 +52,18 @@ def _out_path(out_dir: str, label: str, season: str) -> str:
     return os.path.join(out_dir, "%s_%s.csv.gz" % (label, season))
 
 
+def _effective_flag(overrides: dict, name: str) -> bool:
+    """A --set override if given, else the live module's own value (after its import-time gates), so a
+    replay with no --set loads the prior season exactly when the live model would use it."""
+    if name in overrides:
+        return bool(overrides[name])
+    import contextlib
+    import io
+    with contextlib.redirect_stdout(io.StringIO()):
+        import playerlinepredictor
+    return bool(getattr(playerlinepredictor, name, False))
+
+
 def read_replay(path):
     """NBA game IDs are identifiers, including significant leading zeroes."""
     return pd.read_csv(path, dtype={"game_id": str})
@@ -77,7 +89,8 @@ def cmd_run(a: argparse.Namespace) -> int:
     log("data loaded in %.1fs: %s" % (load_s, bundle.meta["rows_by_season_type"]))
 
     overrides = engine.parse_overrides(a.set)
-    if overrides.get("MINUTES_FORECAST_ENABLED"):
+    if _effective_flag(overrides, "MINUTES_FORECAST_ENABLED") or _effective_flag(
+            overrides, "EARLY_SEASON_FALLBACK_ENABLED"):
         year = int(a.season[:4]) - 1
         previous_season = "%d-%02d" % (year, (year + 1) % 100)
         bundle.previous_players = load_previous_regular(client, previous_season)
