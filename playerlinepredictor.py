@@ -493,6 +493,40 @@ def _load_gated_artifact(loader, season: str, label: str) -> dict:
 RESIDUAL_CORRECTIONS = _load_gated_artifact(load_artifact, SEASON, "residual-correction")
 # v9: only apply a probability fit to a later season than its training data.
 PROBABILITY_CALIBRATION = _load_gated_artifact(load_probability_artifact, SEASON, "probability-calibration")
+
+
+_MINUTES_GATE_FILE = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "reports", "phase3_minutes_gate.json"
+)
+
+
+def _minutes_forecast_gate_passed(path=_MINUTES_GATE_FILE) -> bool:
+    """v10 Fix: RESIDUAL_CORRECTIONS/PROBABILITY_CALIBRATION can never activate on an
+    unproven artifact -- _load_gated_artifact checks that automatically. MINUTES_FORECAST_ENABLED
+    had no equivalent: it was a bare hardcoded bool, so flipping it in source silently activated
+    the feature regardless of whether reports/phase3_minutes_gate.json's own replay gate had
+    actually passed. This reads only that one top-level field; a missing/corrupt/undecided
+    file fails closed (treated as not passed), matching every other gate in this module."""
+    try:
+        with open(path) as fh:
+            return json.load(fh).get("decision") == "on"
+    except (OSError, ValueError, KeyError):
+        return False
+
+
+def _resolve_minutes_forecast_flag(requested: bool, gate_passed: bool) -> bool:
+    """Pure decision so the forcing-closed behavior is unit-testable without having to
+    reimport the module with a different hardcoded source default."""
+    if requested and not gate_passed:
+        print("  [minutes-forecast] enabled in source but the replay gate has not passed — staying off")
+        return False
+    return requested
+
+
+MINUTES_FORECAST_ENABLED = _resolve_minutes_forecast_flag(
+    MINUTES_FORECAST_ENABLED, _minutes_forecast_gate_passed()
+)
+
 NULL_POS_PLAYERS = set()  # v8 Fix 6: players whose position lookup failed (DvP=1.0 for these)
 
 # v8 Fix 5: manual position overrides for players missing from the auto-detect roster fetch.
@@ -1840,7 +1874,12 @@ def project_stat(
         rust_discount = 0.0   # ensure consistent type for detail dict
 
     mins_reduced = 0.0
-    if not MINUTES_FORECAST_ENABLED and abs(spread) > BLOWOUT_SPREAD_THRESHOLD and avg_min >= STARTER_MIN_THRESHOLD:
+    if MINUTES_FORECAST_ENABLED:
+        # forecast_minutes() already folded its own blowout cut into avg_min above;
+        # surface it the same way the legacy path does, so _build_prop_flags()'s
+        # 'BLW-Xm' flag and the console '[blowout -Xmin]' annotation still fire.
+        mins_reduced = float(forecast_features.get("blowout_reduction", 0.0) or 0.0)
+    elif abs(spread) > BLOWOUT_SPREAD_THRESHOLD and avg_min >= STARTER_MIN_THRESHOLD:
         favored_is_home = spread > 0
         player_is_favored = is_home == favored_is_home
         if player_is_favored:

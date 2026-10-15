@@ -3,6 +3,7 @@ import json
 import os
 import subprocess
 import sys
+from unittest import mock
 
 import pandas as pd
 import pytest
@@ -153,3 +154,86 @@ def test_saved_numeric_game_ids_keep_leading_zeroes(tmp_path, monkeypatch):
     assert saved.game_id.iloc[0] == "0022500001"
     legacy = pd.read_csv(path)
     assert diagnostics(saved, legacy)["paired_rows"] == 1
+
+
+def test_blowout_reduction_surfaces_as_min_reduced_under_the_forecast_path(monkeypatch):
+    """v10 fix: forecast_minutes() applies its own blowout cut internally, but
+    detail['min_reduced'] used to stay 0.0 on this path -- the legacy line that set
+    it was gated `if not MINUTES_FORECAST_ENABLED`. _build_prop_flags()'s 'BLW-Xm'
+    flag and the console annotation both read min_reduced, so a real blowout cut
+    must still show up there, not just inside detail['minutes_forecast']."""
+    with mock.patch("requests.sessions.Session.request", side_effect=AssertionError("Network forbidden")):
+        import playerlinepredictor as predictor
+
+    monkeypatch.setattr(predictor, "MINUTES_FORECAST_ENABLED", True)
+    monkeypatch.setattr(predictor, "_blend_rate", mock.Mock(return_value=1.0))
+    monkeypatch.setattr(predictor, "detect_injury_return", mock.Mock(return_value=100))
+    monkeypatch.setattr(predictor, "injury_rust_discount", mock.Mock(return_value=0.0))
+    monkeypatch.setattr(predictor, "get_series_h2h", mock.Mock(return_value=1.0))
+    monkeypatch.setattr(predictor, "get_series_def_factor", mock.Mock(return_value=1.0))
+    monkeypatch.setattr(predictor, "_ha_factor", mock.Mock(return_value=1.0))
+    monkeypatch.setattr(predictor, "_player_season_avg", mock.Mock(return_value=20.0))
+    monkeypatch.setattr(predictor, "get_team_stat_avg", mock.Mock(return_value=100.0))
+    monkeypatch.setattr(predictor, "compute_usage_boost", mock.Mock(return_value=1.0))
+    monkeypatch.setattr(predictor.dvp_engine, "get_dvp_factor", mock.Mock(return_value=1.0))
+    monkeypatch.setattr(predictor, "RESIDUAL_CORRECTIONS", {})
+    monkeypatch.setattr(predictor, "USE_KALMAN_PLAYER_MODEL", False)
+    monkeypatch.setattr(predictor, "_LEARNED_PLAYER_PARAMS", {})
+
+    import minutes_forecast
+    features = {"ewm_minutes": 32.0, "starter": True, "starter_source": "lineup",
+                "rest_days": 2, "spread": 20.0, "blowout_reduction": 5.0,
+                "games_since_absence_return": None, "absence_source": "unavailable"}
+    monkeypatch.setattr(minutes_forecast, "forecast_minutes", mock.Mock(return_value=(27.0, features)))
+
+    with mock.patch("requests.sessions.Session.request", side_effect=AssertionError("Network forbidden")):
+        _proj, detail = predictor.project_stat(
+            "Probe", "PTS", "BOS", 2, [], "PG",
+            pd.DataFrame({"PTS": [20], "MIN": [27]}), pd.DataFrame({"PTS": [20], "MIN": [27]}),
+            True, "NYK", False, 0, spread=20.0,
+        )
+    assert detail["min_reduced"] == 5.0
+    assert detail["minutes_forecast"]["blowout_reduction"] == 5.0
+
+
+def test_minutes_forecast_gate_reads_the_decision_field_and_fails_closed(tmp_path):
+    """v10 fix: MINUTES_FORECAST_ENABLED had no equivalent to _artifact_for_season's
+    automatic season-cutoff gate -- a bare hardcoded bool that anyone could flip
+    without re-checking reports/phase3_minutes_gate.json. _minutes_forecast_gate_passed()
+    closes that gap; a missing/corrupt/undecided file fails closed like every other
+    gated artifact in this module."""
+    import playerlinepredictor as predictor
+
+    # The real, committed gate's own decision is "off" right now (it failed a
+    # playoff validation check) -- the default path must reflect that.
+    assert predictor._minutes_forecast_gate_passed() is False
+
+    on = tmp_path / "on.json"
+    on.write_text(json.dumps({"decision": "on"}))
+    assert predictor._minutes_forecast_gate_passed(str(on)) is True
+
+    off = tmp_path / "off.json"
+    off.write_text(json.dumps({"decision": "off"}))
+    assert predictor._minutes_forecast_gate_passed(str(off)) is False
+
+    undecided = tmp_path / "undecided.json"
+    undecided.write_text(json.dumps({"decision": "inconclusive"}))
+    assert predictor._minutes_forecast_gate_passed(str(undecided)) is False
+
+    corrupt = tmp_path / "corrupt.json"
+    corrupt.write_text("not json")
+    assert predictor._minutes_forecast_gate_passed(str(corrupt)) is False
+
+    assert predictor._minutes_forecast_gate_passed(str(tmp_path / "missing.json")) is False
+
+
+def test_minutes_forecast_flag_is_forced_off_if_the_replay_gate_has_not_passed():
+    """The import-time wiring is `_resolve_minutes_forecast_flag(MINUTES_FORECAST_ENABLED,
+    _minutes_forecast_gate_passed())` -- a pure decision, tested directly here rather than
+    by reimporting the module with a different hardcoded source default."""
+    import playerlinepredictor as predictor
+
+    assert predictor._resolve_minutes_forecast_flag(True, gate_passed=False) is False
+    assert predictor._resolve_minutes_forecast_flag(True, gate_passed=True) is True
+    assert predictor._resolve_minutes_forecast_flag(False, gate_passed=False) is False
+    assert predictor._resolve_minutes_forecast_flag(False, gate_passed=True) is False
