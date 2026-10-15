@@ -564,6 +564,9 @@ PLAYER_STD_CACHE = {}
 PLAYER_USG_CACHE = {}  # {player_name: usg_pct float}  — leaguedashplayerbiostats
 PLAYER_POS_CACHE = {}  # {player_name: "G"/"F"/"C"}    — built from team rosters
 TEAM_ROSTER_CACHE = {}  # {team_id: {player_name: pos_group}} — commonteamroster
+# v10: {team_id: {player_id, ...}} — every rostered player, regardless of position. Used to
+# place a player on tonight's team before he has played this season (see _team_from_roster).
+TEAM_ROSTER_IDS = {}
 TEAM_DVP_CACHE = {}  # {(team_id, pos_group, stat_col): factor} — computed
 
 
@@ -818,15 +821,20 @@ def _fetch_team_roster(team_id):
         ).get_data_frames()[0]
         api_sleep()
         result = {}
+        ids = set()
         for _, row in df.iterrows():
             name = row.get("PLAYER", "")
             pos = row.get("POSITION", "")
+            pid = pd.to_numeric(row.get("PLAYER_ID"), errors="coerce")
+            if pd.notna(pid):
+                ids.add(int(pid))  # membership does not depend on a mappable position
             if name:
                 pg = _pos_group(pos)
                 if pg:
                     result[name] = pg
                     PLAYER_POS_CACHE[name] = pg
         TEAM_ROSTER_CACHE[team_id] = result
+        TEAM_ROSTER_IDS[team_id] = ids
         return result
     except (requests.exceptions.RequestException, json.JSONDecodeError, KeyError) as e:
         print(f"  Roster fetch error (team {team_id}): {e}")
@@ -2389,6 +2397,30 @@ def determine_team(po_logs, rs_logs, home_abbr, away_abbr):
     return None
 
 
+def _team_from_roster(pid, home_tid, away_tid, home_abbr, away_abbr):
+    """v10: place a player who has no current-season games on tonight's home or away team.
+
+    determine_team() reads current-season logs, so on opening night (and for anyone who
+    hasn't played yet) it returns None and the player was skipped entirely. Current
+    commonteamroster membership is the right source: it reflects offseason moves, which
+    last season's logs do not. Matched by player id, not name. A player on exactly one of
+    the two rosters is placed; on both or neither, None (unknown stays unknown)."""
+    if pid is None:
+        return None
+    on = {}
+    for side, tid in (("home", home_tid), ("away", away_tid)):
+        if tid is None:
+            continue
+        if tid not in TEAM_ROSTER_IDS and tid not in TEAM_ROSTER_CACHE:
+            _fetch_team_roster(tid)
+        on[side] = int(pid) in TEAM_ROSTER_IDS.get(tid, set())
+    if on.get("home") and not on.get("away"):
+        return {"team_abbr": home_abbr, "opp_abbr": away_abbr, "is_home": True}
+    if on.get("away") and not on.get("home"):
+        return {"team_abbr": away_abbr, "opp_abbr": home_abbr, "is_home": False}
+    return None
+
+
 def get_player_position_from_injuries(player_name, injuries_by_team):
     for _, injs in injuries_by_team.items():
         for inj in injs:
@@ -2410,7 +2442,9 @@ def _build_player_context(
         if not pid:
             continue
         history = get_player_logs_blended(pid)
-        ti = determine_team(history.po_minutes, history.rs_minutes, home_abbr, away_abbr)
+        # Current-season logs win; the roster only places players who haven't played yet.
+        ti = (determine_team(history.po_minutes, history.rs_minutes, home_abbr, away_abbr)
+              or _team_from_roster(pid, home_tid, away_tid, home_abbr, away_abbr))
         if ti is None:
             continue
         ih = ti["is_home"]
