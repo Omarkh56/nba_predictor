@@ -1,0 +1,214 @@
+{
+ "artifacts": {
+  "calibration.json": {
+   "sha256": "27c06a927c3e253a"
+  },
+  "learned_params.json": {
+   "sha256": "aa25b43d84ffcf5b",
+   "tested_on": "2024-25",
+   "trained_on": [
+    "2020-21",
+    "2021-22",
+    "2022-23"
+   ],
+   "validated_on": "2023-24",
+   "version": "2026-09-18"
+  },
+  "residual_corrections.json": {
+   "sha256": "1dd37e5a6fe351fc"
+  }
+ },
+ "code_fingerprint": "71f66ffd19553b710cace0d79feb54441f0ebb52bce402c7314d928422c855c1",
+ "decision": "on",
+ "flag": "EARLY_SEASON_FALLBACK_ENABLED",
+ "full_season": {
+  "checks": {
+   "5_full_season_identical": true
+  },
+  "max_abs_projection_delta": 0.0,
+  "rows_off": 182128,
+  "rows_on": 182128,
+  "rows_paired": 182128,
+  "rows_unpaired": 0
+ },
+ "generated_utc": "2026-10-16T07:22:20Z",
+ "git": {
+  "branch": "claude/pipeline-reliability",
+  "commit": "a6df849b43fb7581050aa79143dd53c7b514433c",
+  "dirty_files": [],
+  "working_tree_dirty": false
+ },
+ "max_current_games": 10,
+ "runtime_s": 1237.9,
+ "seasons": {
+  "2024-25": {
+   "checks": {
+    "1_coverage": true,
+    "2_paired_mae_not_worse": true,
+    "3_rule_only_quality": true,
+    "4_no_directional_lean": true
+   },
+   "coverage": {
+    "off": {
+     "opening_night": {
+      "played": 42,
+      "projected": 0,
+      "share": 0.0
+     },
+     "week1": {
+      "played": 1175,
+      "projected": 629,
+      "share": 0.5353191489361702
+     },
+     "window": {
+      "played": 4913,
+      "projected": 3817,
+      "share": 0.7769183798086708
+     }
+    },
+    "on": {
+     "opening_night": {
+      "played": 42,
+      "projected": 37,
+      "share": 0.8809523809523809
+     },
+     "week1": {
+      "played": 1175,
+      "projected": 1056,
+      "share": 0.8987234042553192
+     },
+     "window": {
+      "played": 4913,
+      "projected": 4582,
+      "share": 0.9326277223692245
+     }
+    }
+   },
+   "paired": {
+    "ci95": [
+     -0.22657851556759967,
+     -0.058849036479675425
+    ],
+    "corrected_mae_change": -0.13463633746092782,
+    "n": 30536,
+    "off": {
+     "bias_pct": -4.523617968496655,
+     "mae": 3.789647001952999,
+     "median_residual": -0.00034923840780543003,
+     "n": 30536,
+     "p_actual_gt_projection": 0.5005894681687189
+    },
+    "on": {
+     "bias_pct": -5.343150518791662,
+     "mae": 3.655010664492072,
+     "median_residual": -0.04463098544138688,
+     "n": 30536,
+     "p_actual_gt_projection": 0.5050104794341106
+    }
+   },
+   "rule_active_rows": {
+    "bias_pct": -5.329116835779263,
+    "mae": 3.546370806749687,
+    "median_residual": 0.0,
+    "n": 27936,
+    "p_actual_gt_projection": 0.4925544100801833
+   },
+   "rule_only_rows": {
+    "bias_pct": 0.3954888625638621,
+    "mae": 3.2499265840309035,
+    "median_residual": 0.05536901455861315,
+    "n": 6120,
+    "p_actual_gt_projection": 0.4264705882352941
+   },
+   "window": [
+    "2024-10-22",
+    "2024-11-20"
+   ]
+  },
+  "2025-26": {
+   "checks": {
+    "1_coverage": true,
+    "2_paired_mae_not_worse": true,
+    "3_rule_only_quality": true,
+    "4_no_directional_lean": true
+   },
+   "coverage": {
+    "off": {
+     "opening_night": {
+      "played": 39,
+      "projected": 0,
+      "share": 0.0
+     },
+     "week1": {
+      "played": 1189,
+      "projected": 622,
+      "share": 0.5231286795626577
+     },
+     "window": {
+      "played": 4888,
+      "projected": 3854,
+      "share": 0.7884615384615384
+     }
+    },
+    "on": {
+     "opening_night": {
+      "played": 39,
+      "projected": 37,
+      "share": 0.9487179487179487
+     },
+     "week1": {
+      "played": 1189,
+      "projected": 1087,
+      "share": 0.9142136248948697
+     },
+     "window": {
+      "played": 4888,
+      "projected": 4643,
+      "share": 0.9498772504091653
+     }
+    }
+   },
+   "paired": {
+    "ci95": [
+     -0.23420915725523608,
+     -0.09624275495138768
+    ],
+    "corrected_mae_change": -0.1598059633198901,
+    "n": 30832,
+    "off": {
+     "bias_pct": -3.31784722612652,
+     "mae": 3.8043377251906576,
+     "median_residual": 0.0,
+     "n": 30832,
+     "p_actual_gt_projection": 0.49085365853658536
+    },
+    "on": {
+     "bias_pct": -4.026713069872841,
+     "mae": 3.6445317618707675,
+     "median_residual": 0.0,
+     "n": 30832,
+     "p_actual_gt_projection": 0.4912104307213285
+    }
+   },
+   "rule_active_rows": {
+    "bias_pct": -4.069895060788231,
+    "mae": 3.5616235194322354,
+    "median_residual": 0.0,
+    "n": 29096,
+    "p_actual_gt_projection": 0.4810283200439923
+   },
+   "rule_only_rows": {
+    "bias_pct": 0.09709766866335781,
+    "mae": 3.393928508918867,
+    "median_residual": 0.05536901455861315,
+    "n": 6312,
+    "p_actual_gt_projection": 0.4333016476552598
+   },
+   "window": [
+    "2025-10-21",
+    "2025-11-19"
+   ]
+  }
+ },
+ "window_days": 30
+}

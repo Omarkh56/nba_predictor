@@ -261,7 +261,7 @@ The season decides which fitted artifacts are active: `probability_calibration.j
 ## Known limitations
 
 - **Hand-tuned weights are the default.** Training saves `swap` only when the learned game model beats the baseline on both validation metrics and on the held-out test season, and the predictor also requires that test season to be the latest completed one.
-- **Season rollover.** `config.current_season()` switches seasons every Oct 1; set `NBA_SEASON=YYYY-YY` to backtest another season. Early in a season players have few current-season games, and that regime is not validated yet.
+- **Season rollover.** `config.current_season()` switches seasons every Oct 1; set `NBA_SEASON=YYYY-YY` to backtest another season. Early in a season players have few current-season games; see *Early-season fallback* below for how props are projected then and what was validated.
 - **Odds API key required.** Copy `.env.example` to `.env` and set `ODDS_API_KEY`. Without it, scripts exit immediately instead of calling the Odds API.
 - **LibreSSL on macOS Python 3.9** may produce TLS warnings. `pip install --upgrade certifi` resolves this.
 - **No live score integration.** The model is pre-game only; it does not update based on in-game events.
@@ -293,3 +293,29 @@ does not claim evidence for opening-game predictions without current history.
 
 Replay commands, paired coverage, first-three-week diagnostics, and source hashes
 are recorded in the Phase 3 report. See `scripts/replay/README.md` for reproduction.
+
+## Early-season fallback (v10)
+
+Before v10 the live props model projected nobody who hadn't played yet this season:
+on opening night every player was skipped. Two fixes:
+
+- **Team assignment.** A player with no current-season games is placed on tonight's
+  home or away team from the current `commonteamroster` (matched by player id).
+  Current-season logs still take precedence once he has played.
+- **Projection.** `EARLY_SEASON_FALLBACK_ENABLED` runs the same prior-season path as the
+  experimental minutes forecast, but only for regular-season players with fewer than
+  10 current-season games. The full minutes forecast stays off, and the playoffs never
+  use this path.
+
+The flag is forced off at import unless `reports/early_season_fallback_gate.json` says
+`"on"`. `python3 scripts/replay/early_season_gate.py` regenerates it from the first 30
+days of 2024-25 and 2025-26 against predeclared criteria. Its result: opening night
+went from 0 to 37 of 42 (2024-25) and 0 to 37 of 39 (2025-26) projected player-games,
+week 1 from about 53% to 90%, corrected MAE improved by 0.135 and 0.160 (95% CIs exclude
+zero), and the full-season population was unchanged.
+
+Limits: rookies and players with no prior-season regular-season games of 15+ minutes
+still get no projection, and neither do players missing from `nba_api`'s static player
+list (23 of 117 rostered players for the Oct 20, 2026 games). Early-season projections
+inherit the full-season residual correction, whose mean over-corrects early-season
+outcomes by about 4-5% (the median is on target).

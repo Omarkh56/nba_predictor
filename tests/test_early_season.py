@@ -187,3 +187,31 @@ print(json.dumps({"rows": int(len(df)), "players": sorted(df.player.unique().tol
     assert proc.returncode == 0, proc.stderr[-2000:]
     out = json.loads(proc.stdout.strip().splitlines()[-1])
     assert out["rows"] > 0 and "Test Star" in out["players"]
+
+
+# --------------------------------------------------------------------------- the evidence gate
+def test_committed_early_gate_report_passed_and_the_flag_is_live(predictor):
+    """scripts/replay/early_season_gate.py wrote decision "on" for both seasons; the live
+    import must therefore leave EARLY_SEASON_FALLBACK_ENABLED on (the fixture does not touch it)."""
+    assert predictor._early_fallback_gate_passed() is True
+    assert predictor.EARLY_SEASON_FALLBACK_ENABLED is True
+
+
+def test_early_gate_reads_the_decision_and_fails_closed(predictor, tmp_path):
+    import json
+    for name, body, expected in (("on", {"decision": "on"}, True), ("off", {"decision": "off"}, False),
+                                 ("undecided", {"decision": "inconclusive"}, False),
+                                 ("list", [1, 2], False)):
+        path = tmp_path / f"{name}.json"
+        path.write_text(json.dumps(body))
+        assert predictor._early_fallback_gate_passed(str(path)) is expected, name
+    corrupt = tmp_path / "corrupt.json"
+    corrupt.write_text("not json")
+    assert predictor._early_fallback_gate_passed(str(corrupt)) is False
+    assert predictor._early_fallback_gate_passed(str(tmp_path / "missing.json")) is False
+
+
+@pytest.mark.parametrize("requested,passed,expected", [(True, True, True), (True, False, False),
+                                                       (False, True, False), (False, False, False)])
+def test_a_failed_gate_forces_the_flag_off(predictor, requested, passed, expected):
+    assert predictor._resolve_gated_flag(requested, passed, "early-season fallback") is expected

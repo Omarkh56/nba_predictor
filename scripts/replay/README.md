@@ -51,7 +51,22 @@ python3 scripts/replay/model_book_backtest.py --season 2025-26
 # Diagnose raw/corrected projection bias on the frozen final holdout and test
 # regime-aware additive/multiplicative candidates without changing live logic
 python3 scripts/replay/diagnose_projection_bias.py
+
+# v10: evidence gate for EARLY_SEASON_FALLBACK_ENABLED (first 30 days of 2024-25 and
+# 2025-26 with the rule off and on, plus the full 2025-26 population both ways; cache
+# only, about 20 minutes). Writes reports/early_season_fallback_gate.{json,md}.
+python3 scripts/replay/early_season_gate.py
+python3 scripts/replay/early_season_gate.py --reuse   # re-evaluate saved outputs only
+
+# Early-season experiment by hand: every played player-game, opening night included
+python3 scripts/replay/replay_props.py run --label early --season 2025-26 --season-type regular \
+  --min-prior-games 0 --date-from 2025-10-21 --date-to 2025-11-19 --set EARLY_SEASON_FALLBACK_ENABLED=True
 ```
+
+When `EARLY_SEASON_FALLBACK_ENABLED` (or `MINUTES_FORECAST_ENABLED`) is effectively on, the replay loads the
+previous regular season for prior-season rates. On opening night, when there are no league logs yet, it seeds an
+empty DvP table so defense-vs-position is neutral, exactly as the live fetch of an empty season leaves it. The early
+rule gets no team schedule (`team_game_dates`) because live callers never pass one.
 
 Outputs
 * per-row observations: `scripts/replay/output/<label>_<season>.csv.gz` (**gitignored**, large)

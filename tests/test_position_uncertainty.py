@@ -26,6 +26,9 @@ def clean_variance(monkeypatch):
     monkeypatch.setattr(predictor, "PLAYER_STD_CACHE", {})
     monkeypatch.setattr(predictor, "PROP_STD_DEV_PO", {"player_points": 6, "combo": 9})
     monkeypatch.setattr(predictor, "PROP_STD_DEV_RS", {"player_points": 5.7, "combo": 8})
+    # These tests check the default (10+ games) projection path with a short mocked history;
+    # the early-season prior-season path is covered in tests/test_early_season.py.
+    monkeypatch.setattr(predictor, "EARLY_SEASON_FALLBACK_ENABLED", False)
 
 
 @pytest.fixture

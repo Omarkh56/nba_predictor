@@ -190,7 +190,8 @@ MINUTES_FORECAST_ENABLED = False  # Phase 3 gate; opt in via replay --set
 # v10: the prior-season path (minutes_forecast + prior-season rate shrinkage) ONLY for
 # regular-season players with fewer than 10 current-season games -- the regime where it
 # was validated. The full feature above stays gated off (it failed a playoff check).
-EARLY_SEASON_FALLBACK_ENABLED = False
+# Forced back off at import unless reports/early_season_fallback_gate.json says "on".
+EARLY_SEASON_FALLBACK_ENABLED = True
 EARLY_SEASON_MAX_GAMES = 10  # same threshold as project_prop's prior-season load and shrink_rate
 
 
@@ -522,24 +523,49 @@ def _minutes_forecast_gate_passed(path=_MINUTES_GATE_FILE) -> bool:
     the feature regardless of whether reports/phase3_minutes_gate.json's own replay gate had
     actually passed. This reads only that one top-level field; a missing/corrupt/undecided
     file fails closed (treated as not passed), matching every other gate in this module."""
+    return _gate_decision_on(path)
+
+
+def _gate_decision_on(path) -> bool:
+    """True only if the replay-gate report at `path` says decision == "on"; fails closed."""
     try:
         with open(path) as fh:
             return json.load(fh).get("decision") == "on"
-    except (OSError, ValueError, KeyError):
+    except (OSError, ValueError, KeyError, AttributeError):
         return False
 
 
-def _resolve_minutes_forecast_flag(requested: bool, gate_passed: bool) -> bool:
+def _resolve_gated_flag(requested: bool, gate_passed: bool, label: str) -> bool:
     """Pure decision so the forcing-closed behavior is unit-testable without having to
     reimport the module with a different hardcoded source default."""
     if requested and not gate_passed:
-        print("  [minutes-forecast] enabled in source but the replay gate has not passed — staying off")
+        print(f"  [{label}] enabled in source but the replay gate has not passed — staying off")
         return False
     return requested
 
 
+def _resolve_minutes_forecast_flag(requested: bool, gate_passed: bool) -> bool:
+    return _resolve_gated_flag(requested, gate_passed, "minutes-forecast")
+
+
 MINUTES_FORECAST_ENABLED = _resolve_minutes_forecast_flag(
     MINUTES_FORECAST_ENABLED, _minutes_forecast_gate_passed()
+)
+
+# v10: produced by scripts/replay/early_season_gate.py (committed, rerunnable). Passed on
+# 2024-25 and 2025-26: opening night 0/42 -> 37/42 and 0/39 -> 37/39 player-games projected,
+# paired corrected MAE -0.135 and -0.160 (95% CIs exclude 0), full season unchanged.
+_EARLY_GATE_FILE = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "reports", "early_season_fallback_gate.json"
+)
+
+
+def _early_fallback_gate_passed(path=_EARLY_GATE_FILE) -> bool:
+    return _gate_decision_on(path)
+
+
+EARLY_SEASON_FALLBACK_ENABLED = _resolve_gated_flag(
+    EARLY_SEASON_FALLBACK_ENABLED, _early_fallback_gate_passed(), "early-season fallback"
 )
 
 NULL_POS_PLAYERS = set()  # v8 Fix 6: players whose position lookup failed (DvP=1.0 for these)
