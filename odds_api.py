@@ -10,11 +10,18 @@ from urllib.parse import urlencode, urlsplit
 import requests
 
 
+class MissingApiKey(requests.exceptions.RequestException):
+    """ODDS_API_KEY is unset, so the request was skipped rather than sent. Every caller
+    already handles RequestException, so each one skips odds instead of crashing."""
+
+
 def get_json(url: str, params: dict, timeout: int = 25) -> Union[dict, list]:
     """Keep certificate checks enabled and credentials out of error messages."""
     parsed = urlsplit(url)
     if parsed.scheme != "https" or parsed.hostname != "api.the-odds-api.com":
         raise ValueError("Odds API requests require the official HTTPS host")
+    if not params.get("apiKey"):
+        raise MissingApiKey("ODDS_API_KEY not set — Odds API request skipped")
     try:
         response = requests.get(url, params=params, timeout=timeout,
                                 verify=True, allow_redirects=False)

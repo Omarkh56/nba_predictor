@@ -69,6 +69,15 @@ def test_primary_error_url_is_not_exposed(monkeypatch):
     assert "private-test-key" not in str(exc.value)
 
 
+@pytest.mark.parametrize("key", [None, ""])
+def test_missing_key_skips_the_request(monkeypatch, key):
+    get = mock.Mock()
+    monkeypatch.setattr(odds_api.requests, "get", get)
+    with pytest.raises(requests.exceptions.RequestException, match="ODDS_API_KEY not set"):
+        odds_api.get_json(URL, {"apiKey": key})
+    get.assert_not_called()
+
+
 @pytest.mark.parametrize("url", ["http://api.the-odds-api.com/v4", "https://unknown.example/v4"])
 def test_unauthenticated_or_wrong_host_is_rejected(url):
     with pytest.raises(ValueError):

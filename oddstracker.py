@@ -54,11 +54,12 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 
 # ---------------------------------------------------------------------------
 # CONFIG — import shared constants from playerlinepredictor to avoid duplication
-# v7 Fix 4b: single source of truth for API key, base URL, and market lists
+# v7 Fix 4b: single source of truth for base URL and market lists; the API key
+# comes from config.py like the season does.
 # ---------------------------------------------------------------------------
 import playerlinepredictor as _props_model
+from config import ODDS_API_KEY  # noqa: E402
 
-ODDS_API_KEY = _props_model.ODDS_API_KEY
 BASE_URL = _props_model.BASE_URL
 SPORT = _props_model.SPORT
 MARKETS = _props_model.MARKETS

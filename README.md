@@ -261,8 +261,8 @@ The season decides which fitted artifacts are active: `probability_calibration.j
 ## Known limitations
 
 - **Hand-tuned weights are the default.** Training saves `swap` only when the learned game model beats the baseline on both validation metrics and on the held-out test season, and the predictor also requires that test season to be the latest completed one.
-- **Season rollover.** `config.current_season()` switches seasons every Oct 1; set `NBA_SEASON=YYYY-YY` to backtest another season. Early in a season players have few current-season games; see *Early-season fallback* below for how props are projected then and what was validated.
-- **Odds API key required.** Copy `.env.example` to `.env` and set `ODDS_API_KEY`. Without it, scripts exit immediately instead of calling the Odds API.
+- **Season rollover.** The season is defined only in `config.py`: `config.current_season()` switches seasons every Oct 1; set `NBA_SEASON=YYYY-YY` to backtest another season. Early in a season players have few current-season games; see *Early-season fallback* below for how props are projected then and what was validated.
+- **Odds API key required.** Copy `.env.example` to `.env` and set `ODDS_API_KEY`; `config.py` reads it, with no fallback value in source. Without it, the scripts print a warning and skip every Odds API request (reported as a failed odds fetch) instead of crashing.
 - **LibreSSL on macOS Python 3.9** may produce TLS warnings. `pip install --upgrade certifi` resolves this.
 - **No live score integration.** The model is pre-game only; it does not update based on in-game events.
 

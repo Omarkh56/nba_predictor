@@ -78,9 +78,8 @@ import pandas as pd
 import requests
 import urllib3
 
-from config import SEASON_START_MONTH, current_season
+from config import ODDS_API_KEY, SEASON_START_MONTH, current_season
 import team_codes as _team_codes
-from env_config import require_env
 from finance import StakeDecision, recommend_stake
 from nba_api_utils import dataframe_call_result
 from odds_api import get_json as _get_odds_json
@@ -111,7 +110,9 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 # =============================================================================
 # CONFIG
 # =============================================================================
-ODDS_API_KEY = require_env("ODDS_API_KEY")
+if not ODDS_API_KEY:  # warn, don't exit: odds_api.get_json() skips each Odds API request
+    print("  Warning: ODDS_API_KEY not set — copy .env.example to .env and fill in your key. "
+          "Odds fetching will be skipped.", file=sys.stderr)
 SPORT = "basketball_nba"
 BASE_URL = "https://api.the-odds-api.com/v4"
 
