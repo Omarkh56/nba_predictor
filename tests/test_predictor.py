@@ -43,6 +43,7 @@ def _import_newnba():
     nba_utils_stub.api_call_with_retry = mock.Mock(side_effect=lambda fn, **kw: fn())
     nba_utils_stub.safe_dataframe_call = mock.Mock(return_value=None)
     nba_utils_stub.dataframe_call_result = mock.Mock(return_value=None)
+    nba_utils_stub.configure_stats_http = mock.Mock()
 
     with mock.patch.dict("sys.modules", {**stubs, "requests": req_stub, "requests.exceptions": exc_stub, "nba_api_utils": nba_utils_stub}):
         spec = importlib.util.spec_from_file_location(

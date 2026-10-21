@@ -23,6 +23,7 @@ for p in (HERE, ROOT):
     if p not in sys.path:
         sys.path.insert(0, p)
 os.environ["ODDS_API_KEY"] = "replay-dummy-key"  # the replay never needs (or touches) the real Odds API key
+os.environ["NBA_RAW_ARCHIVE"] = "0"  # replays read caches; they must never write the live raw archive
 
 import pandas as pd  # noqa: E402
 

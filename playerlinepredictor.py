@@ -79,6 +79,7 @@ import requests
 import urllib3
 
 from config import ODDS_API_KEY, SEASON_START_MONTH, current_season
+import raw_archive
 import team_codes as _team_codes
 from finance import StakeDecision, recommend_stake
 from nba_api_utils import dataframe_call_result
@@ -776,8 +777,11 @@ def get_espn_injuries():
         r.raise_for_status()
         data = r.json()
     except (requests.exceptions.RequestException, json.JSONDecodeError) as e:
+        raw_archive.save("espn", "injuries", {}, None, status="fetch_failed",
+                         http_status=raw_archive.http_status_of(e), error=type(e).__name__)
         print(f"  ESPN injuries error: {e}")
         return {}
+    raw_archive.save("espn", "injuries", {}, data, http_status=raw_archive.http_status_of(r))
 
     out = {}
     for te in data.get("injuries", []):

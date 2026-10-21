@@ -18,6 +18,9 @@ env/
 # NBA API / project cache
 .ucl_cache/
 data_cache/
+
+# Raw archive of every external response (raw_archive.py)
+data/raw/
 *.cache
 
 # Generated prediction / log files (runtime data, not source code)

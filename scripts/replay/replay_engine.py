@@ -91,6 +91,7 @@ def split_dates(dates: List[pd.Timestamp], n_chunks: int, weights: Optional[List
 def init_worker(bundle: SeasonBundle, overrides: Dict[str, Any], project_root: str,
                 min_prior_games: int = ELIG_MIN_PRIOR_GAMES, include_voids: bool = False) -> None:
     os.environ["ODDS_API_KEY"] = "replay-dummy-key"  # the replay must never hold or use the real key
+    os.environ["NBA_RAW_ARCHIVE"] = "0"  # blocked calls below must not land in the live raw archive
     if project_root not in sys.path:
         sys.path.insert(0, project_root)
     with contextlib.redirect_stdout(io.StringIO()):

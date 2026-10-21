@@ -64,29 +64,14 @@ from game_features import (
 
 warnings.filterwarnings("ignore")
 
-# ── NBA-API patch (same as newnbapredictor.py) ────────────────────────────────
-import nba_api.stats.library.http as _nba_http
-_nba_http.STATS_HEADERS.update({
-    "User-Agent": (
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
-    ),
-    "Accept": "application/json, text/plain, */*",
-    "Accept-Language": "en-US,en;q=0.9",
-    "x-nba-stats-origin": "stats",
-    "x-nba-stats-token": "true",
-    "Origin": "https://www.nba.com",
-    "Referer": "https://www.nba.com/",
-})
-_nba_http.STATS_TIMEOUT = 90
-
-import requests as _req
+# ── NBA-API: the live headers, timeout and raw archive (nba_api_utils) ───────
+# Certificate verification stays on. The old process-wide requests.get patch
+# (verify=False) is gone: nba_api sends through its own Session, so it never
+# applied to these calls, only to unrelated requests.get callers.
 import requests          # needed for requests.exceptions in except clauses
-_orig_get = _req.get
-def _patched_get(url, **kwargs):
-    kwargs.setdefault("verify", False)
-    return _orig_get(url, **kwargs)
-_req.get = _patched_get
+from nba_api_utils import configure_stats_http
+
+configure_stats_http()
 # ─────────────────────────────────────────────────────────────────────────────
 
 from nba_api.stats.endpoints import leaguegamefinder, leaguegamelog

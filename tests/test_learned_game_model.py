@@ -148,8 +148,8 @@ def test_extreme_logits_do_not_overflow(predictor, tmp_path, model, intercept, e
 def test_real_training_artifact_activates_and_matches_the_fitted_estimator(
     predictor, tmp_path, monkeypatch
 ):
-    # Training currently patches requests.get at import, so restore it after the
-    # import. Fit/save below exercise the actual trainer without making requests.
+    # Import with the network forbidden. Fit/save below exercise the actual
+    # trainer without making requests.
     with mock.patch("requests.get", side_effect=AssertionError("Network forbidden")):
         import train_model as trainer
 

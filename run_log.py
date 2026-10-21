@@ -25,6 +25,8 @@ import uuid
 from datetime import date, datetime, timezone
 from pathlib import Path
 
+import raw_archive
+
 STATUSES = ("ok", "no_games", "market_unavailable", "fetch_failed", "skipped")
 EXIT_CODES = {"ok": 0, "no_games": 0, "partial": 3, "fetch_failed": 2}
 RUN_LOG_FILE = Path(__file__).with_name("run_log.jsonl")
@@ -54,6 +56,7 @@ class RunLog:
             "stages": [],
         }
         self._written = False
+        raw_archive.set_run_id(self.run_id)  # raw responses fetched from here on carry this run
 
     @property
     def run_id(self) -> str:

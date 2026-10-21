@@ -31,7 +31,9 @@ import urllib3
 from config import current_season, validation_season
 import team_codes
 from game_features import GAME_FEATURE_VERSION, build_live_game_features
+import raw_archive
 from nba_api_utils import api_call_with_retry as _api_call
+from nba_api_utils import configure_stats_http
 
 logger = logging.getLogger(__name__)
 
@@ -47,28 +49,8 @@ warnings.filterwarnings("ignore")
 urllib3.disable_warnings()
 
 # ── Patch nba_api ─────────────────────────────────────────────────────────────
-import nba_api.stats.library.http as _nba_http  # noqa: E402
-
-_nba_http.STATS_HEADERS.update(
-    {
-        "User-Agent": (
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
-        ),
-        "Accept": "application/json, text/plain, */*",
-        "Accept-Language": "en-US,en;q=0.9",
-        "Accept-Encoding": "gzip, deflate, br",
-        "x-nba-stats-origin": "stats",
-        "x-nba-stats-token": "true",
-        "Sec-Fetch-Mode": "cors",
-        "Sec-Fetch-Site": "same-site",
-        "Origin": "https://www.nba.com",
-        "Referer": "https://www.nba.com/",
-        "Connection": "keep-alive",
-        "DNT": "1",
-    }
-)
-_nba_http.STATS_TIMEOUT = 90
+# Headers and timeout live in nba_api_utils so train_model.py sends the same ones.
+configure_stats_http()
 
 # ─────────────────────────────────────────────────────────────────────────────
 # TLS NOTE: verify=False was previously set globally here as a workaround for
@@ -447,9 +429,14 @@ def get_games_for_date(target: date) -> List[Dict]:
             f"{ESPN_SCOREBOARD_URL}?dates={date_str}", headers=ESPN_HEADERS, timeout=12
         )
         resp.raise_for_status()
-        events = resp.json().get("events", [])
+        data = resp.json()
+        events = data.get("events", [])
     except (requests.RequestException, ValueError) as e:
+        raw_archive.save("espn", "scoreboard", {"dates": date_str}, None, status="fetch_failed",
+                         http_status=raw_archive.http_status_of(e), error=type(e).__name__)
         raise ScheduleFetchError(f"ESPN scoreboard {date_str}: {e}") from e
+    raw_archive.save("espn", "scoreboard", {"dates": date_str}, data,
+                     http_status=raw_archive.http_status_of(resp))
     return _scoreboard_matchups(events, target)
 
 
@@ -483,8 +470,11 @@ def get_espn_injuries() -> Dict[str, List[Dict]]:
         r.raise_for_status()
         data = r.json()
     except (requests.exceptions.RequestException, json.JSONDecodeError) as e:
+        raw_archive.save("espn", "injuries", {}, None, status="fetch_failed",
+                         http_status=raw_archive.http_status_of(e), error=type(e).__name__)
         print(f"  ESPN injuries error: {e}")
         return {}
+    raw_archive.save("espn", "injuries", {}, data, http_status=raw_archive.http_status_of(r))
 
     # Build a rough name→PPG lookup from a known-good source so injury
     # weighting works even though ESPN's injury endpoint has no stats.

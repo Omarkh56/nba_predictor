@@ -12,6 +12,7 @@
 | `newnbapredictor.py` | 10-factor team model (win probability, spread, over/under). |
 | `playerlinepredictor.py` | Player props engine (projections vs market lines, DvP, calibration). |
 | `oddstracker.py` | Fetches and logs book odds; computes lean/devig for calibration. |
+| `snapshot_injuries.py` | Archives the ESPN injury report and appends it to `data/injury_snapshots.csv` (run on a schedule). |
 | `calibrate.py` | Reads `bet_log.csv` → produces `calibration.json` for confidence adjustments. |
 | `train_model.py` | Walk-forward backtest that learns regression weights from historical data. |
 | `diagnose.py` | Diagnostic script for manual inspection of model internals. |
@@ -244,6 +245,64 @@ Outputs `calibration.json`, loaded at startup to adjust confidence and projectio
 | `calibration.json` | Market-direction hit rates and diagnostics (tracked) |
 | `learned_params.json` | Learned model weights from `train_model.py` (gitignored) |
 | `data_cache/` | Cached NBA API responses from `train_model.py` (gitignored) |
+| `data/raw/` | Every external response, gzipped, before it is used (see *Raw archive*; gitignored) |
+| `data/injury_snapshots.csv` | One row per player per ESPN injury snapshot (`snapshot_injuries.py`) |
+
+---
+
+## Raw archive
+
+Live runs used to refetch everything and keep nothing, so a past day couldn't be replayed and
+ESPN injury reports, which ESPN doesn't serve historically, were lost. `raw_archive.py` now
+saves every external response before the pipeline uses it:
+
+```
+data/raw/{source}/{endpoint}/dt={YYYY-MM-DD}/{fetched_at}_{params_hash}.json.gz
+```
+
+`dt` is the US Eastern date of the fetch. Each file is one gzipped JSON envelope with `source`,
+`endpoint`, `params` (API keys removed), `params_hash`, `fetched_at_utc`, `run_id` (matches
+`run_log.jsonl`), `status`, `http_status` when known, and the raw `payload`. A failed fetch is
+saved with `status: "fetch_failed"` and no payload, so gaps are visible. Read one back with
+`raw_archive.load(path)`.
+
+| source | written by | endpoints |
+|---|---|---|
+| `odds_api` | `odds_api.get_json()` | `events`, `event_odds` (event id moved into params) |
+| `nba_api` | the session nba_api sends through (`nba_api_utils.ArchivingSession`) | every stats.nba.com endpoint, e.g. `playergamelog`, `leaguegamefinder` |
+| `espn` | the ESPN fetches in `newnbapredictor.py`, `playerlinepredictor.py`, `snapshot_injuries.py` | `scoreboard`, `injuries` |
+
+The archive never changes what a fetch returns: if a file can't be written, it logs a warning
+and the run carries on. `NBA_RAW_ARCHIVE=0` turns it off and `NBA_RAW_ARCHIVE_DIR` moves it.
+Replays never write to it, and tests point it at a temp directory.
+
+### Injury snapshots
+
+`python3 snapshot_injuries.py [DATE]` fetches the ESPN injury report once, archives it, and
+appends one row per listed player to `data/injury_snapshots.csv`: snapshot time, slate date,
+NBA team code, player, ESPN player id, status, position, injury type/location/detail/side,
+expected return, ESPN's comments, and the run id. `DATE` (default: today, US Eastern) only
+labels the slate; the report itself is always current. Each run logs to `run_log.jsonl` and
+exits 0, or 2 when the report couldn't be fetched or saved.
+
+Snapshot at 10:00, 14:00, 17:00 and 18:30 ET so status changes before tip-off are kept. With
+cron on Linux (cronie supports `CRON_TZ`):
+
+```
+CRON_TZ=America/New_York
+0 10,14,17 * * *  cd /path/to/nba-props && python3 snapshot_injuries.py
+30 18 * * *       cd /path/to/nba-props && python3 snapshot_injuries.py
+```
+
+macOS cron has no `CRON_TZ` and uses local time. From Madrid, ET is 6 hours behind (5 hours
+between the EU and US clock changes, late Oct to early Nov and in March), so:
+
+```
+0 16,20,23 * * *  cd /path/to/nba-props && python3 snapshot_injuries.py
+30 0 * * *        cd /path/to/nba-props && python3 snapshot_injuries.py
+```
+
+The 00:30 run is still the previous Eastern date, so the default slate date is right.
 
 ---
 
