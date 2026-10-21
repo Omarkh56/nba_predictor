@@ -62,6 +62,31 @@ FLAG_SHRINK_N = 40
 # ---------------------------------------------------------------------------
 
 
+def _choose_prior(total_bets: int, empirical_rate: float) -> tuple:
+    """Return (prior, source): the empirical hit rate once there is enough data."""
+    if total_bets >= MIN_BETS_FOR_EMPIRICAL_PRIOR:
+        return empirical_rate, "empirical"
+    return DEFAULT_PRIOR, "default"
+
+
+def _load_existing_calib() -> dict:
+    """Return calibration.json as it is now, or {} if absent or unreadable.
+
+    Other tools write their own top-level sections into this file (e.g.
+    `oddstracker.py --analyze --update-calib` writes "book_lean"), so calibrate()
+    must merge into it rather than rebuild it from scratch.
+    """
+    if not CALIB_FILE.exists():
+        return {}
+    try:
+        with open(CALIB_FILE) as f:
+            existing = json.load(f)
+    except (OSError, json.JSONDecodeError) as exc:
+        print(f"  Warning: could not read existing {CALIB_FILE.name} ({exc}) — rebuilding it")
+        return {}
+    return existing if isinstance(existing, dict) else {}
+
+
 def _laplace_smooth(hits, n, prior, k=LAPLACE_K):
     """Smooth hit rate toward prior using Laplace / additive smoothing."""
     return (hits + k * prior) / (n + k)
@@ -318,8 +343,7 @@ def calibrate(verbose=False):
         f"{empirical_rate * 100:.1f}%)"
     )
 
-    prior = empirical_rate if total_bets >= MIN_BETS_FOR_EMPIRICAL_PRIOR else DEFAULT_PRIOR
-    prior_source = "empirical" if total_bets >= MIN_BETS_FOR_EMPIRICAL_PRIOR else "default"
+    prior, prior_source = _choose_prior(total_bets, empirical_rate)
     print(f"  Prior hit rate: {prior:.3f} (source: {prior_source})")
 
     market_dir = _calibrate_market_direction(graded, prior)
@@ -345,6 +369,9 @@ def calibrate(verbose=False):
         "player_market": player_market,
         "flag_penalties": flag_penalties,
     }
+    # Keep top-level sections calibrate.py doesn't own (e.g. "book_lean").
+    for key, value in _load_existing_calib().items():
+        calib.setdefault(key, value)
 
     with open(CALIB_FILE, "w") as f:
         json.dump(calib, f, indent=2)
