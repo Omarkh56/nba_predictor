@@ -81,7 +81,7 @@ Each run appends one line to `run_log.jsonl`, with a status for every stage:
 | `fetch_failed` | A request failed, or games weren't final: unknown, not empty |
 | `skipped` | Nothing to do |
 
-Exit codes: `0` ok or no games, `2` failed (nothing saved, rerun later), `3` partial (some games' odds failed). Grading writes nothing when stats.nba.com can't be reached or a game isn't final, and regrading a date never duplicates rows in `bet_log.csv` or `game_log.csv`.
+Exit codes: `0` ok or no games, `2` failed (nothing saved, rerun later), `3` partial (some games' odds failed, or the team model produced no games and only props ran — normal for the first days of a season, until every team has played). Grading writes nothing when stats.nba.com can't be reached or a game isn't final, and regrading a date never duplicates rows in `bet_log.csv` or `game_log.csv`.
 
 ### Auditable prop cycle (paper stakes)
 

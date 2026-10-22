@@ -132,6 +132,31 @@ def test_combined_odds_events_outage_is_required_and_stops_exports(combined, tmp
     assert stage["required"] is True
 
 
+def test_team_model_with_no_games_still_runs_props_as_partial(combined, tmp_path, monkeypatch):
+    """Early season the team model resolves no games (no ratings yet); props run anyway."""
+    matchup = {"away_abbr": "UTA", "home_abbr": "DEN", "game_date": DAY}
+    monkeypatch.setattr(combined.oddstracker, "LAST_SNAPSHOT_STATUS", {})
+    monkeypatch.setattr(combined, "_fetch_matchups_and_lean", lambda *a, **k: ([matchup], DAY))
+    monkeypatch.setattr(combined, "_fetch_injuries", lambda: ({}, {}))
+    monkeypatch.setattr(combined, "_run_team_model", lambda *a: ([], {}))
+    monkeypatch.setattr(combined, "_setup_odds_and_spreads", lambda *a, **k: [EVENT])
+    for method in ("get_team_season_stats", "get_league_logs", "get_all_player_usage",
+                   "prefetch_rosters_for_games"):
+        monkeypatch.setattr(combined.props_model, method, lambda *a: None)
+    props_games = []
+    monkeypatch.setattr(combined, "_process_single_game",
+                        lambda m, team_map, *a: props_games.append((m["away_abbr"], team_map)) or ([], None))
+    summaries = []
+    monkeypatch.setattr(combined, "_print_global_summary", lambda *a, **k: summaries.append(a[0]))
+    assert combined.main(["--date", str(DAY)]) == 3
+    assert props_games == [("UTA", {})]
+    assert summaries == [[]]  # props reached the summary/export step with no team predictions
+    record = run_log.read_runs(tmp_path / "runs.jsonl")[0]
+    stage = next(s for s in record["stages"] if s["stage"] == "team_model")
+    assert (stage["status"], stage["required"], stage["games"]) == ("fetch_failed", False, 0)
+    assert record["status"] == "partial"
+
+
 @pytest.mark.parametrize("method,args", [
     ("get_all_odds_events", ()),
     ("get_event_player_props", ("preseason",)),
