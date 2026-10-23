@@ -13,6 +13,8 @@
 | `playerlinepredictor.py` | Player props engine (projections vs market lines, DvP, calibration). |
 | `oddstracker.py` | Fetches and logs book odds; computes lean/devig for calibration. |
 | `snapshot_injuries.py` | Archives the ESPN injury report and appends it to `data/injury_snapshots.csv` (run on a schedule). |
+| `dashboard.py` | Local web dashboard at http://127.0.0.1:8765: games, predictions, model performance, pipeline status. |
+| `scripts/launchd_agents.py` | Installs the macOS schedules (predictions, injury snapshots, dashboard). |
 | `calibrate.py` | Reads `bet_log.csv` → produces `calibration.json` for confidence adjustments. |
 | `train_model.py` | Walk-forward backtest that learns regression weights from historical data. |
 | `diagnose.py` | Diagnostic script for manual inspection of model internals. |
@@ -82,6 +84,44 @@ Each run appends one line to `run_log.jsonl`, with a status for every stage:
 | `skipped` | Nothing to do |
 
 Exit codes: `0` ok or no games, `2` failed (nothing saved, rerun later), `3` partial (some games' odds failed, or the team model produced no games and only props ran — normal for the first days of a season, until every team has played). Grading writes nothing when stats.nba.com can't be reached or a game isn't final, and regrading a date never duplicates rows in `bet_log.csv` or `game_log.csv`.
+
+### Schedules and dashboard (macOS)
+
+`scripts/launchd_agents.py` installs launchd agents that run the pipeline on its own
+(the existing `...nba-props.closing` agent, every 15 minutes, is left alone):
+
+| Agent | Runs | Madrid time |
+|---|---|---|
+| `predict` | `nba_combined.py` at 11:00 and 16:30 ET | 17:00, 22:30 |
+| `injuries` | `snapshot_injuries.py` at 10:00, 14:00, 17:00, 18:30 ET | 16:00, 20:00, 23:00, 00:30 |
+| `dashboard` | `dashboard.py`, always on | — |
+
+```bash
+python3 scripts/launchd_agents.py install            # all three (or name some)
+python3 scripts/launchd_agents.py status
+python3 scripts/launchd_agents.py uninstall dashboard
+```
+
+launchd times are local. Between the EU and US clock changes (late Oct to early Nov,
+and March) ET is 5 hours behind Madrid instead of 6, so runs land an hour later in ET.
+A job due while the Mac slept runs once on wake, so scheduled jobs start through
+`scripts/when_online.py`, which waits up to 10 minutes for the network first. Logs go
+to `~/Library/Logs/nba-props/`.
+
+**Dashboard:** open <http://127.0.0.1:8765>. The main view is the slate: every game
+with tip time, each team's win %, the model's line, head-to-head and injury counts.
+Click a game for its best predictions, the last 10 meetings and that game's injuries.
+Below are model performance (record and hit rate by slate, market and side, against
+the 52.4% break-even) and the pipeline: last run of each job, the schedule, recent
+runs, and buttons to run predictions, grading or an injury snapshot now.
+
+Win % comes only from the pipeline's files: the model's `home_prob` in
+`predictions.db`, or, when the model has no prediction for a game, the de-vigged
+consensus moneyline in `game_odds_tracker.csv` (labelled "Market"). ESPN supplies
+only the schedule, logos, records and live scores, and each of those fetches is
+archived. Head-to-head reads `data_cache/team_games_*.csv` plus this season's team
+logs from stats.nba.com, fetched once and cached for six hours. The dashboard
+listens on 127.0.0.1 only and never writes to the pipeline's files.
 
 ### Auditable prop cycle (paper stakes)
 
