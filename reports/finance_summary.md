@@ -2,9 +2,9 @@
 
 Real-money-compatible metrics include only logged bets with recorded entry odds, a positive stake amount, and a settled profit. Missing finance data is never filled with assumed odds.
 
-- Settled logged rows: 956
+- Settled logged rows: 1135
 - Finance-eligible rows: 0
-- Excluded for missing/invalid finance data: 956
+- Excluded for missing/invalid finance data: 1135
 - Total staked: 0.0000
 - Total profit: +0.0000
 - ROI: n/a

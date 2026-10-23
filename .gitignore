@@ -19,8 +19,10 @@ env/
 .ucl_cache/
 data_cache/
 
-# Raw archive of every external response (raw_archive.py)
+# Raw archive of every external response (raw_archive.py), and the injury
+# snapshots flattened from it (snapshot_injuries.py), runtime data like bet_log.csv
 data/raw/
+data/injury_snapshots.csv
 *.cache
 
 # Generated prediction / log files (runtime data, not source code)

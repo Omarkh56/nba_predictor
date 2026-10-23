@@ -1,13 +1,16 @@
 {
-  "attempted_rows": 0,
-  "average_implied_probability_clv": null,
-  "average_line_clv": null,
-  "average_raw_implied_probability_clv": null,
-  "closing_snapshot_rows": 0,
-  "line_clv_coverage": 0.0,
-  "line_clv_rows": 0,
-  "price_clv_coverage": 0.0,
-  "price_clv_rows": 0,
-  "raw_price_clv_rows": 0,
-  "unmatched_reasons": {}
+  "attempted_rows": 179,
+  "average_implied_probability_clv": 0.031237142857142856,
+  "average_line_clv": 0.02631578947368421,
+  "average_raw_implied_probability_clv": 0.006133556304347827,
+  "closing_snapshot_rows": 133,
+  "line_clv_coverage": 0.7430167597765364,
+  "line_clv_rows": 133,
+  "price_clv_coverage": 0.547486033519553,
+  "price_clv_rows": 98,
+  "raw_price_clv_rows": 92,
+  "unmatched_reasons": {
+    "different_line_with_no_same_line_comparison": 15,
+    "no_closing_snapshot": 66
+  }
 }
