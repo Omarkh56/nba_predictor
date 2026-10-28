@@ -15,13 +15,19 @@ scheduler can tell a failed run from a quiet day.
 
 Records go to run_log.jsonl next to this file (gitignored); NBA_RUN_LOG
 overrides the path.
+
+exclusive() keeps a second copy of a command from starting while one is running
+(launchd, the dashboard and a terminal each start nba_combined on their own); that
+copy exits EXIT_BUSY without a record.
 """
 
 from __future__ import annotations
 
+import fcntl
 import json
 import os
 import uuid
+from contextlib import contextmanager
 from datetime import date, datetime, timezone
 from pathlib import Path
 
@@ -29,6 +35,7 @@ import raw_archive
 
 STATUSES = ("ok", "no_games", "market_unavailable", "fetch_failed", "skipped")
 EXIT_CODES = {"ok": 0, "no_games": 0, "partial": 3, "fetch_failed": 2}
+EXIT_BUSY = 4  # another run of the same command is in progress; nothing was done
 RUN_LOG_FILE = Path(__file__).with_name("run_log.jsonl")
 
 
@@ -39,6 +46,50 @@ def _now_iso() -> str:
 def default_path() -> Path:
     override = os.environ.get("NBA_RUN_LOG")
     return Path(override) if override else RUN_LOG_FILE
+
+
+def lock_path(command: str) -> Path:
+    return default_path().parent / f".{command}.lock"
+
+
+@contextmanager
+def exclusive(command: str):
+    """Hold `command`'s run lock for the block. Yields True, or False (holding nothing)
+    when another process has it. The OS drops the lock when its holder exits, so a crashed
+    run never leaves it stuck. On Oct 24 2026 two nba_combined runs overlapped for 40
+    minutes: twice the Odds API credits, and the saved picks a mix of both."""
+    path = lock_path(command)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "a+", encoding="utf-8") as fh:  # "a+" never clobbers the holder's pid
+        try:
+            fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            yield False
+            return
+        fh.truncate(0)
+        fh.write(str(os.getpid()))
+        fh.flush()
+        try:
+            yield True
+        finally:
+            fh.truncate(0)
+            fcntl.flock(fh, fcntl.LOCK_UN)
+
+
+def lock_holder(command: str) -> int | None:
+    """The pid of the run holding `command`'s lock, or None when no run holds it."""
+    try:
+        fh = open(lock_path(command), encoding="utf-8")
+    except FileNotFoundError:
+        return None
+    with fh:
+        try:
+            fcntl.flock(fh, fcntl.LOCK_SH | fcntl.LOCK_NB)
+        except BlockingIOError:
+            text = fh.read().strip()
+            return int(text) if text.isdigit() else -1  # held; pid not written yet
+        fcntl.flock(fh, fcntl.LOCK_UN)
+        return None
 
 
 class RunLog:

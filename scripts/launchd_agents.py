@@ -30,10 +30,10 @@ LOG_DIR = Path.home() / "Library" / "Logs" / "nba-props"
 PREFIX = f"com.{getpass.getuser()}.nba-props"
 
 AGENTS = {
-    # Picks: 11:00 ET catches weekend early tips, 16:30 ET is after evening props post.
-    # Reruns never change a pick that already has an entry price.
-    "predict": {"args": ["nba_combined.py"], "local_times": [(17, 0), (22, 30)],
-                "et": "11:00 and 16:30 ET"},
+    # Picks once a day at 16:30 ET, after evening props post and before 7 PM tips. One run a
+    # day keeps Odds API credits down (a full slate is ~120); weekend games tipping before
+    # 16:30 ET get no picks unless run by hand.
+    "predict": {"args": ["nba_combined.py"], "local_times": [(22, 30)], "et": "16:30 ET"},
     "injuries": {"args": ["snapshot_injuries.py"],
                  "local_times": [(16, 0), (20, 0), (23, 0), (0, 30)],
                  "et": "10:00, 14:00, 17:00 and 18:30 ET"},

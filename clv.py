@@ -138,9 +138,10 @@ def closing_for_bet(bet: Mapping[str, object], snapshots: pd.DataFrame) -> dict:
     if prices.empty:
         base["clv_unmatched_reason"] = "no_closing_snapshot"
         return base
-    average_american = float(prices.mean())
     try:
-        closing_decimal = american_to_decimal(average_american)
+        # Average the books through implied probability: a plain mean of -110 and +104 is -3.
+        implied = [decimal_to_implied(american_to_decimal(price)) for price in prices]
+        closing_decimal = len(implied) / sum(implied)
     except (TypeError, ValueError):
         base["clv_unmatched_reason"] = "no_closing_snapshot"
         return base

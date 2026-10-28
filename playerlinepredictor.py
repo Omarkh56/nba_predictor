@@ -79,6 +79,7 @@ import requests
 import urllib3
 
 from config import ODDS_API_KEY, SEASON_START_MONTH, current_season
+import espn_odds
 import raw_archive
 import team_codes as _team_codes
 from finance import StakeDecision, recommend_stake
@@ -1012,22 +1013,26 @@ def get_all_odds_events():
     return upcoming
 
 
-def get_event_player_props(event_id):
-    for regions in ["us", "us,us2,uk,eu,au"]:
-        data = _get_odds_json(
-            f"{BASE_URL}/sports/{SPORT}/events/{event_id}/odds",
-            params={
-                "apiKey": ODDS_API_KEY,
-                "regions": regions,
-                "markets": ",".join(MARKETS),
-                "oddsFormat": "american",
-                "dateFormat": "iso",
-            },
-            timeout=20,
-        )
-        if data.get("bookmakers"):
-            return data
-    return data
+def get_event_player_props(event_id, event=None):
+    """The Odds API's props; given the event, ESPN's free DraftKings props when it refuses."""
+    def odds_api():
+        for regions in ["us", "us,us2,uk,eu,au"]:
+            data = _get_odds_json(
+                f"{BASE_URL}/sports/{SPORT}/events/{event_id}/odds",
+                params={
+                    "apiKey": ODDS_API_KEY,
+                    "regions": regions,
+                    "markets": ",".join(MARKETS),
+                    "oddsFormat": "american",
+                    "dateFormat": "iso",
+                },
+                timeout=20,
+            )
+            if data.get("bookmakers"):
+                return data
+        return data
+
+    return espn_odds.odds_api_or_espn(odds_api, event)
 
 
 def _auto_fetch_spread(event_id, home_name):
@@ -1205,14 +1210,41 @@ def _minute_filter(logs: pd.DataFrame, minimum: float) -> pd.DataFrame:
     return logs.loc[keep].reset_index(drop=True)
 
 
+def _no_playoffs_this_season() -> bool:
+    """True once get_league_logs() has looked and found no playoff games in SEASON. Every
+    player's current-season playoff log is then empty, so fetching it only adds a
+    stats.nba.com call that can time out (all three games lost on Oct 24 2026 were). Before
+    get_league_logs() runs, and in replay (which never fills its cache), logs are fetched."""
+    return (SEASON, SEASON_TYPE_PO) in LEAGUE_GAMELOGS_CACHE and not IS_PLAYOFF_SEASON
+
+
+def _skipped_playoff_logs(pid, rs_all: pd.DataFrame) -> pd.DataFrame:
+    """An empty playoff log with the regular-season columns, recorded as skipped."""
+    PLAYER_LOGS_FETCH_META[(pid, SEASON, SEASON_TYPE_PO, 0)] = {
+        "status": "skipped",
+        "fetched_at_utc": None,
+        "raw_count": 0,
+        "usable_count": 0,
+        "source_last_game_date": None,
+        "season": SEASON,
+        "season_type": SEASON_TYPE_PO,
+        "min_minutes": 0.0,
+    }
+    return rs_all.iloc[0:0].copy()
+
+
 def get_player_logs_blended(pid) -> PlayerLogHistory:
     """Fetch once without a minutes floor, then build rate and minutes histories.
 
     Short played appearances remain available to the minutes model. The old
     filters still protect per-minute rate estimates from tiny denominators.
     """
-    po_all = _fetch_logs(pid, SEASON, SEASON_TYPE_PO, 0)
-    rs_all = _fetch_logs(pid, SEASON, SEASON_TYPE_RS, 0)
+    if _no_playoffs_this_season():
+        rs_all = _fetch_logs(pid, SEASON, SEASON_TYPE_RS, 0)
+        po_all = _skipped_playoff_logs(pid, rs_all)
+    else:
+        po_all = _fetch_logs(pid, SEASON, SEASON_TYPE_PO, 0)
+        rs_all = _fetch_logs(pid, SEASON, SEASON_TYPE_RS, 0)
     po_rates = _minute_filter(po_all, MIN_MINUTES_PO)
     rs_rates = _minute_filter(rs_all, MIN_MINUTES_RS).head(20)
     po_minutes = po_all.reset_index(drop=True)
@@ -2485,15 +2517,25 @@ def get_player_position_from_injuries(player_name, injuries_by_team):
 # GAME PROCESSOR
 # =============================================================================
 def _build_player_context(
-    cdf, home_name, away_name, home_abbr, away_abbr, home_tid, away_tid, injuries_by_team
+    cdf, home_name, away_name, home_abbr, away_abbr, home_tid, away_tid, injuries_by_team,
+    failed: set = None,
 ) -> dict:
-    """Resolve team + position context for every player in the consensus DataFrame."""
+    """Resolve team + position context for every player in the consensus DataFrame.
+
+    A player whose history can't be fetched is left out (and added to `failed`): on
+    Oct 24 2026 one stats.nba.com timeout here dropped every pick for three games."""
     ctx = {}
     for pl in cdf["player"].unique():
         pid = get_player_id(pl)
         if not pid:
             continue
-        history = get_player_logs_blended(pid)
+        try:
+            history = get_player_logs_blended(pid)
+        except NbaDataUnavailable as exc:
+            logger.warning("Skipping %s because required history failed: %s", pl, exc)
+            if failed is not None:
+                failed.add(pl)
+            continue
         # Current-season logs win; the roster only places players who haven't played yet.
         ti = (determine_team(history.po_minutes, history.rs_minutes, home_abbr, away_abbr)
               or _team_from_roster(pid, home_tid, away_tid, home_abbr, away_abbr))
@@ -2657,7 +2699,7 @@ def process_game(
     home_tid = get_team_id(home_abbr)
     away_tid = get_team_id(away_abbr)
     try:
-        pj = get_event_player_props(odds_event["id"])
+        pj = get_event_player_props(odds_event["id"], odds_event)
     except (requests.exceptions.RequestException, json.JSONDecodeError, KeyError) as e:
         print(f"  Error fetching props: {e}")
         _set_props_status(odds_event, "fetch_failed", error=type(e).__name__)
@@ -2692,12 +2734,17 @@ def process_game(
         odds_event, "ok", lines=int(len(cdf)), players=int(cdf["player"].nunique())
     )
 
+    failed_player_data = set()
     ctx = _build_player_context(
-        cdf, home_name, away_name, home_abbr, away_abbr, home_tid, away_tid, injuries_by_team
+        cdf, home_name, away_name, home_abbr, away_abbr, home_tid, away_tid, injuries_by_team,
+        failed=failed_player_data,
     )
 
+    # ESPN's feed carries one book, DraftKings, for every line: there its count of 1 says
+    # nothing about how thin a market is, so the thin-market penalty and filter skip it.
+    odds_source = pj.get("source") or "the_odds_api"
+    one_book_feed = odds_source == espn_odds.SOURCE
     results = []
-    failed_player_data = set()
     for _, row in cdf.iterrows():
         pl, mkt, line = row["player"], row["market"], row["consensus_line"]
         label = MARKET_LABELS.get(mkt, mkt)
@@ -2746,7 +2793,7 @@ def process_game(
         preliminary = evaluate_prop(line, proj, mkt, sd=adj_sd)
         pick_dir = preliminary["pick"]
         direction_penalty, book_flag = _compute_direction_penalty(
-            mkt, label, pick_dir, proj, line, book_count, meta
+            mkt, label, pick_dir, proj, line, None if one_book_feed else book_count, meta
         )
 
         total_penalty = meta["conf_penalty"] + direction_penalty
@@ -2794,11 +2841,15 @@ def process_game(
                 "details": details,
                 "meta": meta,
                 "book_count": book_count,
+                "odds_source": odds_source,
                 "direction_penalty": direction_penalty,
                 "total_penalty": total_penalty,
             }
         )
 
+    if failed_player_data:
+        # Still "ok" (the game has picks), but the run log shows how many players it lost.
+        LAST_PROPS_STATUS[odds_event["id"]]["skipped_players"] = len(failed_player_data)
     return results
 
 
@@ -2871,7 +2922,7 @@ def _print_top(title, top_df, show_verbose=False, verbose_limit=5):
                 pen_parts.append(f"b2b={meta['road_b2b_penalty']:.1f}")
             if meta.get("self_inj_penalty", 0) > 0:
                 pen_parts.append(f"inj={meta['self_inj_penalty']:.1f}")
-            bk = r.get("book_count", 0)
+            bk = r.get("book_count", 0) if r.get("odds_source") != espn_odds.SOURCE else None
             book_pen = 4.0 if bk == 1 else (2.0 if bk == 2 else 0.0)
             if book_pen > 0:
                 pen_parts.append(f"book={book_pen:.1f}")

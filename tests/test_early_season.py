@@ -47,6 +47,25 @@ def test_zero_game_players_are_placed_from_the_current_roster(predictor, monkeyp
     assert "Nobody" not in ctx  # on neither roster: unknown stays unknown
 
 
+def test_one_players_history_timeout_skips_only_that_player(predictor, monkeypatch):
+    """Oct 24 2026: one stats.nba.com timeout here dropped every pick for three games."""
+    predictor.TEAM_ROSTER_IDS.update({DET: {1, 2}, BOS: set()})
+    predictor.TEAM_ROSTER_CACHE.update({DET: {}, BOS: {}})
+    monkeypatch.setattr(predictor, "get_player_id", {"Fine": 1, "Timed Out": 2}.get)
+
+    def logs(pid):
+        if pid == 2:
+            raise predictor.NbaDataUnavailable("player logs unavailable: Read timed out")
+        return _history(predictor)
+
+    monkeypatch.setattr(predictor, "get_player_logs_blended", logs)
+    failed = set()
+    ctx = predictor._build_player_context(pd.DataFrame({"player": ["Fine", "Timed Out"]}),
+                                          "Detroit Pistons", "Boston Celtics", "DET", "BOS",
+                                          DET, BOS, {}, failed=failed)
+    assert list(ctx) == ["Fine"] and failed == {"Timed Out"}
+
+
 def test_a_player_on_both_rosters_is_ambiguous_and_skipped(predictor, monkeypatch):
     predictor.TEAM_ROSTER_IDS.update({DET: {1}, BOS: {1}})
     predictor.TEAM_ROSTER_CACHE.update({DET: {}, BOS: {}})

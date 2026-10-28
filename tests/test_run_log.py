@@ -1,6 +1,7 @@
 """run_log: failed fetches must be distinguishable from quiet days."""
 
 import json
+import os
 
 import pytest
 
@@ -67,3 +68,16 @@ def test_env_var_overrides_default_path(tmp_path, monkeypatch):
     log.stage("schedule", "no_games", required=True)
     log.finish()
     assert target.is_file()
+
+
+def test_a_second_copy_of_a_run_is_refused_until_the_first_ends(tmp_path, monkeypatch):
+    monkeypatch.setenv("NBA_RUN_LOG", str(tmp_path / "runs.jsonl"))
+    assert run_log.lock_holder("nba_combined") is None
+    with run_log.exclusive("nba_combined") as first:
+        assert first is True
+        assert run_log.lock_holder("nba_combined") == os.getpid()
+        with run_log.exclusive("nba_combined") as second:  # flock is per open file
+            assert second is False
+    assert run_log.lock_holder("nba_combined") is None
+    with run_log.exclusive("nba_combined") as again:
+        assert again is True

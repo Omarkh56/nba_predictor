@@ -104,3 +104,12 @@ def test_missing_paired_side_preserves_raw_price_clv_only():
     assert result["raw_implied_probability_clv"] != ""
     assert result["implied_probability_clv"] == ""
     assert result["clv_unmatched_reason"] == "missing_opposing_side"
+
+
+def test_closing_price_averages_books_through_probability_not_american_odds():
+    # Two books either side of even money: a plain mean of -110 and +104 is -3, not a price.
+    frame = pd.DataFrame([quote("2026-05-01T19:50:00+00:00", price=-110, book="Book A"),
+                          quote("2026-05-01T19:50:00+00:00", price=104, book="Book B")])
+    result = closing_for_bet(bet(), frame)
+    implied = (110 / 210 + 100 / 204) / 2
+    assert result["closing_decimal_odds"] == pytest.approx(1 / implied, abs=1e-6)

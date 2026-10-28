@@ -527,7 +527,7 @@ def _enrich_injuries_with_ppg(injuries: dict, season: str) -> dict:
             ).get_data_frames()[0]
         )
         ppg_lookup = {row["PLAYER_NAME"]: float(row["PTS"]) for _, row in df.iterrows()}
-    except (requests.exceptions.RequestException, json.JSONDecodeError, KeyError, IndexError) as exc:
+    except (requests.exceptions.RequestException, json.JSONDecodeError, KeyError, IndexError, RuntimeError) as exc:
         logger.warning("PPG enrichment fetch failed, using defaults: %s", exc)
         return enriched
 
@@ -543,6 +543,36 @@ def _enrich_injuries_with_ppg(injuries: dict, season: str) -> dict:
 # =============================================================================
 # NBA API — FULL DATA PULL
 # =============================================================================
+# Early in a season a team's ratings come from a handful of games: on Oct 23 2026 every
+# team had played once, which produced 99.5% favourites and 49-point spreads. Until a team
+# has EARLY_TEAM_GAMES games, each rate stat is blended with last season's, current weight
+# games / EARLY_TEAM_GAMES (the props model's rule for player rates). A team with no games
+# yet uses last season's row, so every matchup resolves from opening night.
+EARLY_TEAM_GAMES = 10
+_TEAM_COUNT_COLUMNS = {"GP", "W", "L", "TOTAL_PTS", "FG3M_TOTAL", "FG3A_TOTAL", "FTA", "FGA",
+                       "HOME_GP", "CLUTCH_GP"}
+
+
+def _blend_early_season(current: pd.DataFrame, prior: pd.DataFrame) -> pd.DataFrame:
+    """Shrink thin current-season team ratings toward last season's (see EARLY_TEAM_GAMES)."""
+    blended = current.copy()
+    shared = current.index.intersection(prior.index)
+    weight = (current.loc[shared, "GP"].fillna(0).clip(lower=0) / EARLY_TEAM_GAMES).clip(upper=1.0)
+    rate_columns = [c for c in current.columns
+                    if c in prior.columns and c not in _TEAM_COUNT_COLUMNS
+                    and pd.api.types.is_numeric_dtype(current[c]) and pd.api.types.is_numeric_dtype(prior[c])]
+    for column in rate_columns:
+        blended.loc[shared, column] = (weight * current.loc[shared, column]
+                                       + (1 - weight) * prior.loc[shared, column])
+    unplayed = prior.loc[prior.index.difference(current.index)].copy()
+    if len(unplayed):
+        for column in ("GP", "W", "L", "HOME_GP", "CLUTCH_GP"):
+            if column in unplayed.columns:
+                unplayed[column] = 0
+        blended = pd.concat([blended, unplayed[[c for c in blended.columns if c in unplayed.columns]]])
+    return blended
+
+
 def _fetch_all_team_data(season: str) -> pd.DataFrame:
     """
     Fetches all data needed in as few API calls as possible:
@@ -613,7 +643,7 @@ def _fetch_all_team_data(season: str) -> pd.DataFrame:
         opp_ff = opp_ff[
             ["TEAM_ID", "OPP_EFG_PCT", "OPP_TOV_PCT", "OPP_OREB_PCT", "OPP_FTA_RATE"]
         ].copy()
-    except (requests.exceptions.RequestException, json.JSONDecodeError, KeyError, IndexError) as e:
+    except (requests.exceptions.RequestException, json.JSONDecodeError, KeyError, IndexError, RuntimeError) as e:
         print(f"    ⚠ Four Factors unavailable ({e}), using defaults")
         opp_ff = pd.DataFrame(
             {
@@ -634,7 +664,7 @@ def _fetch_all_team_data(season: str) -> pd.DataFrame:
             ).get_data_frames()[0]
         )
         opp_raw = opp_raw[["TEAM_ID", "OPP_FG3_PCT", "OPP_PTS"]].copy()
-    except (requests.exceptions.RequestException, json.JSONDecodeError, KeyError, IndexError) as e:
+    except (requests.exceptions.RequestException, json.JSONDecodeError, KeyError, IndexError, RuntimeError) as e:
         print(f"    ⚠ Opponent raw stats unavailable ({e}), using defaults")
         opp_raw = pd.DataFrame({"TEAM_ID": adv["TEAM_ID"], "OPP_FG3_PCT": 0.36, "OPP_PTS": 0.0})
 
@@ -668,7 +698,7 @@ def _fetch_all_team_data(season: str) -> pd.DataFrame:
         clutch = clutch.rename(
             columns={"NET_RATING": "CLUTCH_NET_RTG", "W_PCT": "CLUTCH_W_PCT", "GP": "CLUTCH_GP"}
         )
-    except (requests.exceptions.RequestException, json.JSONDecodeError, KeyError, IndexError):
+    except (requests.exceptions.RequestException, json.JSONDecodeError, KeyError, IndexError, RuntimeError):
         print("    ⚠ Clutch stats unavailable, using defaults")
         clutch = pd.DataFrame(
             {"TEAM_ID": adv["TEAM_ID"], "CLUTCH_NET_RTG": 0.0, "CLUTCH_W_PCT": 0.5, "CLUTCH_GP": 0}
@@ -1452,7 +1482,7 @@ def _season_with_team_stats(season: str) -> str:
                     measure_type_detailed_defense="Advanced",
                 ).get_data_frames()[0]
             )
-        except (requests.exceptions.RequestException, json.JSONDecodeError, KeyError, IndexError) as e:
+        except (requests.exceptions.RequestException, json.JSONDecodeError, KeyError, IndexError, RuntimeError) as e:
             print(f"  Stats probe failed for {candidate}: {e}")
             df = None
         if df is not None and len(df) > 0:
@@ -1484,6 +1514,14 @@ def predict_games_data(
     if ratings is None or len(ratings) == 0:
         print(f"  No team ratings available for {stats_season}.")
         return []
+    if stats_season == season and (ratings["GP"] < EARLY_TEAM_GAMES).any():
+        prior_season = _prior_nba_season(season)
+        msg(f"Early season: blending team ratings with {prior_season} (6 API calls)…")
+        try:
+            ratings = _blend_early_season(ratings, _fetch_all_team_data(prior_season))
+        except (requests.exceptions.RequestException, json.JSONDecodeError, KeyError,
+                IndexError, RuntimeError) as e:
+            print(f"  ⚠ {prior_season} team ratings unavailable ({e}); using {season} unblended")
     season = stats_season  # form / H2H / injury PPG must use the same season
 
     # Enrich injury data with real PPG from nba_api so injury penalties

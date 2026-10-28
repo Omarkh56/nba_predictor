@@ -43,13 +43,14 @@ import argparse
 import pandas as pd
 import requests.exceptions
 
+import espn_odds  # noqa: E402
 import game_odds_tracker  # noqa: E402
 import newnbapredictor as team_model
 import oddstracker
 import playerlinepredictor as props_model
 import predictions_db as pred_db
 import team_codes
-from run_log import RunLog
+from run_log import EXIT_BUSY, RunLog, exclusive, lock_holder
 from bet_log_utils import read_bet_rows
 from config import current_season
 from finance import american_to_decimal, grade_financial_rows, make_bet_id, odds_data_is_fresh
@@ -413,10 +414,13 @@ def _edge_floored(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return df
 
-    # Standard edge floor (per-direction)
+    # Standard edge floor (per-direction). Thin markets (fewer than 3 books) are left out,
+    # except ESPN's lines: that feed carries one book (DraftKings) for every line.
     book_ok = (
         (df["book_count"] >= 3) if "book_count" in df.columns else pd.Series(True, index=df.index)
     )
+    if "odds_source" in df.columns:
+        book_ok |= df["odds_source"].eq(espn_odds.SOURCE)
     edge_ok = df.apply(
         lambda r: (
             r["Edge%"] >= props_model.UNDER_EDGE_PCT_FLOOR
@@ -1070,11 +1074,26 @@ def _run_team_model(matchups: list, team_injuries: dict) -> tuple:
     team_preds = []
     try:
         team_preds = team_model.predict_games_data(SEASON, matchups, team_injuries)
-    except (requests.exceptions.RequestException, json.JSONDecodeError, KeyError, ValueError) as e:
+    # RuntimeError: api_call_with_retry gave up (e.g. stats.nba.com timing out); props still run.
+    except (requests.exceptions.RequestException, json.JSONDecodeError, KeyError, ValueError,
+            RuntimeError) as e:
         print(f"  ⚠  Team model error: {e} — continuing with props only.")
     for pred in team_preds:
         _attach_game_market(pred)
     return team_preds, {(p["away_abbr"], p["home_abbr"]): p for p in team_preds}
+
+
+def _book_spread(odds_ev: dict, home_name: str) -> float:
+    """Book spread, positive = home favoured: DraftKings' via ESPN, which costs nothing; The
+    Odds API (a credit per game) only when ESPN has no line or can't be reached."""
+    if espn_odds.enabled():
+        try:
+            lines = espn_odds.game_lines_for_event(odds_ev)
+            if lines and lines["home_spread"] is not None:
+                return -lines["home_spread"]
+        except requests.exceptions.RequestException as exc:
+            print(f"    ESPN spread unavailable ({exc}); asking The Odds API")
+    return props_model._auto_fetch_spread(odds_ev["id"], home_name)
 
 
 def _setup_odds_and_spreads(matchups: list, team_map: dict, game_date=None, run=None) -> list:
@@ -1110,9 +1129,7 @@ def _setup_odds_and_spreads(matchups: list, team_map: dict, game_date=None, run=
         odds_ev = _match_odds_event(all_events, ha, aa, m.get("game_date"))
         pred = team_map.get((aa, ha))
         if odds_ev and gk not in props_model.GAME_SPREADS:
-            props_model.GAME_SPREADS[gk] = props_model._auto_fetch_spread(
-                odds_ev["id"], m["home_name"]
-            )
+            props_model.GAME_SPREADS[gk] = _book_spread(odds_ev, m["home_name"])
         if pred:
             book = props_model.GAME_SPREADS.get(gk)
             book_tag = f"; book spread {book:+.1f}" if book is not None else "; book spread unavailable"
@@ -1186,9 +1203,12 @@ def _process_single_game(
                         all_picks_export.append(_pick_to_dict(row, gk, pred, m.get("game_date")))
             else:
                 print("  No props returned for this game.")
-        except Exception:
+        except Exception as exc:
             # intentionally broad: one bad game must not abort the rest of the batch
             logger.exception("Props processing failed for game %s", gk)
+            # process_game marks a game "ok" once its lines parse; a crash after that
+            # saved nothing, so the run log must not keep calling it ok.
+            props_model._set_props_status(ev, "fetch_failed", error=type(exc).__name__)
     else:
         print("  No Odds API event found — props unavailable for this game.")
 
@@ -1325,7 +1345,17 @@ def _record_props_stages(run, matchups: list, events: list) -> None:
 
 
 def main(argv=None) -> int:
-    """Run one slate end to end. Returns an exit code (run_log.EXIT_CODES)."""
+    """Run one slate end to end. Returns an exit code (run_log.EXIT_CODES), or EXIT_BUSY
+    without doing anything while another nba_combined run is in progress."""
+    with exclusive("nba_combined") as acquired:
+        if not acquired:
+            print(f"  Another nba_combined run is in progress (pid {lock_holder('nba_combined')}); "
+                  "not starting.")
+            return EXIT_BUSY
+        return _run_slate(argv)
+
+
+def _run_slate(argv=None) -> int:
     global VERBOSE
     args = _parse_args(sys.argv[1:] if argv is None else argv)
     VERBOSE = VERBOSE or args.verbose
@@ -1379,10 +1409,16 @@ def main(argv=None) -> int:
         return run.exit_code()
 
     print("\n  Loading player data (stats, USG%, DvP rosters)…")
-    props_model.get_team_season_stats()
-    props_model.get_league_logs()
-    props_model.get_all_player_usage()
-    props_model.prefetch_rosters_for_games(all_events)
+    try:
+        props_model.get_team_season_stats()
+        props_model.get_league_logs()  # the one loader that raises: every prop needs it
+        props_model.get_all_player_usage()
+        props_model.prefetch_rosters_for_games(all_events)
+    except props_model.NbaDataUnavailable as exc:
+        print(f"  ⚠  stats.nba.com unavailable ({exc}). Run FAILED: nothing was saved; rerun later.")
+        run.stage("player_data", "fetch_failed", required=True, error=str(exc)[:300])
+        run.finish()
+        return run.exit_code()
 
     all_props_results: list = []
     all_picks_export: list = []

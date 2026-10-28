@@ -172,6 +172,19 @@ td.wrap { white-space: normal; min-width: 200px; color: var(--text-secondary); }
 .error { color: var(--critical); }
 .empty { color: var(--muted); padding: 14px 0; }
 
+/* ── top bets ────────────────────────────────────────────────────────────── */
+.meter { display: inline-block; width: 64px; height: 6px; border-radius: 3px; vertical-align: middle; margin-left: 8px; overflow: hidden;
+  background: color-mix(in srgb, var(--series-1) 22%, var(--surface-1)); }
+.meter span { display: block; height: 100%; background: var(--series-1); border-radius: 3px; }
+tr.clickable { cursor: pointer; }
+tr.clickable:hover td, tr.clickable:focus-visible td { background: var(--wash); }
+tr.clickable:focus-visible { outline: 2px solid var(--series-1); outline-offset: -2px; }
+td.rank { color: var(--muted); width: 28px; }
+.diff { color: var(--muted); }
+td .tip-time { display: block; color: var(--muted); font-size: 12px; }
+.meter.wide { width: 140px; position: relative; overflow: visible; }
+.meter .be { position: absolute; top: -3px; width: 1px; height: 12px; background: var(--text-secondary); }
+
 /* ── performance ─────────────────────────────────────────────────────────── */
 .kpis { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); margin-bottom: 12px; }
 .kpi .label { color: var(--text-secondary); }
@@ -233,6 +246,30 @@ td.wrap { white-space: normal; min-width: 200px; color: var(--text-secondary); }
     <div id="board-note" class="board-note muted"></div>
   </section>
 
+  <section id="top-bets" aria-labelledby="h-top">
+    <div class="row spread" style="margin-bottom:12px">
+      <div><h2 id="h-top">Top 15 bets</h2><div class="muted" id="top-sub"></div></div>
+      <div class="row">
+        <label class="muted"><input type="checkbox" id="top-flagged"> Show ⚠SUSP picks</label>
+        <div class="seg" role="group" aria-label="Rank by" id="top-sort">
+          <button type="button" data-by="prob" aria-pressed="true">Probability</button>
+          <button type="button" data-by="conf">Confidence</button>
+          <button type="button" data-by="edge">Edge</button>
+          <button type="button" data-by="weighted">Weighted</button>
+        </div>
+      </div>
+    </div>
+    <div class="row" id="top-weights" hidden style="margin-bottom:10px">
+      <span class="muted">Weights</span>
+      <label>Probability <input type="number" id="w-prob" min="0" max="1" step="0.1" style="width:64px"></label>
+      <label>Confidence <input type="number" id="w-conf" min="0" max="1" step="0.1" style="width:64px"></label>
+      <label>Edge <input type="number" id="w-edge" min="0" max="1" step="0.1" style="width:64px"></label>
+      <button type="button" id="w-apply">Apply</button>
+      <button type="button" id="w-fitted">Use fitted</button>
+    </div>
+    <div class="card table-wrap" id="top"></div>
+  </section>
+
   <section id="performance" aria-labelledby="h-perf">
     <div class="row spread" style="margin-bottom:12px">
       <h2 id="h-perf">Model performance</h2>
@@ -249,6 +286,7 @@ td.wrap { white-space: normal; min-width: 200px; color: var(--text-secondary); }
       <div class="card chart-card" id="card-market"></div>
       <div class="card chart-card" id="card-side"></div>
     </div>
+    <div class="card" id="card-ranking" style="margin-top:12px"></div>
   </section>
 
   <section aria-labelledby="h-pipeline">
@@ -341,7 +379,7 @@ function resultText(result) {
 }
 const odds = (o) => (o === null || o === undefined ? "—" : o > 0 ? `+${Math.round(o)}` : `${Math.round(o)}`);
 
-const state = { today: null, day: null, range: "season", overview: null, perf: null, games: null, open: null };
+const state = { today: null, day: null, range: "season", overview: null, perf: null, games: null, open: null, top: null, topBy: "prob", customWeights: null };
 
 // ── games board ──────────────────────────────────────────────────────────────
 function logo(team, cls = "logo") {
@@ -406,13 +444,111 @@ function renderBoard() {
     $("#board").replaceChildren(...data.games.map(tile));
   }
   const notes = [];
+  const ov = state.overview;
+  const running = ov && Boolean(ov.predict_running);  // any nba_combined: launchd, this page or a terminal
+  if (running && data.date === state.today) notes.push("A predictions run is in progress: win % and picks here are from the last finished run and update when it completes.");
   if (!data.scoreboard_ok) notes.push("ESPN schedule unavailable: showing games from your saved picks only.");
-  if (data.games.length && !data.games.some((g) => g.win)) notes.push("No win % in your files for this date yet: the model writes it when nba_combined runs (11:00 and 16:30 ET).");
+  if (data.games.length && !data.games.some((g) => g.win)) notes.push("No win % in your files for this date yet: the model writes it when nba_combined runs (daily at 16:30 ET).");
   else if (data.games.some((g) => g.win && g.win.source !== "Model")) notes.push("Market win % comes from your odds tracker (game_odds_tracker.csv) where the model has no prediction.");
   notes.push("Times are local; tap a game for its best predictions, head-to-head and injuries.");
   $("#board-note").textContent = notes.join(" ");
 }
+// ── top bets ─────────────────────────────────────────────────────────────────
+const SORT_LABEL = { prob: "model probability", conf: "confidence", edge: "edge", weighted: "a weighted mix" };
+const fmtW = (w) => `probability ${w.prob.toFixed(1)} · confidence ${w.conf.toFixed(1)} · edge ${w.edge.toFixed(1)}`;
+function renderTop() {
+  const data = state.top;
+  document.querySelectorAll("#top-sort button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.by === state.topBy)));
+  $("#top-weights").hidden = data.by !== "weighted";
+  if (data.by === "weighted" && data.weights && document.activeElement?.type !== "number") {
+    $("#w-prob").value = data.weights.prob.toFixed(1);
+    $("#w-conf").value = data.weights.conf.toFixed(1);
+    $("#w-edge").value = data.weights.edge.toFixed(1);
+  }
+  const hidden = data.include_flagged ? "" : data.flagged ? ` ${data.flagged} ⚠SUSP pick${data.flagged === 1 ? "" : "s"} (edge over 40%, which the model treats as a likely error) left out.` : "";
+  const weights = data.by === "weighted" && data.weights
+    ? ` Weights: ${fmtW(data.weights)} (${data.fitted_on !== null ? `fitted on ${data.fitted_on} graded slate${data.fitted_on === 1 ? "" : "s"}, provisional until there are many more` : "your weights"}).` : "";
+  $("#top-sub").textContent = data.count
+    ? `Top ${data.bets.length} of ${data.count} picks for ${longDay(data.date)}, ranked by ${SORT_LABEL[data.by]}.${weights}${hidden} Click a row for the game.`
+    : `No picks saved for ${longDay(data.date)} yet. They're made when nba_combined runs (daily at 16:30 ET).`;
+  if (!data.bets.length) { $("#top").replaceChildren(el("div", { class: "empty", text: "Nothing to rank yet." })); return; }
+  const head = ["#", "Player", "Game", "Bet", "Probability", "Conf", "Projection", "Edge", "Odds", "Result"];
+  $("#top").replaceChildren(el("table", {},
+    el("thead", {}, el("tr", {}, head.map((h, i) => el("th", { class: [5, 6, 7, 8].includes(i) ? "num" : null, text: h })))),
+    el("tbody", {}, data.bets.map((p, i) => {
+      const diff = p.projection !== null && p.line !== null ? p.projection - p.line : null;
+      const row = el("tr", { class: "clickable", tabindex: 0, "aria-label": `Open ${p.game}` },
+        el("td", { class: "rank", text: i + 1 }),
+        el("td", {}, el("strong", { text: p.player }), p.flags ? el("div", { class: "flags", text: p.flags }) : null),
+        el("td", {}, p.game.replace("@", " @ "), p.game_start_at ? el("span", { class: "tip-time", text: `${timeFmt.format(new Date(p.game_start_at))} · ${whenEt(p.game_start_at)}` }) : null),
+        el("td", { text: `${p.pick} ${num(p.line)} ${p.market}` }),
+        el("td", {}, el("strong", { text: pct(p.p_model) }),
+          p.p_model !== null ? el("span", { class: "meter", "aria-hidden": "true" }, el("span", { style: `width:${Math.max(0, Math.min(1, p.p_model)) * 100}%` })) : null),
+        el("td", { class: "num", text: num(p.confidence) }),
+        el("td", { class: "num" }, num(p.projection), diff !== null ? el("span", { class: "diff", text: ` (${diff >= 0 ? "+" : ""}${diff.toFixed(1)})` }) : null),
+        el("td", { class: "num", text: p.edge_pct === null ? "—" : `${num(p.edge_pct)}%` }),
+        el("td", { class: "num", text: odds(p.entry_american_odds) }),
+        el("td", {}, resultText(p.result), p.actual !== null && p.actual !== undefined ? ` (${num(p.actual, 0)})` : null));
+      const open = () => openGame(p.game);
+      row.addEventListener("click", open);
+      row.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } });
+      return row;
+    }))));
+}
+async function loadTop() {
+  try {
+    const custom = state.topBy === "weighted" && state.customWeights ? `&w=${state.customWeights.join(",")}` : "";
+    state.top = await api(`/api/top?date=${state.day}&by=${state.topBy}${$("#top-flagged").checked ? "&flagged=1" : ""}${custom}`);
+    renderTop();
+  } catch (err) {
+    $("#top").replaceChildren(el("div", { class: "error", text: err.message }));
+  }
+}
+document.querySelectorAll("#top-sort button").forEach((b) => b.addEventListener("click", () => { state.topBy = b.dataset.by; loadTop(); }));
+$("#top-flagged").addEventListener("change", loadTop);
+$("#w-apply").addEventListener("click", () => {
+  const w = ["#w-prob", "#w-conf", "#w-edge"].map((s) => Math.max(0, Number($(s).value) || 0));
+  if (!w.some((x) => x > 0)) return;
+  state.customWeights = w;
+  loadTop();
+});
+$("#w-fitted").addEventListener("click", () => { state.customWeights = null; loadTop(); });
+
+// ── which ranking works best ─────────────────────────────────────────────────
+const RANK_ROWS = [
+  ["prob", "Probability"], ["conf", "Confidence"], ["edge", "Edge"],
+  ["weighted", "Weighted, in-sample"], ["weighted_oos", "Weighted, out-of-sample"],
+];
+async function loadRanking() {
+  const card = $("#card-ranking");
+  try {
+    const r = await api(`/api/ranking?range=${state.range}`);
+    const be = r.break_even;
+    const rows = RANK_ROWS.map(([key, label]) => {
+      const m = r.methods[key];
+      const note = key === "weighted" ? fmtW(r.weights) : key === "weighted_oos" ? "each slate scored with weights fitted on the others" : "";
+      return el("tr", {},
+        el("td", {}, el("strong", { text: label }), note ? el("div", { class: "flags", text: note }) : null),
+        el("td", { class: "num", text: m.graded ? record(m) : "—" }),
+        el("td", {}, el("strong", { text: pct(m.rate) }),
+          m.rate !== null ? el("span", { class: "meter wide", "aria-hidden": "true" },
+            el("span", { style: `width:${m.rate * 100}%` }), el("i", { class: "be", style: `left:${be * 100}%` })) : null),
+        el("td", { class: "num", text: m.slates }));
+    });
+    card.replaceChildren(
+      el("h3", { text: `Top ${r.top_n}: which ranking works best` }),
+      el("div", { class: "muted", style: "margin:2px 0 8px", text: "Record of each ranking's Top 15 on graded slates (⚠SUSP picks left out). The tick on each bar is the 52.4% break-even." }),
+      el("div", { class: "table-wrap" }, el("table", {},
+        el("thead", {}, el("tr", {}, ["Ranking", "Record", "Hit rate", "Slates"].map((h, i) => el("th", { class: i === 1 || i === 3 ? "num" : null, text: h })))),
+        el("tbody", {}, rows))),
+      el("div", { class: "muted", style: "margin-top:8px", text: "In-sample weights are chosen on the same slates they're scored on, so they always look best. Out-of-sample is the fair test. With only a few slates, gaps of ±10 points are noise; the weights refit after every graded slate." }));
+  } catch (err) {
+    card.replaceChildren(el("div", { class: "error", text: err.message }));
+  }
+}
+
 async function loadGames() {
+  loadTop();
   try {
     state.games = await api(`/api/games?date=${state.day}`);
     renderBoard();
@@ -475,7 +611,7 @@ async function openGame(key, refresh = false) {
   const modelLine = m ? [m.winner_pick && `Winner pick ${m.winner_pick}`, m.spread_pick && `Spread pick ${m.spread_pick} ${num(m.spread)}`, m.total && `Total ${num(m.total)}`].filter(Boolean).join(" · ") : null;
   const ln = lineText(g);
   const winCard = el("div", { class: "card" }, el("h4", { text: "Win probability" }),
-    probs.length ? probs : el("div", { class: "empty", text: "No win % in your files for this game yet. The model writes it when nba_combined runs (11:00 and 16:30 ET)." }),
+    probs.length ? probs : el("div", { class: "empty", text: "No win % in your files for this game yet. The model writes it when nba_combined runs (daily at 16:30 ET)." }),
     modelLine ? el("div", { class: "sub", style: "margin-top:10px", text: modelLine }) : null,
     g.line ? el("div", { class: "muted", style: "margin-top:4px", text: `Book line: ${g.line}` }) : null,
     g.final ? el("div", { class: "row", style: "margin-top:8px" }, el("span", { class: "sub", text: `Final ${g.final.score} · winner pick` }), resultText(g.final.winner_hit), el("span", { class: "sub", text: "· spread pick" }), resultText(g.final.spread_hit)) : null);
@@ -511,7 +647,7 @@ async function openGame(key, refresh = false) {
             el("td", { class: "num", text: p.edge_pct === null ? "—" : `${num(p.edge_pct)}%` }),
             el("td", { class: "num", text: odds(p.entry_american_odds) }),
             el("td", {}, resultText(p.result), p.actual !== null && p.actual !== undefined ? ` (${num(p.actual, 0)})` : null))))))) : null,
-    ] : el("div", { class: "empty", text: "No prop picks saved for this game yet. They're made when nba_combined runs (11:00 and 16:30 ET)." }));
+    ] : el("div", { class: "empty", text: "No prop picks saved for this game yet. They're made when nba_combined runs (daily at 16:30 ET)." }));
 
   const inj = d.injuries;
   const injCard = el("div", {},
@@ -673,6 +809,7 @@ function renderPerformance() {
   }
 }
 async function loadPerformance() {
+  loadRanking();
   try {
     state.perf = await api(`/api/performance?range=${state.range}`);
     renderPerformance();
@@ -779,6 +916,7 @@ async function loadOverview() {
     state.today = state.overview.today_et;
     if (first) { state.day = state.today; loadGames(); }
     renderStatus();
+    if (state.games) renderBoard();  // keeps the "run in progress" note current
     $("#refreshed").textContent = `Updated ${new Date().toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}`;
     const busy = Object.values(state.overview.jobs).some((j) => j.state === "running");
     clearTimeout(pollTimer);

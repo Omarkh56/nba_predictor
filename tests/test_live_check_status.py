@@ -75,7 +75,7 @@ def test_preseason_empty_response_and_failed_response_are_distinct(tracker, tmp_
 
 def test_mixed_failed_and_empty_events_stay_partial(tracker, tmp_path, monkeypatch):
     monkeypatch.setattr(tracker, "get_all_events", lambda: [EVENT, {**EVENT, "id": "empty"}])
-    def fetch(event_id):
+    def fetch(event_id, event=None):
         if event_id == "preseason":
             raise requests.ConnectionError("unreachable")
         return {"bookmakers": []}
@@ -176,3 +176,56 @@ def test_prediction_odds_errors_do_not_expose_credentials(combined, monkeypatch,
             fetch(*args)
         assert "private-regression-key" not in str(exc.value)
     assert "private-regression-key" not in caplog.text
+
+
+def _one_game_slate(combined, monkeypatch):
+    matchup = {"away_abbr": "UTA", "home_abbr": "DEN", "game_date": DAY,
+               "away_name": "Utah Jazz", "home_name": "Denver Nuggets"}
+    monkeypatch.setattr(combined.oddstracker, "LAST_SNAPSHOT_STATUS", {})
+    monkeypatch.setattr(combined.props_model, "LAST_PROPS_STATUS", {})
+    monkeypatch.setattr(combined, "_fetch_matchups_and_lean", lambda *a, **k: ([matchup], DAY))
+    monkeypatch.setattr(combined, "_fetch_injuries", lambda: ({}, {}))
+    monkeypatch.setattr(combined, "_run_team_model", lambda *a: ([{}], {}))
+    monkeypatch.setattr(combined, "_setup_odds_and_spreads", lambda *a, **k: [EVENT])
+    monkeypatch.setattr(combined, "_print_global_summary", lambda *a, **k: None)
+    for method in ("get_team_season_stats", "get_league_logs", "get_all_player_usage",
+                   "prefetch_rosters_for_games"):
+        monkeypatch.setattr(combined.props_model, method, lambda *a: None)
+
+
+def test_a_game_whose_props_crash_after_parsing_is_logged_failed_not_ok(combined, tmp_path, monkeypatch):
+    """Oct 24 2026: three games saved no picks while the run log called them ok."""
+    _one_game_slate(combined, monkeypatch)
+
+    def crash(*args, **kwargs):
+        combined.props_model._set_props_status(EVENT, "ok", lines=40, players=6)  # lines parsed
+        raise combined.props_model.NbaDataUnavailable("Read timed out")
+
+    monkeypatch.setattr(combined.props_model, "process_game", crash)
+    assert combined.main(["--date", str(DAY)]) == 3
+    record = run_log.read_runs(tmp_path / "runs.jsonl")[0]
+    stage = next(s for s in record["stages"] if s["stage"] == "props:UTA@DEN")
+    assert (stage["status"], stage["error"]) == ("fetch_failed", "NbaDataUnavailable")
+    assert record["status"] == "partial"
+
+
+def test_league_logs_outage_is_a_logged_failure_not_a_crash(combined, tmp_path, monkeypatch):
+    _one_game_slate(combined, monkeypatch)
+
+    def down():
+        raise combined.props_model.NbaDataUnavailable("playoff league logs unavailable: timeout")
+
+    monkeypatch.setattr(combined.props_model, "get_league_logs", down)
+    monkeypatch.setattr(combined, "_process_single_game", lambda *a: pytest.fail("Must stop"))
+    assert combined.main(["--date", str(DAY)]) == 2
+    record = run_log.read_runs(tmp_path / "runs.jsonl")[0]
+    stage = next(s for s in record["stages"] if s["stage"] == "player_data")
+    assert (stage["status"], stage["required"]) == ("fetch_failed", True)
+
+
+def test_a_second_run_exits_busy_without_doing_anything(combined, tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(combined, "_fetch_matchups_and_lean", lambda *a, **k: pytest.fail("Must not start"))
+    with run_log.exclusive("nba_combined"):
+        assert combined.main(["--date", str(DAY)]) == run_log.EXIT_BUSY == 4
+    assert "Another nba_combined run is in progress" in capsys.readouterr().out
+    assert not (tmp_path / "runs.jsonl").exists()

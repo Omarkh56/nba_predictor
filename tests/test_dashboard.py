@@ -133,6 +133,123 @@ def test_head_to_head_is_as_of_the_game_and_injuries_are_per_team(src, live):
         dashboard.game_detail(src, DAY, "BOS@NYK", live)
 
 
+def test_top_bets_rank_the_slate_by_probability_confidence_or_edge(src):
+    by_prob = dashboard.top_bets(src, DAY, "prob")
+    assert by_prob["count"] == 3
+    assert [b["player"] for b in by_prob["bets"]] == ["Probe Guard", "Probe Big", "Probe Wing"]  # 0.7, then 0.6s by conf
+    assert [b["player"] for b in dashboard.top_bets(src, DAY, "conf")["bets"]] == ["Probe Guard", "Probe Big", "Probe Wing"]
+    assert [b["player"] for b in dashboard.top_bets(src, DAY, "edge", limit=1)["bets"]] == ["Probe Guard"]
+    assert by_prob["bets"][0]["result"] == "HIT"
+
+
+def test_top_bets_leave_out_picks_the_model_flags_as_likely_errors(src):
+    db = sqlite3.connect(src.db)
+    db.execute(f"INSERT INTO prop_predictions VALUES ({', '.join('?' * len(dashboard.PROP_COLUMNS))})",
+               (DAY, "ATL@ORL", "Probe Short Minutes", "PTS", 13.5, "UNDER", 2.2, 62.8, 83.0, 0.91, -110, "",
+                None, "2026-10-21T23:00:00Z", None, None, "⚠SUSP-83% ⚠BENCH"))
+    db.commit()
+    db.close()
+    default = dashboard.top_bets(src, DAY, "prob")
+    assert "Probe Short Minutes" not in [b["player"] for b in default["bets"]]
+    assert (default["count"], default["flagged"]) == (4, 1)
+    shown = dashboard.top_bets(src, DAY, "prob", include_flagged=True)
+    assert shown["bets"][0]["player"] == "Probe Short Minutes"  # highest probability once allowed
+
+
+def test_percentile_ranks_share_ties_and_weighted_ranking_reduces_to_one_metric():
+    assert dashboard._pct_ranks([3, 1, 2, 2]) == [1.0, 0.0, 0.5, 0.5]
+    picks = [{"player": n, "p_model": p, "confidence": c, "edge_pct": e, "flags": ""}
+             for n, p, c, e in (("a", 0.9, 10, 5), ("b", 0.5, 90, 1), ("c", 0.7, 50, 9))]
+    def order(by, w=None):
+        return [p["player"] for p in dashboard.rank_slate(picks, by, w)]
+
+    assert order("weighted", (1, 0, 0)) == order("prob") == ["a", "c", "b"]
+    assert order("weighted", (0, 1, 0)) == order("conf") == ["b", "c", "a"]
+    assert order("weighted", (0, 0, 1)) == ["c", "a", "b"]
+
+
+def _ranking_src(tmp_path):
+    """Two slates where confidence picks the winners and probability is noise, plus an
+    old slate with no stored probability (like last season's)."""
+    db = sqlite3.connect(tmp_path / "predictions.db")
+    db.execute(f"CREATE TABLE prop_predictions ({', '.join(dashboard.PROP_COLUMNS)})")
+    db.execute("CREATE TABLE game_predictions (date, home_abbr, away_abbr, winner_pick, spread, "
+               "spread_pick, win_pct, total, home_prob)")
+    rows, results = [], []
+    for day in ("2026-10-21", "2026-10-23"):
+        for i in range(20):
+            hit = i < 10  # the 10 most confident picks win; probability is unrelated
+            rows.append((day, "A@B", f"P{i}", "PTS", 10.5, "OVER", 11.0, 100 - i, float((3 * i) % 11),
+                         0.55 + ((7 * i) % 20) / 100, -110, "", None, None, None, None, ""))
+            results.append({"date": day, "player": f"P{i}", "market": "PTS", "pick": "OVER",
+                            "actual": "1", "result": "HIT" if hit else "MISS"})
+    rows.append(("2026-04-18", "A@B", "Old", "PTS", 10.5, "OVER", 11.0, 80, 5.0, None, -110, "",
+                 None, None, None, None, ""))
+    results.append({"date": "2026-04-18", "player": "Old", "market": "PTS", "pick": "OVER", "actual": "1", "result": "HIT"})
+    db.executemany(f"INSERT INTO prop_predictions VALUES ({', '.join('?' * len(dashboard.PROP_COLUMNS))})", rows)
+    db.commit()
+    db.close()
+    _write_csv(tmp_path / "bet_log.csv", results)
+    return dashboard.Sources(tmp_path)
+
+
+def test_fitted_weights_find_the_ranking_that_wins_and_report_out_of_sample(tmp_path):
+    src = _ranking_src(tmp_path)
+    report = dashboard.ranking_report(src, "all", date(2026, 10, 24))
+    m = report["methods"]
+    assert (m["conf"]["hits"], m["conf"]["misses"], m["conf"]["slates"]) == (21, 10, 3)  # 10-5 twice + old slate
+    assert (m["prob"]["hits"], m["prob"]["misses"], m["prob"]["slates"]) == (12, 18, 2)  # old slate has none
+    weights = report["weights"]
+    assert weights["conf"] == max(weights.values())  # ties go to the most even mix that does best
+    assert (m["weighted"]["hits"], m["weighted"]["misses"], m["weighted"]["slates"]) == (20, 10, 2)
+    assert m["weighted_oos"]["slates"] == 2 and m["weighted_oos"]["graded"] == 30
+    fitted = dashboard.top_bets(src, "2026-10-23", "weighted")
+    assert fitted["fitted_on"] == 2
+    assert {f"P{i}" for i in range(10)} <= {b["player"] for b in fitted["bets"]}  # every winner kept
+    mine = dashboard.top_bets(src, "2026-10-23", "weighted", weights=(1, 0, 0))
+    assert mine["fitted_on"] is None and mine["bets"][0]["player"] == "P17"  # highest probability
+
+
+def _naive_fit(slates: dict) -> tuple:
+    """The first version: rank every slate again for every candidate weight, on every refit."""
+    def fit(group):
+        best = None
+        for w in dashboard.WEIGHT_GRID:
+            r = dashboard._record([p for ps in group.values()
+                                   for p in dashboard.rank_slate(ps, "weighted", w)[:dashboard.TOP_N] if p["result"]])
+            key = (r["hits"] - r["misses"], -max(w))
+            if best is None or key > best[0]:
+                best = (key, w, r)
+        return best[1], best[2]
+
+    weights, record = fit(slates)
+    held_out = []
+    for d in slates:
+        w, _ = fit({k: v for k, v in slates.items() if k != d})
+        held_out += [p for p in dashboard.rank_slate(slates[d], "weighted", w)[:dashboard.TOP_N] if p["result"]]
+    return weights, record, dashboard._record(held_out)
+
+
+def test_one_pass_fit_matches_refitting_every_slate(monkeypatch):
+    """The leave-one-out used to refit from scratch for every slate (3.6 s at 20 slates,
+    growing with the square); sums of one table must pick the same weights and records."""
+    import random
+
+    rng = random.Random(7)
+    results = ["HIT", "MISS", "PUSH", None]
+    slates = {f"2026-11-{d:02d}": [
+        {"p_model": round(rng.uniform(0.5, 0.8), 2), "confidence": float(rng.randint(40, 95)),
+         "edge_pct": float(rng.randint(0, 45)), "flags": "⚠SUSP" if rng.random() < 0.05 else "",
+         "result": rng.choices(results, weights=(5, 5, 1, 1))[0]} for _ in range(rng.randint(20, 60))]
+        for d in range(1, 9)}
+    weights, in_sample, held_out, n = dashboard._weighted_fit(slates)
+    naive_weights, naive_record, naive_held_out = _naive_fit(slates)
+    assert n == 8 and weights == naive_weights
+    assert dashboard._record_of(*in_sample) == naive_record
+    assert dashboard._record_of(*held_out) == naive_held_out
+    assert dashboard.fit_weights(slates)["weights"] == naive_weights
+
+
 def test_performance_ranges_and_paper_pnl(src):
     today = date(2026, 10, 23)
     season = dashboard.performance(src, "season", today)
@@ -186,6 +303,10 @@ def test_http_serves_the_page_and_api_on_localhost_only(server):
     assert status == 200 and len(json.loads(body)["games"]) == 2
     assert _request(server, "GET", f"/api/game?date={DAY}&key=XXX@YYY")[0] == 404
     assert _request(server, "GET", "/api/games?date=nope")[0] == 400
+    assert _request(server, "GET", "/api/ranking?range=all")[0] == 200
+    status, body = _request(server, "GET", f"/api/top?date={DAY}&by=weighted&w=2,1,1")
+    assert status == 200 and json.loads(body)["weights"] == {"prob": 0.5, "conf": 0.25, "edge": 0.25}
+    assert _request(server, "GET", f"/api/top?date={DAY}&by=weighted&w=1,2")[0] == 400
     assert _request(server, "GET", "/api/overview", {"Host": "evil.example"})[0] == 403
 
 

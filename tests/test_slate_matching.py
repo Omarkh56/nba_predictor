@@ -100,7 +100,7 @@ def test_tracker_snapshot_keeps_the_slate_and_uses_nba_codes(tmp_path, monkeypat
         _event("e1", "Los Angeles Lakers", "New York Knicks", "2026-10-22T02:00:00Z"),  # Oct 21 ET
         _event("e2", "Los Angeles Clippers", "New Orleans Pelicans", "2026-10-25T02:00:00Z"),
     ]
-    monkeypatch.setattr(oddstracker, "get_event_props", lambda event_id: PROPS)
+    monkeypatch.setattr(oddstracker, "get_event_props", lambda event_id, event=None: PROPS)
     monkeypatch.setattr(oddstracker.time, "sleep", lambda seconds: None)
     rows = oddstracker.snapshot(
         date(2026, 10, 21), events=events, now=datetime(2026, 10, 21, 18, tzinfo=timezone.utc),
@@ -114,7 +114,7 @@ def test_tracker_snapshot_keeps_the_slate_and_uses_nba_codes(tmp_path, monkeypat
 def test_tracker_snapshot_reports_a_fetch_failure(tmp_path, monkeypatch):
     import oddstracker
 
-    def down(event_id):
+    def down(event_id, event=None):
         raise requests.exceptions.ConnectionError("down")
 
     monkeypatch.setattr(oddstracker, "get_event_props", down)

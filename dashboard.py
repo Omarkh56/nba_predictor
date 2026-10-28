@@ -101,11 +101,17 @@ def _query(db: Path, sql: str, params=()) -> list:
         conn.close()
 
 
+def _counts(rows) -> tuple:
+    return (sum(r["result"] == "HIT" for r in rows), sum(r["result"] == "MISS" for r in rows),
+            sum(r["result"] == "PUSH" for r in rows))
+
+
 def _record(rows) -> dict:
     """W-L-P for graded rows; hit rate over hits + misses (pushes excluded)."""
-    hits = sum(r["result"] == "HIT" for r in rows)
-    misses = sum(r["result"] == "MISS" for r in rows)
-    pushes = sum(r["result"] == "PUSH" for r in rows)
+    return _record_of(*_counts(rows))
+
+
+def _record_of(hits: int, misses: int, pushes: int) -> dict:
     graded = hits + misses
     return {"hits": hits, "misses": misses, "pushes": pushes, "graded": graded,
             "rate": round(hits / graded, 4) if graded else None}
@@ -129,6 +135,177 @@ def picks_for(src: Sources, day: str) -> dict:
         g["winner_hit"], g["spread_hit"] = f.get("winner_hit") or None, f.get("spread_hit") or None
     return {"date": day, "props": props, "games": games, "record": _record(
         [p for p in props if p["result"]])}
+
+
+# ── Top 15: rankings, weights fitted on graded slates, and how each one has done ──
+TOP_N = 15
+RANK_METRICS = {"prob": "p_model", "conf": "confidence", "edge": "edge_pct"}
+TOP_SORTS = {**RANK_METRICS, "weighted": None}
+# (prob, conf, edge) weights in steps of 0.1 that sum to 1: 66 candidates.
+WEIGHT_GRID = [(a / 10, b / 10, round((10 - a - b) / 10, 1)) for a in range(11) for b in range(11 - a)]
+EQUAL_WEIGHTS = (1 / 3, 1 / 3, 1 / 3)
+
+
+def _flagged(p: dict) -> bool:
+    """The model's own ⚠SUSP flag: edge over 40%, "real markets don't misprice by >40%"."""
+    return "SUSP" in (p.get("flags") or "")
+
+
+def _pct_ranks(values: list) -> list:
+    """Percentile rank of each value within its slate, 0 (worst) to 1 (best); ties share."""
+    order = sorted(range(len(values)), key=lambda i: values[i])
+    ranks, i = [1.0] * len(values), 0
+    while i < len(order):
+        j = i
+        while j + 1 < len(order) and values[order[j + 1]] == values[order[i]]:
+            j += 1
+        for k in range(i, j + 1):
+            ranks[order[k]] = ((i + j) / 2) / (len(values) - 1) if len(values) > 1 else 1.0
+        i = j + 1
+    return ranks
+
+
+def rank_slate(props: list, by: str = "prob", weights=None, include_flagged: bool = False) -> list:
+    """One slate's picks best first. "weighted" scores each pick by its weighted percentile
+    ranks in probability, confidence and edge within the slate, so the three scales mix
+    fairly. ⚠SUSP picks are left out unless include_flagged: their probability isn't
+    docked the way their confidence is, so they would otherwise float to the top."""
+    pool = [p for p in props if include_flagged or not _flagged(p)]
+    if by != "weighted":
+        column = RANK_METRICS[by]
+        return sorted(pool, key=lambda p: (p.get(column) is None, -(p.get(column) or 0),
+                                           -(p.get("confidence") or 0)))
+    return _weighted_order(pool, _metric_ranks(pool), weights or EQUAL_WEIGHTS)
+
+
+def _metric_ranks(pool: list) -> list:
+    """Each pick's percentile rank in probability, confidence and edge. They don't depend on
+    the weights, so fitting computes them once per slate, not once per candidate."""
+    return [_pct_ranks([p.get(c) if p.get(c) is not None else float("-inf") for p in pool])
+            for c in RANK_METRICS.values()]
+
+
+def _weighted_order(pool: list, ranks: list, weights) -> list:
+    scores = [sum(w * r[i] for w, r in zip(weights, ranks)) for i in range(len(pool))]
+    order = sorted(range(len(pool)), key=lambda i: (-scores[i], -(pool[i].get("confidence") or 0)))
+    return [pool[i] for i in order]
+
+
+def _graded_slates(src: Sources, start: str = None) -> dict:
+    """{date: every pick on that slate, with results} for slates that have graded picks."""
+    sql = f"SELECT {', '.join(PROP_COLUMNS)} FROM prop_predictions"
+    props = _query(src.db, sql + (" WHERE date >= ?" if start else ""), (start,) if start else ())
+    graded = {(r["date"], r["player"], r["market"]): r for r in _read_csv(src.bet_log)
+              if r.get("result") in ("HIT", "MISS", "PUSH")}
+    slates = {}
+    for p in props:
+        g = graded.get((p["date"], p["player"], p["market"]), {})
+        p["result"], p["actual"] = g.get("result") or None, _num(g.get("actual"))
+        slates.setdefault(p["date"], []).append(p)
+    return {d: ps for d, ps in sorted(slates.items()) if any(p["result"] for p in ps)}
+
+
+def _has(props: list, column: str) -> bool:
+    """A slate can be ranked by a metric only if (almost) every pick carries it; the
+    pipeline didn't store probability before the 2026-27 season."""
+    return bool(props) and sum(p.get(column) is not None for p in props) >= 0.9 * len(props)
+
+
+def _top_results(slates: dict, by: str, weights=None) -> list:
+    return [p for ps in slates.values() for p in rank_slate(ps, by, weights)[:TOP_N] if p["result"]]
+
+
+def _fully_ranked(slates: dict) -> dict:
+    return {d: ps for d, ps in slates.items() if all(_has(ps, c) for c in RANK_METRICS.values())}
+
+
+def _grid_counts(slates: dict) -> dict:
+    """{date: [(hits, misses, pushes) of that slate's weighted Top 15, for each WEIGHT_GRID
+    entry]}. Fitting and leave-one-out both sum rows of this table, so each slate is ranked
+    66 times in all instead of 66 times per fit (the refits made the leave-one-out grow
+    with the square of the slate count: 3.6 s at 20 slates)."""
+    table = {}
+    for d, ps in slates.items():
+        pool = [p for p in ps if not _flagged(p)]
+        ranks = _metric_ranks(pool)
+        table[d] = [_counts([p for p in _weighted_order(pool, ranks, w)[:TOP_N] if p["result"]])
+                    for w in WEIGHT_GRID]
+    return table
+
+
+def _grid_totals(rows) -> list:
+    """Sum (hits, misses, pushes) per WEIGHT_GRID entry over several slates' table rows."""
+    return [tuple(map(sum, zip(*column))) for column in zip(*rows)]
+
+
+def _best_weight(totals: list) -> int:
+    """Index of the weights whose Top 15 did best: most hits minus misses, ties going to the
+    most even mix (the least overfit choice), then to the earlier grid entry."""
+    best = None
+    for i, (w, (hits, misses, _)) in enumerate(zip(WEIGHT_GRID, totals)):
+        key = (hits - misses, -max(w))
+        if best is None or key > best[0]:
+            best = (key, i)
+    return best[1]
+
+
+def fit_weights(slates: dict) -> dict:
+    """The (prob, conf, edge) weights whose Top 15 did best on these slates (_best_weight)."""
+    usable = _fully_ranked(slates)
+    if not usable:
+        return {"weights": EQUAL_WEIGHTS, "slates": 0, "record": _record([]), "fitted": False}
+    totals = _grid_totals(_grid_counts(usable).values())
+    i = _best_weight(totals)
+    return {"weights": WEIGHT_GRID[i], "slates": len(usable), "record": _record_of(*totals[i]),
+            "fitted": True}
+
+
+def _weighted_fit(slates: dict) -> tuple:
+    """(fitted weights, their in-sample counts, out-of-sample counts, slates used). Out of
+    sample scores each slate with weights fitted on the others; needs two slates."""
+    table = _grid_counts(_fully_ranked(slates))
+    if not table:
+        return EQUAL_WEIGHTS, (0, 0, 0), (0, 0, 0), 0
+    totals = _grid_totals(table.values())
+    best = _best_weight(totals)
+    held_out = (0, 0, 0)
+    if len(table) >= 2:
+        for row in table.values():  # refit without this slate: the totals minus its row
+            without = [tuple(t - x for t, x in zip(total, own)) for total, own in zip(totals, row)]
+            held_out = tuple(a + b for a, b in zip(held_out, row[_best_weight(without)]))
+    return WEIGHT_GRID[best], totals[best], held_out, len(table)
+
+
+def ranking_report(src: Sources, range_key: str = "season", today: date = None) -> dict:
+    """How each Top 15 ranking has done on graded slates, plus the weighted ranking both
+    in-sample and out of sample (each slate scored with weights fitted without it)."""
+    today = today or team_codes.today_slate_date()
+    slates = _graded_slates(src, _range_start(range_key, today))
+    methods = {}
+    for by, column in RANK_METRICS.items():
+        usable = {d: ps for d, ps in slates.items() if _has(ps, column)}
+        methods[by] = {**_record(_top_results(usable, by)), "slates": len(usable)}
+    weights, in_sample, held_out, n = _weighted_fit(slates)
+    methods["weighted"] = {**_record_of(*in_sample), "slates": n}
+    methods["weighted_oos"] = {**_record_of(*held_out), "slates": n if n >= 2 else 0}
+    return {"range": range_key, "top_n": TOP_N, "methods": methods,
+            "weights": dict(zip(RANK_METRICS, weights)), "break_even": BREAK_EVEN}
+
+
+def top_bets(src: Sources, day: str, by: str = "prob", limit: int = TOP_N,
+             include_flagged: bool = False, weights=None) -> dict:
+    """The slate's best picks by one ranking. "weighted" uses `weights` if given, else the
+    weights fitted on every graded slate so far."""
+    props = picks_for(src, day)["props"]
+    fit = None
+    if by == "weighted" and weights is None:
+        fit = fit_weights(_graded_slates(src))
+        weights = fit["weights"]
+    ranked = rank_slate(props, by, weights, include_flagged)
+    return {"date": day, "by": by, "count": len(props), "flagged": sum(map(_flagged, props)),
+            "include_flagged": include_flagged, "bets": ranked[:limit],
+            "weights": dict(zip(RANK_METRICS, weights)) if by == "weighted" else None,
+            "fitted_on": fit["slates"] if fit else None}
 
 
 def _range_start(range_key: str, today: date):
@@ -551,6 +728,9 @@ class JobRunner:
             scheduled = next((a for a in agents() if a["name"] == name and a["pid"]), None)
             if scheduled:
                 raise RuntimeError(f"the scheduled {name} run is in progress (pid {scheduled['pid']})")
+            holder = run_log.lock_holder(JOB_COMMANDS.get(name, name))  # e.g. one started in a terminal
+            if holder:
+                raise RuntimeError(f"a {name} run is already in progress (pid {holder})")
             self.log_dir.mkdir(parents=True, exist_ok=True)
             log_path = self.log_dir / f"web-{name}.log"
             log = open(log_path, "w", encoding="utf-8")
@@ -601,8 +781,11 @@ def make_handler(src: Sources, runner: JobRunner, port: int, live: Live):
             self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(data)))
             self.send_header("Cache-Control", "no-store")
-            self.end_headers()
-            self.wfile.write(data)
+            try:
+                self.end_headers()
+                self.wfile.write(data)
+            except (BrokenPipeError, ConnectionResetError):
+                pass  # the page went away mid-response (a reload); nobody is left to answer
 
         def _host_ok(self) -> bool:
             return self.headers.get("Host", "") in allowed_hosts
@@ -620,7 +803,8 @@ def make_handler(src: Sources, runner: JobRunner, port: int, live: Live):
                     return self._send(200, {
                         "today_et": today.isoformat(),
                         "now_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-                        "latest": latest_runs(src), "agents": agents(), "jobs": runner.status()})
+                        "latest": latest_runs(src), "agents": agents(), "jobs": runner.status(),
+                        "predict_running": run_log.lock_holder("nba_combined")})
                 day = date.fromisoformat(query.get("date") or today.isoformat()).isoformat()
                 if url.path == "/api/games":
                     return self._send(200, games_for(src, day, live))
@@ -629,6 +813,24 @@ def make_handler(src: Sources, runner: JobRunner, port: int, live: Live):
                         return self._send(200, game_detail(src, day, query.get("key", ""), live))
                     except KeyError:
                         return self._send(404, {"error": f"no game {query.get('key')!r} on {day}"})
+                if url.path == "/api/top":
+                    by = query.get("by", "prob")
+                    if by not in TOP_SORTS:
+                        return self._send(400, {"error": f"by must be one of {sorted(TOP_SORTS)}"})
+                    weights = None
+                    if query.get("w"):  # custom weights "prob,conf,edge"; scaled to sum to 1
+                        parts = [max(0.0, float(x)) for x in query["w"].split(",")]
+                        if len(parts) != 3 or not sum(parts):
+                            raise ValueError("w must be three non-negative numbers: prob,conf,edge")
+                        weights = tuple(x / sum(parts) for x in parts)
+                    return self._send(200, top_bets(src, day, by, min(int(query.get("limit", TOP_N)), 100),
+                                                    include_flagged=query.get("flagged") == "1",
+                                                    weights=weights))
+                if url.path == "/api/ranking":
+                    key = query.get("range", "season")
+                    if key not in ("7d", "30d", "season", "all"):
+                        return self._send(400, {"error": "range must be 7d, 30d, season or all"})
+                    return self._send(200, ranking_report(src, key, today))
                 if url.path == "/api/picks":
                     return self._send(200, picks_for(src, day))
                 if url.path == "/api/performance":

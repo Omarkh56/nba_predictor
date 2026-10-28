@@ -83,7 +83,7 @@ Each run appends one line to `run_log.jsonl`, with a status for every stage:
 | `fetch_failed` | A request failed, or games weren't final: unknown, not empty |
 | `skipped` | Nothing to do |
 
-Exit codes: `0` ok or no games, `2` failed (nothing saved, rerun later), `3` partial (some games' odds failed, or the team model produced no games and only props ran — normal for the first days of a season, until every team has played). Grading writes nothing when stats.nba.com can't be reached or a game isn't final, and regrading a date never duplicates rows in `bet_log.csv` or `game_log.csv`.
+Exit codes: `0` ok or no games, `2` failed (nothing saved, rerun later), `3` partial (some games' odds or props failed, or the team model produced no games and only props ran — normal for the first days of a season, until every team has played), `4` another `nba_combined` run is in progress (nothing done; it doesn't add a run-log line). Grading writes nothing when stats.nba.com can't be reached or a game isn't final, and regrading a date never duplicates rows in `bet_log.csv` or `game_log.csv`.
 
 ### Schedules and dashboard (macOS)
 
@@ -92,7 +92,7 @@ Exit codes: `0` ok or no games, `2` failed (nothing saved, rerun later), `3` par
 
 | Agent | Runs | Madrid time |
 |---|---|---|
-| `predict` | `nba_combined.py` at 11:00 and 16:30 ET | 17:00, 22:30 |
+| `predict` | `nba_combined.py` once a day at 16:30 ET (weekend games tipping earlier need a manual run) | 22:30 |
 | `injuries` | `snapshot_injuries.py` at 10:00, 14:00, 17:00, 18:30 ET | 16:00, 20:00, 23:00, 00:30 |
 | `dashboard` | `dashboard.py`, always on | — |
 
@@ -165,12 +165,10 @@ window, or without saved picks, it makes no Odds API requests. Omitting DATE
 uses the current Eastern slate date, including when local time is past midnight.
 The scheduler host must be awake and its environment must load the repo's `.env`.
 
-Credit estimate: the current request includes eight markets. A populated US
-response costs up to 8 credits per event per check; two checks in the 30-minute
-window cost up to 16 per picked event (160 for ten games). If US books are empty,
-the existing five-region fallback can cost up to 40 credits per populated
-response, or 80 per event over two checks. Empty responses do not consume quota;
-these are upper estimates because billing depends on returned markets. See the
+Closing quotes come from ESPN's free DraftKings feed (see *Odds sources* below), so
+this job normally spends no credits. Only for a game ESPN has no props for does it
+ask The Odds API: up to 8 credits per event per check, more if the five-region
+fallback runs. Empty responses do not consume quota. See the
 [Odds API usage rules](https://the-odds-api.com/liveapi/guides/v4/).
 Check the job's `run_log.jsonl` stages for `ok`, `market_unavailable`, `skipped`
 or `fetch_failed`. Scheduling this job is a manual deployment step.
@@ -310,7 +308,7 @@ saved with `status: "fetch_failed"` and no payload, so gaps are visible. Read on
 |---|---|---|
 | `odds_api` | `odds_api.get_json()` | `events`, `event_odds` (event id moved into params) |
 | `nba_api` | the session nba_api sends through (`nba_api_utils.ArchivingSession`) | every stats.nba.com endpoint, e.g. `playergamelog`, `leaguegamefinder` |
-| `espn` | the ESPN fetches in `newnbapredictor.py`, `playerlinepredictor.py`, `snapshot_injuries.py` | `scoreboard`, `injuries` |
+| `espn` | the ESPN fetches in `newnbapredictor.py`, `playerlinepredictor.py`, `snapshot_injuries.py`, `espn_odds.py` | `scoreboard`, `injuries`, `prop_bets`, `roster`, `athlete` |
 
 The archive never changes what a fetch returns: if a file can't be written, it logs a warning
 and the run carries on. `NBA_RAW_ARCHIVE=0` turns it off and `NBA_RAW_ARCHIVE_DIR` moves it.
@@ -361,7 +359,8 @@ The season decides which fitted artifacts are active: `probability_calibration.j
 
 - **Hand-tuned weights are the default.** Training saves `swap` only when the learned game model beats the baseline on both validation metrics and on the held-out test season, and the predictor also requires that test season to be the latest completed one.
 - **Season rollover.** The season is defined only in `config.py`: `config.current_season()` switches seasons every Oct 1; set `NBA_SEASON=YYYY-YY` to backtest another season. Early in a season players have few current-season games; see *Early-season fallback* below for how props are projected then and what was validated.
-- **Odds API key required.** Copy `.env.example` to `.env` and set `ODDS_API_KEY`; `config.py` reads it, with no fallback value in source. Without it, the scripts print a warning and skip every Odds API request (reported as a failed odds fetch) instead of crashing.
+- **Odds API key required.** Copy `.env.example` to `.env` and set `ODDS_API_KEY`; `config.py` reads it, with no fallback value in source. The slate's event list always comes from The Odds API (that endpoint is free and answers even with no credits left). Without a key, the scripts print a warning and skip every Odds API request (reported as a failed odds fetch) instead of crashing.
+- **Odds sources.** Props come from The Odds API (six books: FanDuel, DraftKings, BetMGM, BetRivers, Bovada, BetOnline) once per game per slate day. A rerun the same day, a refused key (401: out of credits) or no key uses ESPN's free DraftKings feed instead (`espn_odds.py`). Game spreads, moneylines and closing quotes come from ESPN first, and from The Odds API only when ESPN has nothing. ESPN's API is unofficial: no key, no guarantees. It lists each prop's two prices without labelling them; the first is the over (checked against The Odds API's DraftKings prices, Oct 25 2026). ESPN lines carry `odds_source = espn_draftkings`, and because that feed always has exactly one book, they skip the one-book confidence penalty and the fewer-than-3-books filter. `NBA_ESPN_ODDS=0` turns ESPN off; `NBA_ODDS_ONCE_PER_DAY=0` lets The Odds API be paid again on a same-day rerun.
 - **LibreSSL on macOS Python 3.9** may produce TLS warnings. `pip install --upgrade certifi` resolves this.
 - **No live score integration.** The model is pre-game only; it does not update based on in-game events.
 

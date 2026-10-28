@@ -68,3 +68,6 @@ scripts/replay/output/
 # Local safety backups and simulated/backtest outputs (never mixed into bet_log.csv)
 backups/
 backtest_bets.csv
+
+# Run locks (run_log.exclusive)
+.*.lock

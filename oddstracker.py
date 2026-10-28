@@ -117,6 +117,24 @@ def american_to_implied(price: float) -> float:
         return abs(price) / (abs(price) + 100.0)
 
 
+def implied_to_american(probability: float) -> float:
+    """Inverse of american_to_implied: -100 at even money, never between -100 and +100."""
+    if probability >= 0.5:
+        return -100.0 * probability / (1.0 - probability)
+    return 100.0 * (1.0 - probability) / probability
+
+
+def average_american(prices) -> float:
+    """Average several books' American prices through their implied probabilities.
+
+    A plain mean breaks across even money, where American odds jump from -100 to
+    +100: -110 and +104 averaged to -3, an impossible price that read as a 3%
+    implied probability (85 saved picks on Oct 21-25 2026 carried one).
+    """
+    implied = [american_to_implied(float(p)) for p in prices]
+    return implied_to_american(sum(implied) / len(implied))
+
+
 def devig(over_price: float, under_price: float):
     """Remove vig using proportional method. Returns (devig_over, devig_under, vig_pct)."""
     raw_o = american_to_implied(over_price)
@@ -170,6 +188,7 @@ def book_lean(devig_over: float) -> tuple:
 # ODDS API HELPERS
 # ===========================================================================
 import team_codes  # noqa: E402  (v10: canonical team codes and slate dates)
+import espn_odds  # noqa: E402
 
 
 def get_all_events() -> list:
@@ -188,23 +207,27 @@ def get_all_events() -> list:
     return upcoming
 
 
-def get_event_props(event_id: str) -> dict:
-    """Fetch player prop odds for a single event. Tries wider regions if needed."""
-    for regions in ["us", "us,us2,uk,eu,au"]:
-        data = _get_odds_json(
-            f"{BASE_URL}/sports/{SPORT}/events/{event_id}/odds",
-            params={
-                "apiKey": ODDS_API_KEY,
-                "regions": regions,
-                "markets": ",".join(MARKETS),
-                "oddsFormat": "american",
-                "dateFormat": "iso",
-            },
-            timeout=25,
-        )
-        if data.get("bookmakers"):
-            return data
-    return {}
+def get_event_props(event_id: str, event: dict = None) -> dict:
+    """Fetch player prop odds for a single event. Tries wider regions if needed. Given the
+    event, falls back to ESPN's free DraftKings props when The Odds API refuses."""
+    def odds_api():
+        for regions in ["us", "us,us2,uk,eu,au"]:
+            data = _get_odds_json(
+                f"{BASE_URL}/sports/{SPORT}/events/{event_id}/odds",
+                params={
+                    "apiKey": ODDS_API_KEY,
+                    "regions": regions,
+                    "markets": ",".join(MARKETS),
+                    "oddsFormat": "american",
+                    "dateFormat": "iso",
+                },
+                timeout=25,
+            )
+            if data.get("bookmakers"):
+                return data
+        return {}
+
+    return espn_odds.odds_api_or_espn(odds_api, event)
 
 
 # ===========================================================================
@@ -264,8 +287,8 @@ def parse_props_to_rows(props_json: dict, game_key: str, snap_date: str, *,
         comparable = grp[(grp["line"] - consensus_line).abs() < 1e-9]
         if comparable.empty:
             continue
-        avg_over_odds = round(float(comparable["over_p"].mean()), 1)
-        avg_under_odds = round(float(comparable["under_p"].mean()), 1)
+        avg_over_odds = round(average_american(comparable["over_p"]), 1)
+        avg_under_odds = round(average_american(comparable["under_p"]), 1)
         n_books = int(comparable["book"].nunique())
 
         dv_over, dv_under, vig, k_val = devig_power(avg_over_odds, avg_under_odds)  # v7 Fix 5
@@ -292,7 +315,7 @@ def parse_props_to_rows(props_json: dict, game_key: str, snap_date: str, *,
                 "snapshot_at": snapshot_at,
                 "event_id": event_id,
                 "commence_time": commence_time,
-                "odds_source": "odds_tracker_consensus",
+                "odds_source": props_json.get("source") or "odds_tracker_consensus",
                 "result": "",  # filled after game via update_results()
             }
         )
@@ -359,7 +382,7 @@ def parse_props_to_snapshot_rows(props_json: dict, game_key: str, snap_date: str
                         "devig_probability": dv_over if side == "OVER" else dv_under,
                         "vig_pct": vig,
                         "k_value": k_value,
-                        "odds_source": "the_odds_api",
+                        "odds_source": props_json.get("source") or "the_odds_api",
                     })
     return rows
 
@@ -420,7 +443,7 @@ def snapshot(snap_date: date, *, events=None, now=None, tracker_path=None,
         gk = team_codes.game_key(away, home)  # v10: NYK@LAL, never "NEW@LOS"
         print(f"  Fetching props: {gk}…")
         try:
-            props = get_event_props(ev["id"])
+            props = get_event_props(ev["id"], ev)
             event_id = str(ev.get("id") or props.get("id") or "")
             commence_time = str(ev.get("commence_time") or props.get("commence_time") or "")
             rows = parse_props_to_rows(
@@ -541,6 +564,21 @@ def _append_snapshot_rows(rows: list, path=None):
     return len(additions)
 
 
+def _closing_props(event_id: str, pick: dict) -> dict:
+    """Closing quotes from ESPN's DraftKings feed, which costs nothing; The Odds API (about
+    8 credits a game, 80-90 a day) only when ESPN has nothing for the game."""
+    away, _, home = str(pick.get("game") or "").partition("@")
+    if espn_odds.enabled() and away and home:
+        try:
+            props = espn_odds.props_for_event(
+                {"away_team": away, "home_team": home, "commence_time": pick.get("game_start_at")})
+            if props:
+                return props
+        except requests.exceptions.RequestException as exc:
+            print(f"  ESPN closing props unavailable for {pick.get('game')} ({exc})")
+    return get_event_props(event_id)
+
+
 def closing_snapshot(snap_date: date, *, minutes=30, now=None, predictions=None,
                      db_path=None, snapshot_path=None) -> int:
     """Quote only picked events about to tip; never change entry consensus."""
@@ -571,7 +609,7 @@ def closing_snapshot(snap_date: date, *, minutes=30, now=None, predictions=None,
     started = 0
     for event_id, pick in eligible.items():
         try:
-            props = get_event_props(event_id)
+            props = _closing_props(event_id, pick)
             # A slow response must not be backdated to the batch start and
             # mistaken for a pregame close. Tests can inject a fixed clock.
             quote_time = observed if now is not None else datetime.now(timezone.utc)

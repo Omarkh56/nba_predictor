@@ -113,7 +113,7 @@ def test_direct_prediction_caller_gets_runlog_provenance(tmp_path):
     row = db.load_prop_predictions(DAY, path=path)[0]
     assert row["run_id"] == read_runs(tmp_path / "run_log.jsonl")[0]["run_id"]
 
-def props(event_id, *, price=-110):
+def props(event_id, event=None, *, price=-110):
     player = "P1" if event_id == "g1" else "P2"
     return {"id": event_id, "bookmakers": [{"key": "book", "title": "Book", "markets": [
         {"key": "player_points", "outcomes": [
@@ -129,7 +129,7 @@ def test_closing_only_quotes_picked_events_in_window_and_preserves_consensus(mod
              proposal(event="other-date", game_start_at="2026-10-22T23:00:00Z"),
              proposal(event="boundary", game_start_at="2026-10-21T23:20:00Z")]
     calls = []
-    monkeypatch.setattr(ot, "get_event_props", lambda e: calls.append(e) or props(e))
+    monkeypatch.setattr(ot, "get_event_props", lambda e, event=None: calls.append(e) or props(e))
     Path(ot.TRACKER_FILE).write_bytes(b"existing consensus\n")
     assert ot.closing_snapshot(DAY, predictions=picks, now=CLOSE_TIME) == 0
     assert calls == ["g1", "boundary"]
@@ -150,7 +150,7 @@ def test_closing_statuses_and_no_eligible_events(modules, tmp_path, monkeypatch,
     monkeypatch.setattr(ot, "get_event_props", fetch)
     assert ot.closing_snapshot(DAY, predictions=[proposal()], now=CLOSE_TIME) == code
     assert read_runs(tmp_path / "runs.jsonl")[-1]["stages"][-1]["status"] == status
-    monkeypatch.setattr(ot, "get_event_props", lambda e: pytest.fail("No eligible events means no API calls"))
+    monkeypatch.setattr(ot, "get_event_props", lambda e, event=None: pytest.fail("No eligible events means no API calls"))
     assert ot.closing_snapshot(DAY, predictions=[], now=CLOSE_TIME) == 0
     assert read_runs(tmp_path / "runs.jsonl")[-1]["stages"][0]["status"] == "skipped"
 
@@ -250,7 +250,7 @@ def test_two_game_daily_cycle_is_traceable_and_byte_identical_on_rerun(modules, 
     prediction_run = read_runs(tmp_path / "runs.jsonl")[-1]["run_id"]
     frozen = db.load_prop_predictions(DAY)
     assert {r["run_id"] for r in frozen} == {prediction_run}
-    monkeypatch.setattr(ot, "get_event_props", lambda e: props(e, price=-120))
+    monkeypatch.setattr(ot, "get_event_props", lambda e, event=None: props(e, price=-120))
     if collect_closing:
         assert ot.closing_snapshot(DAY, db_path=path, now=CLOSE_TIME) == 0
     actual = {1: {"PTS": 28, "MIN": 30}, 2: {"PTS": 20, "MIN": 30}}

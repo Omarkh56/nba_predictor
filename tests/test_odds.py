@@ -186,6 +186,35 @@ class TestBookLean:
         assert s == pytest.approx(0.20, abs=1e-6)
 
 
+class TestConsensusPrice:
+    @staticmethod
+    def _payload(prices):
+        return {"bookmakers": [{
+            "key": f"book_{i}", "title": f"Book {i}", "markets": [{
+                "key": "PTS", "outcomes": [
+                    {"description": "Player A", "name": "Over", "point": 20.5, "price": over},
+                    {"description": "Player A", "name": "Under", "point": 20.5, "price": under},
+                ],
+            }],
+        } for i, (over, under) in enumerate(prices)]}
+
+    def test_books_either_side_of_even_money_give_a_real_price(self):
+        # A plain mean of -110 and +104 is -3: an impossible price that reads as a 3% chance.
+        [row] = parse_props_to_rows(self._payload([(-110, -110), (104, -125)]), "AAA@BBB", "2026-10-24")
+        assert row["avg_over_odds"] <= -100 or row["avg_over_odds"] >= 100
+        assert row["implied_over"] == pytest.approx(
+            (american_to_implied(-110) + american_to_implied(104)) / 2, abs=1e-3)
+        assert 0.45 < row["devig_over"] < 0.55
+
+    def test_average_is_taken_in_probability_space(self):
+        assert _ot.average_american([-110, -110]) == pytest.approx(-110)
+        assert _ot.average_american([150, 150]) == pytest.approx(150)
+        assert _ot.average_american([-100, 100]) == pytest.approx(-100)
+        for price in (-500, -150, -100, 100, 175, 900):
+            assert _ot.implied_to_american(american_to_implied(price)) == pytest.approx(
+                price if price != 100 else -100)
+
+
 class TestTimestampedPropSnapshots:
     def test_parser_preserves_every_player_and_book_quote(self):
         payload = {"bookmakers": [{
