@@ -7,12 +7,12 @@
   "by_season_mode": [],
   "by_source_or_book": [],
   "finance_eligible_rows": 0,
-  "finance_excluded_rows": 1135,
-  "hit_miss_rows": 1131,
-  "hit_rate_all_logged": 0.5163572060123784,
-  "hits": 584,
-  "logged_rows": 1135,
-  "misses": 547,
+  "finance_excluded_rows": 1460,
+  "hit_miss_rows": 1455,
+  "hit_rate_all_logged": 0.5175257731958763,
+  "hits": 753,
+  "logged_rows": 1460,
+  "misses": 702,
   "overall": {
     "average_decimal_odds": null,
     "average_model_edge": null,
@@ -32,5 +32,5 @@
     "win_rate": null
   },
   "scope": "real logged bets with recorded entry odds and positive stake amounts",
-  "settled_rows": 1135
+  "settled_rows": 1460
 }
