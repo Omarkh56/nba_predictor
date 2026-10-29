@@ -38,16 +38,22 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+import argparse
+
 import pandas as pd
 import requests.exceptions
 
+import espn_odds  # noqa: E402
 import game_odds_tracker  # noqa: E402
 import newnbapredictor as team_model
 import oddstracker
 import playerlinepredictor as props_model
 import predictions_db as pred_db
+import team_codes
+from run_log import EXIT_BUSY, RunLog, exclusive, lock_holder
+from bet_log_utils import read_bet_rows
 from config import current_season
-from roi_analysis import american_to_decimal
+from finance import american_to_decimal, grade_financial_rows, make_bet_id, odds_data_is_fresh
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +65,7 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 # Minimum confidence to display with a star in the best-bets section.
 # 53.0% = breakeven at standard -110 juice.
 BREAKEVEN_CONF = 53.0
+ODDS_MAX_AGE_MINUTES = float(os.getenv("NBA_ODDS_MAX_AGE_MINUTES", "60"))
 
 # Market ranking weights — applied only to the sort score, not displayed values.
 # 3PM lines are tiny (0.5 / 1.5) so even a small absolute edge produces huge
@@ -162,6 +169,21 @@ def _attach_game_market(pred: dict) -> None:
         return
 
 
+def _optional_float(value):
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if math.isfinite(number) else None
+
+
+def _optional_text(value):
+    if value is None or pd.isna(value):
+        return None
+    text = str(value).strip()
+    return text or None
+
+
 def _load_today_lean(snap_date: date) -> dict:
     """Load today's odds snapshot from odds_tracker.csv into a fast lookup dict.
     If no snapshot exists for today, attempts to fetch one automatically."""
@@ -172,9 +194,14 @@ def _load_today_lean(snap_date: date) -> dict:
     needs_fetch = True
     if os.path.isfile(tracker_path) and os.path.getsize(tracker_path) > 0:
         try:
-            df = pd.read_csv(tracker_path, usecols=["date", "player", "market"])
-            if (df["date"] == snap_date.isoformat()).any():
-                needs_fetch = False
+            df = pd.read_csv(tracker_path)
+            today_rows = df[df["date"] == snap_date.isoformat()]
+            if "snapshot_at" in today_rows and not today_rows.empty:
+                now = datetime.now(timezone.utc).isoformat()
+                needs_fetch = not any(
+                    odds_data_is_fresh(value, now, max_age_minutes=ODDS_MAX_AGE_MINUTES)
+                    for value in today_rows["snapshot_at"]
+                )
         except (OSError, ValueError, KeyError):
             pass
 
@@ -190,17 +217,25 @@ def _load_today_lean(snap_date: date) -> dict:
     try:
         df = pd.read_csv(tracker_path)
         today = df[df["date"] == snap_date.isoformat()]
+        if "commence_time" in today.columns:
+            # v10: older snapshots stamped other dates' games with this date;
+            # keep rows that tip off on the slate (or carry no timestamp).
+            tip_dates = today["commence_time"].map(team_codes.slate_date_of)
+            today = today[tip_dates.isna() | (tip_dates == snap_date)]
         for _, row in today.iterrows():
             key = (str(row["player"]).strip().lower(), str(row["market"]).strip())
-            devig_over = float(row.get("devig_over", 0.5))
             lean_map[key] = {
                 "book_lean": row.get("book_lean", "NEUTRAL"),
-                "lean_strength": float(row.get("lean_strength", 0.0)),
-                "devig_over": devig_over,
-                "devig_under": float(row.get("devig_under", 1.0 - devig_over)),
-                "vig_pct": float(row.get("vig_pct", 0.0)),
-                "avg_over_odds": float(row.get("avg_over_odds", -110)),
-                "avg_under_odds": float(row.get("avg_under_odds", -110)),
+                "lean_strength": _optional_float(row.get("lean_strength")),
+                "devig_over": _optional_float(row.get("devig_over")),
+                "devig_under": _optional_float(row.get("devig_under")),
+                "vig_pct": _optional_float(row.get("vig_pct")),
+                "avg_over_odds": _optional_float(row.get("avg_over_odds")),
+                "avg_under_odds": _optional_float(row.get("avg_under_odds")),
+                "snapshot_at": _optional_text(row.get("snapshot_at")),
+                "event_id": _optional_text(row.get("event_id")),
+                "commence_time": _optional_text(row.get("commence_time")),
+                "odds_source": _optional_text(row.get("odds_source")) or "odds_tracker_consensus",
             }
         if lean_map:
             print(
@@ -240,8 +275,9 @@ def _p_market(player: str, market: str, pick: str):
     lean = _get_lean(player, market)
     if not lean:
         return None
-    devig_over = lean.get("devig_over", 0.5)
-    return lean.get("devig_under", 1.0 - devig_over) if pick == "UNDER" else devig_over
+    value = lean.get("devig_under") if pick == "UNDER" else lean.get("devig_over")
+    probability = _optional_float(value)
+    return probability if probability is not None and 0 < probability < 1 else None
 
 
 def _decimal_odds(player: str, market: str, pick: str):
@@ -259,7 +295,7 @@ def _decimal_odds(player: str, market: str, pick: str):
         return None
 
 
-def _market_edge_pct(player: str, market: str, pick: str, confidence: float):
+def _market_edge_pct(player: str, market: str, pick: str, model_prob_pct: float):
     """True edge vs. the de-vigged market, in percentage points:
     model_probability − devig_market_probability (for the picked side).
 
@@ -269,7 +305,7 @@ def _market_edge_pct(player: str, market: str, pick: str, confidence: float):
     p_mkt = _p_market(player, market, pick)
     if p_mkt is None:
         return None
-    model_prob = confidence / 100.0
+    model_prob = model_prob_pct / 100.0
     return (model_prob - p_mkt) * 100.0
 
 
@@ -285,7 +321,10 @@ def _enrich_with_market_edge(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     mkt_edges, flags_out = [], []
     for _, r in df.iterrows():
-        me = _market_edge_pct(str(r["Player"]), str(r["Market"]), str(r["Pick"]), float(r["Confidence"]))
+        # v9: market edge compares probabilities, not the penalty-adjusted
+        # ranking confidence. Older manually assembled frames still fall back.
+        model_prob_pct = float(r["P_Model"]) * 100 if pd.notna(r.get("P_Model")) else float(r["Confidence"])
+        me = _market_edge_pct(str(r["Player"]), str(r["Market"]), str(r["Pick"]), model_prob_pct)
         mkt_edges.append(me)
         f = str(r.get("Flags", "")).strip()
         if me is None and NO_MARKET_FLAG not in f:
@@ -340,15 +379,21 @@ def _apply_market_cap(df: pd.DataFrame) -> pd.DataFrame:
 # HELPERS
 # =============================================================================
 def _abbr(team_full_name: str) -> str:
-    return props_model.TEAM_NAME_TO_ABBR.get(team_full_name, team_full_name[:3].upper())
+    return team_codes.normalize_team(team_full_name) or team_full_name[:3].upper()
 
 
-def _match_odds_event(all_events, home_abbr, away_abbr):
-    # Normalize ESPN short abbreviations (NY→NYK, GS→GSW, etc.) so they match
-    # the standard abbreviations produced from Odds API full team names.
-    home_norm = props_model.ESPN_TO_NBA_ABBR.get(home_abbr, home_abbr)
-    away_norm = props_model.ESPN_TO_NBA_ABBR.get(away_abbr, away_abbr)
+def _match_odds_event(all_events, home_abbr, away_abbr, slate_date=None):
+    """Return the Odds API event for this matchup on this slate, or None.
+
+    v10: teams compare as canonical NBA codes (team_codes), and when slate_date
+    is given an event on another date never matches, so a later game in a series
+    or home-and-home can't stand in for tonight's.
+    """
+    home_norm = team_codes.normalize_team(home_abbr) or home_abbr
+    away_norm = team_codes.normalize_team(away_abbr) or away_abbr
     for ev in all_events:
+        if slate_date is not None and team_codes.event_slate_date(ev) != slate_date:
+            continue
         if (
             _abbr(ev.get("home_team", "")) == home_norm
             and _abbr(ev.get("away_team", "")) == away_norm
@@ -369,10 +414,13 @@ def _edge_floored(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return df
 
-    # Standard edge floor (per-direction)
+    # Standard edge floor (per-direction). Thin markets (fewer than 3 books) are left out,
+    # except ESPN's lines: that feed carries one book (DraftKings) for every line.
     book_ok = (
         (df["book_count"] >= 3) if "book_count" in df.columns else pd.Series(True, index=df.index)
     )
+    if "odds_source" in df.columns:
+        book_ok |= df["odds_source"].eq(espn_odds.SOURCE)
     edge_ok = df.apply(
         lambda r: (
             r["Edge%"] >= props_model.UNDER_EDGE_PCT_FLOOR
@@ -785,19 +833,43 @@ def print_best_bets(pred: dict, props_df: pd.DataFrame):
 # =============================================================================
 # JSON EXPORT
 # =============================================================================
-def _pick_to_dict(row: pd.Series, game_key: str, pred) -> dict:
+def _pick_to_dict(row: pd.Series, game_key: str, pred, game_date_value=None) -> dict:
     """Convert a props DataFrame row + game context to a JSON-exportable dict."""
     meta = row.get("meta") or {}
     player, market, pick = str(row["Player"]), str(row["Market"]), str(row["Pick"])
+    lean = _get_lean(player, market)
     p_mkt = _p_market(player, market, pick)
     d = _decimal_odds(player, market, pick)
-    p_model = float(row["Confidence"]) / 100.0
-    total_penalty = float(row.get("total_penalty", row.get("direction_penalty", 0.0)))
+    # v9: confidence carries risk/ranking deductions; use the coherent
+    # calibrated selected-side probability for logging and stake arithmetic.
+    p_model = float(row.get("P_Model", float(row["Confidence"]) / 100.0))
     # Sized off p_model, not market_calibration.py's blended p_final: that
     # module's own holdout_check() currently fails to generalize out-of-
     # sample on the live market sample (~150 rows) -- using it to size real
     # stakes would be premature. Revisit once that check passes.
-    stake_pct = props_model.compute_stake_pct(p_model, d, total_penalty)
+    logged_at = datetime.now(timezone.utc).isoformat()
+    odds_snapshot_at = lean.get("snapshot_at") if lean else None
+    game_start_at = lean.get("commence_time") if lean else None
+    is_fresh = odds_data_is_fresh(
+        odds_snapshot_at,
+        logged_at,
+        game_start_at,
+        max_age_minutes=ODDS_MAX_AGE_MINUTES,
+    )
+    vig_pct = _optional_float(lean.get("vig_pct")) if lean else None
+    stake = props_model.compute_stake_decision(
+        p_model,
+        d,
+        p_market=p_mkt,
+        vig_pct=vig_pct,
+        data_is_fresh=is_fresh,
+    )
+    american = _optional_float(
+        lean.get("avg_under_odds") if pick == "UNDER" else lean.get("avg_over_odds")
+    ) if lean else None
+    bet_date = game_date_value or (pred.get("game_date") if pred else None)
+    bet_id = make_bet_id(bet_date, player, market, row["Line"], pick) if bet_date else None
+    book_spread = props_model.GAME_SPREADS.get(game_key)
     return {
         "game": game_key,
         "player": row["Player"],
@@ -806,17 +878,50 @@ def _pick_to_dict(row: pd.Series, game_key: str, pred) -> dict:
         "pick": row["Pick"],
         "projection": float(row["Projection"]),
         "confidence": float(row["Confidence"]),
+        "p_model": p_model,
         "edge_pct": float(row["Edge%"]),
         "flags": row["Flags"],
         "p_market": p_mkt,  # de-vigged market probability at prediction time, or None
         "decimal_odds": d,
-        "stake_pct": stake_pct,  # fractional-Kelly stake recommendation, 0.0 if no odds/negative EV
+        "stake_pct": stake.stake_pct,
+        "bet_id": bet_id,
+        "logged_at": logged_at,
+        "game_start_at": game_start_at,
+        "entry_american_odds": american,
+        "entry_decimal_odds": d,
+        "market_implied_probability": stake.market_implied_probability,
+        "vig_pct": vig_pct,
+        "model_edge": stake.model_edge,
+        "expected_value": stake.expected_value,
+        "kelly_fraction": stake.full_kelly,
+        "stake_skip_reason": stake.stake_skip_reason,
+        "odds_book": None,
+        "odds_source": lean.get("odds_source") if lean else None,
+        "odds_event_id": lean.get("event_id") if lean else None,
+        "odds_snapshot_at": odds_snapshot_at,
         "po_count": int(row.get("PO_Games", 0)),
         "avg_min": float(meta.get("avg_min", 0)),
         "book_count": int(row.get("book_count", 0)),
         "usg_pct": float(meta.get("usg_pct", 0)),
+        # v9: record the exact history snapshot used to make this pick.
+        "rs_raw_count": meta.get("rs_raw_count"),
+        "rs_usable_count": meta.get("rs_usable_count"),
+        "po_raw_count": meta.get("po_raw_count"),
+        "po_usable_count": meta.get("po_usable_count"),
+        "fetch_status": meta.get("fetch_status"),
+        "source_last_game_date": meta.get("source_last_game_date"),
+        "data_as_of_utc": meta.get("data_as_of_utc"),
+        "data_age_days": meta.get("data_age_days"),
+        "active_season": meta.get("active_season"),
+        "season_mode": meta.get("season_mode"),
+        "model_version": meta.get("model_version"),
+        "residual_correction_version": meta.get("residual_correction_version"),
+        "probability_calibration_version": meta.get("probability_calibration_version"),
+        # Bookmaker input and model output are deliberately separate.
+        "book_spread": float(book_spread) if book_spread is not None else None,
+        "model_margin": float(pred["expected_margin"]) if pred else None,
         # Game-level context from team model (None if team model unavailable)
-        "game_spread": float(pred["expected_margin"]) if pred else None,
+        "game_spread": float(pred["expected_margin"]) if pred else None,  # legacy: model margin
         "game_total": float(pred["predicted_total"]) if pred else None,
         "game_pace": float((pred.get("home_pace", 99.5) + pred.get("away_pace", 99.5)) / 2)
         if pred
@@ -832,7 +937,9 @@ def export_game_picks_db(team_preds: list, game_date: date) -> None:
     rows = []
     for r in team_preds:
         margin = r["expected_margin"]
-        home_spread = r["home_spread"] if margin > 0 else r["away_spread"]
+        # v10: home_spread is already the home line (-margin). The old
+        # "else away_spread" flipped its sign whenever the away team was favoured.
+        home_spread = r["home_spread"]
         fav = r["favorite"]
         rows.append(
             {
@@ -857,18 +964,46 @@ def export_game_picks_db(team_preds: list, game_date: date) -> None:
     print(f"  Saved {n} game pick(s) → predictions.db")
 
 
-def export_picks_db(all_picks: list, game_date: date) -> None:
+def export_picks_db(all_picks: list, game_date: date, *, run_id=None) -> None:
     """Deduplicate and upsert prop picks into predictions.db."""
     if not all_picks:
         return
+    bankroll = _bankroll_before_date(game_date)
     seen: dict = {}
-    for p in all_picks:
+    for original in all_picks:
+        p = dict(original)
+        if bankroll is not None:
+            stake_pct = _optional_float(p.get("stake_pct"))
+            if stake_pct is not None and stake_pct >= 0:
+                p["bankroll_before"] = round(bankroll, 6)
+                p["stake_amount"] = round(bankroll * stake_pct, 6)
         key = (p["player"], p["market"])
         if key not in seen or p["confidence"] > seen[key]["confidence"]:
             seen[key] = p
     final = sorted(seen.values(), key=lambda x: x["confidence"], reverse=True)
-    n = pred_db.upsert_prop_predictions(final, game_date)
+    kwargs = {"run_id": run_id} if run_id is not None else {}
+    n = pred_db.upsert_prop_predictions(final, game_date, **kwargs)
     print(f"\n  Saved {n} pick(s) → predictions.db")
+
+
+def _bankroll_before_date(game_date: date):
+    """Return the persisted opening bankroll when tracking is configured."""
+    raw = os.getenv("NBA_STARTING_BANKROLL", "").strip()
+    if not raw:
+        return None
+    try:
+        starting = float(raw)
+    except ValueError as exc:
+        raise ValueError("NBA_STARTING_BANKROLL must be a positive number") from exc
+    if not math.isfinite(starting) or starting <= 0:
+        raise ValueError("NBA_STARTING_BANKROLL must be a positive number")
+    log_path = os.path.join(_HERE, "bet_log.csv")
+    _, rows = read_bet_rows(log_path)
+    prior = [row for row in rows if str(row.get("date") or "")[:10] < game_date.isoformat()]
+    if not prior:
+        return starting
+    _, stats = grade_financial_rows(prior, starting)
+    return stats.ending_bankroll if stats.ending_bankroll is not None else starting
 
 
 # =============================================================================
@@ -889,18 +1024,28 @@ def _init_calibration() -> None:
         )
 
 
-def _fetch_matchups_and_lean() -> tuple:
-    """Return (matchups, game_date) and populate today's book-lean snapshot."""
+def _fetch_matchups_and_lean(slate_date=None, lookahead: bool = False) -> tuple:
+    """Return (matchups, game_date) and populate the slate's book-lean snapshot.
+
+    v10: slate_date (US Eastern) is explicit. With no date, or lookahead=True,
+    the old "next date with games" scan is used. Raises
+    team_model.ScheduleFetchError when ESPN can't be reached, so a failed fetch
+    never looks like an empty slate.
+    """
     global _TODAY_LEAN, _TODAY_GAME_ODDS
     print("\n  Fetching games from ESPN…")
-    matchups = team_model.get_todays_games()
+    scan = lookahead or slate_date is None
+    matchups = team_model.get_todays_games() if scan else team_model.get_games_for_date(slate_date)
     if not matchups:
-        print("  No games found.")
-        return [], None
-    game_date = matchups[0].get("game_date", date.today())
+        if scan:
+            print("  No games found in the next 44 days.")
+        else:
+            print(f"  No games on {slate_date.isoformat()}. Use --next to jump to the next slate.")
+        return [], slate_date
+    game_date = matchups[0].get("game_date", slate_date or team_codes.today_slate_date())
     _TODAY_LEAN = _load_today_lean(game_date)
     _TODAY_GAME_ODDS = _load_today_game_odds(game_date, matchups)
-    tag = "TODAY" if game_date == date.today() else game_date.strftime("%A %B %d")
+    tag = "TODAY" if game_date == team_codes.today_slate_date() else game_date.strftime("%A %B %d")
     print(f"  {len(matchups)} game(s)  —  {tag}")
     for m in matchups:
         print(f"    {m['away_abbr']} @ {m['home_abbr']}")
@@ -929,39 +1074,66 @@ def _run_team_model(matchups: list, team_injuries: dict) -> tuple:
     team_preds = []
     try:
         team_preds = team_model.predict_games_data(SEASON, matchups, team_injuries)
-    except (requests.exceptions.RequestException, json.JSONDecodeError, KeyError, ValueError) as e:
+    # RuntimeError: api_call_with_retry gave up (e.g. stats.nba.com timing out); props still run.
+    except (requests.exceptions.RequestException, json.JSONDecodeError, KeyError, ValueError,
+            RuntimeError) as e:
         print(f"  ⚠  Team model error: {e} — continuing with props only.")
     for pred in team_preds:
         _attach_game_market(pred)
     return team_preds, {(p["away_abbr"], p["home_abbr"]): p for p in team_preds}
 
 
-def _setup_odds_and_spreads(matchups: list, team_map: dict) -> list:
-    """Fetch Odds API events, resolve spreads; return event list."""
+def _book_spread(odds_ev: dict, home_name: str) -> float:
+    """Book spread, positive = home favoured: DraftKings' via ESPN, which costs nothing; The
+    Odds API (a credit per game) only when ESPN has no line or can't be reached."""
+    if espn_odds.enabled():
+        try:
+            lines = espn_odds.game_lines_for_event(odds_ev)
+            if lines and lines["home_spread"] is not None:
+                return -lines["home_spread"]
+        except requests.exceptions.RequestException as exc:
+            print(f"    ESPN spread unavailable ({exc}); asking The Odds API")
+    return props_model._auto_fetch_spread(odds_ev["id"], home_name)
+
+
+def _setup_odds_and_spreads(matchups: list, team_map: dict, game_date=None, run=None) -> list:
+    """Fetch the slate's Odds API events and resolve spreads; return those events."""
     print("\n  Fetching Odds API events…")
     try:
         all_events = props_model.get_all_odds_events()
     except (requests.exceptions.RequestException, json.JSONDecodeError) as e:
         print(f"  ⚠  Odds API error: {e}")
-        all_events = []
+        if run is not None:
+            run.stage("odds_events", "fetch_failed", required=True, error=type(e).__name__)
+        return []
+    if game_date is not None:
+        # v10: the feed lists every upcoming game; keep this slate's only.
+        slate_events = team_codes.events_for_date(all_events, game_date)
+        if len(slate_events) != len(all_events):
+            print(f"  Ignoring {len(all_events) - len(slate_events)} odds event(s) "
+                  f"not on {game_date.isoformat()}.")
+        all_events = slate_events
     if not all_events:
         print("  No events returned — props unavailable for all games.")
+        if run is not None:
+            run.stage("odds_events", "market_unavailable", reason="no odds events for slate")
         return []
+    if run is not None:
+        run.stage("odds_events", "ok", events=len(all_events))
 
     print("  Resolving spreads…")
     for m in matchups:
         ha = m["home_abbr"]
         aa = m["away_abbr"]
         gk = f"{aa}@{ha}"
-        odds_ev = _match_odds_event(all_events, ha, aa)
+        odds_ev = _match_odds_event(all_events, ha, aa, m.get("game_date"))
         pred = team_map.get((aa, ha))
         if odds_ev and gk not in props_model.GAME_SPREADS:
-            props_model.GAME_SPREADS[gk] = props_model._auto_fetch_spread(
-                odds_ev["id"], m["home_name"]
-            )
+            props_model.GAME_SPREADS[gk] = _book_spread(odds_ev, m["home_name"])
         if pred:
-            props_model.GAME_SPREADS[gk] = pred["expected_margin"]
-            print(f"    {gk}: model spread {pred['expected_margin']:+.1f}")
+            book = props_model.GAME_SPREADS.get(gk)
+            book_tag = f"; book spread {book:+.1f}" if book is not None else "; book spread unavailable"
+            print(f"    {gk}: model margin {pred['expected_margin']:+.1f}{book_tag}")
     return all_events
 
 
@@ -973,7 +1145,7 @@ def _process_single_game(
     aa = m["away_abbr"]
     gk = f"{aa}@{ha}"
     pred = team_map.get((aa, ha))
-    ev = _match_odds_event(all_events, ha, aa)
+    ev = _match_odds_event(all_events, ha, aa, m.get("game_date"))
     sprd = props_model.GAME_SPREADS.get(gk, 0.0)
 
     tip_str = f"  │  {m.get('status', '')}" if m.get("status") else ""
@@ -1028,12 +1200,15 @@ def _process_single_game(
                         .head(N)
                     )
                     for _, row in pd.concat([top_e, top_c]).iterrows():
-                        all_picks_export.append(_pick_to_dict(row, gk, pred))
+                        all_picks_export.append(_pick_to_dict(row, gk, pred, m.get("game_date")))
             else:
                 print("  No props returned for this game.")
-        except Exception:
+        except Exception as exc:
             # intentionally broad: one bad game must not abort the rest of the batch
             logger.exception("Props processing failed for game %s", gk)
+            # process_game marks a game "ok" once its lines parse; a crash after that
+            # saved nothing, so the run log must not keep calling it ok.
+            props_model._set_props_status(ev, "fetch_failed", error=type(exc).__name__)
     else:
         print("  No Odds API event found — props unavailable for this game.")
 
@@ -1044,7 +1219,7 @@ def _process_single_game(
 
 
 def _print_global_summary(
-    team_preds: list, all_props_results: list, all_picks_export: list, game_date
+    team_preds: list, all_props_results: list, all_picks_export: list, game_date, *, run_id=None
 ) -> None:
     """Print the end-of-run summary: game picks table + top props + exports."""
     print(f"\n{'═' * WIDTH}")
@@ -1122,7 +1297,7 @@ def _print_global_summary(
         _print_top("TOP 10 BY CONFIDENCE  most likely to hit", top_conf)
         _print_top("TOP 10 — RANKED  mkt-edge vs. devig market, else Edge%", top_edge)
 
-    export_picks_db(all_picks_export, game_date)
+    export_picks_db(all_picks_export, game_date, run_id=run_id)
     export_game_picks_db(team_preds, game_date)
     if all_picks_export:
         print("  Run calibrate.py after grading to keep the model improving.")
@@ -1139,7 +1314,53 @@ def _print_global_summary(
     print("  For informational purposes only. Not financial advice.")
 
 
-def main():
+def _parse_args(argv=None):
+    """CLI: --date YYYY-MM-DD (US Eastern, default today), --next, --verbose."""
+    parser = argparse.ArgumentParser(description="NBA team model + player props for one slate.")
+    parser.add_argument(
+        "--date", type=date.fromisoformat, default=None,
+        help="slate date YYYY-MM-DD on the US Eastern calendar (default: today)",
+    )
+    parser.add_argument(
+        "--next", action="store_true",
+        help="use the next date with games instead (scans up to 44 days ahead)",
+    )
+    parser.add_argument("--verbose", action="store_true", help="per-factor breakdowns")
+    args, _unknown = parser.parse_known_args(argv)
+    if args.date is None and not args.next:
+        args.date = team_codes.today_slate_date()
+    return args
+
+
+def _record_props_stages(run, matchups: list, events: list) -> None:
+    """One run-log stage per game: ok, market_unavailable or fetch_failed."""
+    for m in matchups:
+        gk = f"{m['away_abbr']}@{m['home_abbr']}"
+        ev = _match_odds_event(events, m["home_abbr"], m["away_abbr"], m.get("game_date"))
+        if ev is None:
+            run.stage(f"props:{gk}", "market_unavailable", reason="no odds event for this game")
+            continue
+        info = dict(props_model.LAST_PROPS_STATUS.get(ev.get("id"), {}))
+        run.stage(f"props:{gk}", info.pop("status", "skipped"), **info)
+
+
+def main(argv=None) -> int:
+    """Run one slate end to end. Returns an exit code (run_log.EXIT_CODES), or EXIT_BUSY
+    without doing anything while another nba_combined run is in progress."""
+    with exclusive("nba_combined") as acquired:
+        if not acquired:
+            print(f"  Another nba_combined run is in progress (pid {lock_holder('nba_combined')}); "
+                  "not starting.")
+            return EXIT_BUSY
+        return _run_slate(argv)
+
+
+def _run_slate(argv=None) -> int:
+    global VERBOSE
+    args = _parse_args(sys.argv[1:] if argv is None else argv)
+    VERBOSE = VERBOSE or args.verbose
+    run = RunLog("nba_combined", slate_date=args.date)
+
     print("\n" + "═" * WIDTH)
     print("  NBA ANALYSIS  —  Team Model  ×  Player Props")
     if VERBOSE:
@@ -1148,29 +1369,70 @@ def main():
 
     _init_calibration()
 
-    matchups, game_date = _fetch_matchups_and_lean()
+    try:
+        matchups, game_date = _fetch_matchups_and_lean(args.date, lookahead=args.next)
+    except team_model.ScheduleFetchError as exc:
+        print(f"\n  ⚠  Could not reach ESPN ({exc}).")
+        print("  The slate is unknown: this run FAILED, it is not an empty day. Nothing was saved.")
+        run.stage("schedule", "fetch_failed", required=True, error=str(exc)[:300])
+        run.finish()
+        return run.exit_code()
+    run.set_slate_date(game_date)
     if not matchups:
-        return
+        run.stage("schedule", "no_games", required=True)
+        run.finish()
+        return run.exit_code()
+    run.stage("schedule", "ok", required=True, games=len(matchups))
+    snap = dict(getattr(oddstracker, "LAST_SNAPSHOT_STATUS", {}) or {})
+    if snap:
+        status = snap.pop("status")
+        complete_failure = not snap.get("events") or snap.get("failed_events") == snap.get("events")
+        run.stage("odds_snapshot", status, required=complete_failure, **snap)
+        if status == "fetch_failed" and complete_failure:
+            print("  Odds snapshot failed: the slate's prices are unknown. Nothing was saved.")
+            run.finish()
+            return run.exit_code()
 
     team_injuries, props_injuries = _fetch_injuries()
     team_preds, team_map = _run_team_model(matchups, team_injuries)
-    all_events = _setup_odds_and_spreads(matchups, team_map)
+    # Optional: props never need the team model. Spreads come from the books, and a game
+    # without a prediction uses the default pace. Early in a season the team model resolves
+    # no games until every team has played, so a total failure makes the run partial
+    # (exit 3) instead of stopping it before props.
+    run.stage("team_model", "ok" if team_preds else "fetch_failed", games=len(team_preds))
+    if not team_preds:
+        print("  ⚠  Team model produced no games — continuing with props only.")
+    all_events = _setup_odds_and_spreads(matchups, team_map, game_date, run=run)
+    if run.overall_status() == "fetch_failed":
+        print("  Run FAILED: the slate's prices are unknown. Nothing was saved.")
+        run.finish()
+        return run.exit_code()
 
     print("\n  Loading player data (stats, USG%, DvP rosters)…")
-    props_model.get_team_season_stats()
-    props_model.get_league_logs()
-    props_model.get_all_player_usage()
-    props_model.prefetch_rosters_for_games(all_events)
+    try:
+        props_model.get_team_season_stats()
+        props_model.get_league_logs()  # the one loader that raises: every prop needs it
+        props_model.get_all_player_usage()
+        props_model.prefetch_rosters_for_games(all_events)
+    except props_model.NbaDataUnavailable as exc:
+        print(f"  ⚠  stats.nba.com unavailable ({exc}). Run FAILED: nothing was saved; rerun later.")
+        run.stage("player_data", "fetch_failed", required=True, error=str(exc)[:300])
+        run.finish()
+        return run.exit_code()
 
     all_props_results: list = []
     all_picks_export: list = []
     for m in matchups:
         results, _ = _process_single_game(m, team_map, all_events, props_injuries, all_picks_export)
         all_props_results.extend(results)
+    _record_props_stages(run, matchups, all_events)
 
-    _print_global_summary(team_preds, all_props_results, all_picks_export, game_date)
+    _print_global_summary(team_preds, all_props_results, all_picks_export, game_date, run_id=run.run_id)
+    record = run.finish(picks=len(all_picks_export), props_analyzed=len(all_props_results))
+    print(f"  Run {record['run_id']}: {record['status']} → {run.path.name}")
     print(f"{'═' * WIDTH}\n")
+    return run.exit_code()
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

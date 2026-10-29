@@ -66,7 +66,8 @@ import sys
 import time
 import unicodedata
 import warnings
-from datetime import date, datetime
+from datetime import date, datetime, timezone
+from typing import NamedTuple
 
 from dotenv import load_dotenv
 
@@ -77,10 +78,16 @@ import pandas as pd
 import requests
 import urllib3
 
-from config import current_season
-from env_config import require_env
-from nba_api_utils import safe_dataframe_call
+from config import ODDS_API_KEY, SEASON_START_MONTH, current_season
+import espn_odds
+import raw_archive
+import team_codes as _team_codes
+from finance import StakeDecision, recommend_stake
+from nba_api_utils import dataframe_call_result
+from odds_api import get_json as _get_odds_json
 from player_regression import predict_player_stat  # noqa: E402
+from residual_correction import apply_correction, load_artifact  # noqa: E402
+from probability_calibration import calibrate_over, load_artifact as load_probability_artifact  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -105,53 +112,19 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 # =============================================================================
 # CONFIG
 # =============================================================================
-ODDS_API_KEY = require_env("ODDS_API_KEY")
+if not ODDS_API_KEY:  # warn, don't exit: odds_api.get_json() skips each Odds API request
+    print("  Warning: ODDS_API_KEY not set — copy .env.example to .env and fill in your key. "
+          "Odds fetching will be skipped.", file=sys.stderr)
 SPORT = "basketball_nba"
 BASE_URL = "https://api.the-odds-api.com/v4"
 
 ESPN_INJURIES_URL = "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/injuries"
 
-ESPN_TO_NBA_ABBR = {
-    "GS": "GSW",
-    "NO": "NOP",
-    "NY": "NYK",
-    "SA": "SAS",
-    "WSH": "WAS",
-    "UTH": "UTA",
-}
+# v10: one team-code map for the whole pipeline (team_codes.py). The old literal
+# mapped "UTH" instead of ESPN's "UTAH", so Utah games never matched an odds event.
+ESPN_TO_NBA_ABBR = dict(_team_codes.ESPN_TO_NBA_ABBR)
 
-TEAM_NAME_TO_ABBR = {
-    "Atlanta Hawks": "ATL",
-    "Boston Celtics": "BOS",
-    "Brooklyn Nets": "BKN",
-    "Charlotte Hornets": "CHA",
-    "Chicago Bulls": "CHI",
-    "Cleveland Cavaliers": "CLE",
-    "Dallas Mavericks": "DAL",
-    "Denver Nuggets": "DEN",
-    "Detroit Pistons": "DET",
-    "Golden State Warriors": "GSW",
-    "Houston Rockets": "HOU",
-    "Indiana Pacers": "IND",
-    "Los Angeles Clippers": "LAC",
-    "Los Angeles Lakers": "LAL",
-    "Memphis Grizzlies": "MEM",
-    "Miami Heat": "MIA",
-    "Milwaukee Bucks": "MIL",
-    "Minnesota Timberwolves": "MIN",
-    "New Orleans Pelicans": "NOP",
-    "New York Knicks": "NYK",
-    "Oklahoma City Thunder": "OKC",
-    "Orlando Magic": "ORL",
-    "Philadelphia 76ers": "PHI",
-    "Phoenix Suns": "PHX",
-    "Portland Trail Blazers": "POR",
-    "Sacramento Kings": "SAC",
-    "San Antonio Spurs": "SAS",
-    "Toronto Raptors": "TOR",
-    "Utah Jazz": "UTA",
-    "Washington Wizards": "WAS",
-}
+TEAM_NAME_TO_ABBR = dict(_team_codes.TEAM_NAME_TO_ABBR)
 
 MARKETS = [
     "player_points",
@@ -214,6 +187,28 @@ MIN_MINUTES_RS = 15
 MIN_MINUTES_PO = (
     10  # lowered from 18 — rotation players with 10-17 min PO appearances were being excluded
 )
+# v9: rate estimates still require reliable-minute samples, while expected
+# minutes can use every played appearance so role collapses are not hidden.
+MINUTES_FORECAST_ENABLED = False  # Phase 3 gate; opt in via replay --set
+# v10: the prior-season path (minutes_forecast + prior-season rate shrinkage) ONLY for
+# regular-season players with fewer than 10 current-season games -- the regime where it
+# was validated. The full feature above stays gated off (it failed a playoff check).
+# Forced back off at import unless reports/early_season_fallback_gate.json says "on".
+EARLY_SEASON_FALLBACK_ENABLED = True
+EARLY_SEASON_MAX_GAMES = 10  # same threshold as project_prop's prior-season load and shrink_rate
+
+
+def _use_forecast_path(current_games: int, playoffs: bool) -> bool:
+    """Which minutes/rate path one player-game uses. Reads the flags at call time so
+    replay `--set` overrides apply."""
+    if MINUTES_FORECAST_ENABLED:
+        return True
+    return bool(EARLY_SEASON_FALLBACK_ENABLED and not playoffs
+                and current_games < EARLY_SEASON_MAX_GAMES)
+
+MINUTES_HISTORY_MODE = "robust"  # replay winner: every appearance, reduced leverage for extreme shorts
+SHORT_APPEARANCE_REFERENCE_MIN = 15.0
+SHORT_APPEARANCE_WEIGHT_FLOOR = 0.35
 BENCH_MIN_THRESHOLD = 20
 STARTER_MIN_THRESHOLD = 28
 
@@ -254,10 +249,10 @@ SUSPICIOUS_EDGE_DOCK = 20.0  # confidence points docked when edge_pct > SUSPICIO
 TREND_DOWN_OVER_PENALTY = 3.0  # confidence docked for OVER picks on a declining-trend player
 MARKET_ANCHOR_WEIGHT = 0.12  # v6 Fix 6: 12% pull toward market line dampens runaway projections
 
-# v10: fractional-Kelly stake sizing (see compute_stake_pct() below)
-KELLY_FRACTION = 0.35  # fraction of full Kelly — don't stake as if p_model were exact
-STAKE_PENALTY_DIVISOR = 50.0  # total_penalty=50 -> stake discounted to ~0; tune against total_penalty's real range
+# v10: auditable quarter-Kelly stake sizing (see compute_stake_decision() below)
+KELLY_FRACTION = 0.25
 MAX_STAKE_PCT = 0.05  # hard cap: 5% of bankroll, regardless of what the formula says
+MIN_STAKE_EDGE = float(os.getenv("NBA_MIN_STAKE_EDGE", "0.02"))
 
 # -----------------------------------------------------------------------------
 # Defense vs Position (DvP) — computed from league logs + team rosters
@@ -374,6 +369,7 @@ def _flag_penalty(name: str, default: float) -> float:
 # =============================================================================
 _LEARNED_PLAYER_PARAMS: dict = {}  # stat → {"ewma_weight", "home_boost", "rest_coef", ...}
 _LEARNED_VARIANCE: dict = {}  # {"by_position": {G/F/C: {PTS/REB/...: std}}, ...}
+_LEARNED_PARAMS_VERSION = "unknown"
 
 _LEARNED_PARAMS_FILE = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "learned_params.json"
@@ -382,13 +378,15 @@ _LEARNED_PARAMS_FILE = os.path.join(
 
 def _load_learned_player_params() -> None:
     """Load player model params and variance estimates from learned_params.json."""
-    global _LEARNED_PLAYER_PARAMS, _LEARNED_VARIANCE, PROP_STD_DEV_PO, PROP_STD_DEV_RS
+    global _LEARNED_PLAYER_PARAMS, _LEARNED_VARIANCE, _LEARNED_PARAMS_VERSION
+    global PROP_STD_DEV_PO, PROP_STD_DEV_RS
     if not os.path.exists(_LEARNED_PARAMS_FILE):
         return
     try:
         with open(_LEARNED_PARAMS_FILE) as fh:
             data = json.load(fh)
         _LEARNED_PLAYER_PARAMS = data.get("player_models", {})
+        _LEARNED_PARAMS_VERSION = str(data.get("version", "unknown"))
         var_block = data.get("player_variance", {})
         _LEARNED_VARIANCE = var_block
 
@@ -474,8 +472,105 @@ def _load_kalman_player_state() -> None:
 
 _load_kalman_player_state()
 
-MARKET_PROJ_ADJ = {}  # v7 Fix 1a: per-stat projection multiplier derived from calibration hit rates
-PLAYER_PROJ_ADJ = {}  # v8 Fix 3: per-player per-stat additive residual nudges from player_market calib
+def _artifact_for_season(artifact: dict, season: str) -> dict:
+    """v10: return `artifact` only for a season that starts after its training cutoff.
+
+    A correction or calibration fit through date T must not touch games on or
+    before T: NBA_SEASON=2025-26 backtests never see an artifact trained on their
+    own outcomes, while the live 2026-27 season (from Oct 1, 2026) does. That is
+    why the active probability model changes at the October rollover; tests that
+    check raw probabilities pin PROBABILITY_CALIBRATION explicitly. An artifact
+    without a readable cutoff is unproven and stays off.
+    """
+    if not artifact:
+        return {}
+    try:
+        cutoff = date.fromisoformat(str(artifact["training_cutoff"]))
+        season_start = date(int(str(season)[:4]), SEASON_START_MONTH, 1)
+    except (KeyError, TypeError, ValueError):
+        return {}
+    return artifact if season_start > cutoff else {}
+
+
+def _load_gated_artifact(loader, season: str, label: str) -> dict:
+    """v10 Fix: `loader()` itself raises on a malformed/unsupported artifact (by
+    design — see residual_correction.load_artifact / probability_calibration.load_artifact
+    and their tests), so that raise must be caught HERE, at the one import-time call
+    site that wants "unproven stays off", not inside the loaders themselves. Without
+    this, a stale or corrupted artifact file on disk crashes the whole module import
+    (and therefore nba_combined.py/checkresults.py) instead of leaving the artifact off."""
+    try:
+        artifact = loader()
+    except (OSError, ValueError, KeyError) as exc:
+        print(f"  [{label}] artifact failed to load, staying off: {exc}")
+        return {}
+    return _artifact_for_season(artifact, season)
+
+
+# v9: fit on unconditional as-of replay outcomes, not chosen sportsbook bets.
+# NBA_SEASON backtests cannot see a correction trained on their own future.
+RESIDUAL_CORRECTIONS = _load_gated_artifact(load_artifact, SEASON, "residual-correction")
+# v9: only apply a probability fit to a later season than its training data.
+PROBABILITY_CALIBRATION = _load_gated_artifact(load_probability_artifact, SEASON, "probability-calibration")
+
+
+_MINUTES_GATE_FILE = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "reports", "phase3_minutes_gate.json"
+)
+
+
+def _minutes_forecast_gate_passed(path=_MINUTES_GATE_FILE) -> bool:
+    """v10 Fix: RESIDUAL_CORRECTIONS/PROBABILITY_CALIBRATION can never activate on an
+    unproven artifact -- _load_gated_artifact checks that automatically. MINUTES_FORECAST_ENABLED
+    had no equivalent: it was a bare hardcoded bool, so flipping it in source silently activated
+    the feature regardless of whether reports/phase3_minutes_gate.json's own replay gate had
+    actually passed. This reads only that one top-level field; a missing/corrupt/undecided
+    file fails closed (treated as not passed), matching every other gate in this module."""
+    return _gate_decision_on(path)
+
+
+def _gate_decision_on(path) -> bool:
+    """True only if the replay-gate report at `path` says decision == "on"; fails closed."""
+    try:
+        with open(path) as fh:
+            return json.load(fh).get("decision") == "on"
+    except (OSError, ValueError, KeyError, AttributeError):
+        return False
+
+
+def _resolve_gated_flag(requested: bool, gate_passed: bool, label: str) -> bool:
+    """Pure decision so the forcing-closed behavior is unit-testable without having to
+    reimport the module with a different hardcoded source default."""
+    if requested and not gate_passed:
+        print(f"  [{label}] enabled in source but the replay gate has not passed — staying off")
+        return False
+    return requested
+
+
+def _resolve_minutes_forecast_flag(requested: bool, gate_passed: bool) -> bool:
+    return _resolve_gated_flag(requested, gate_passed, "minutes-forecast")
+
+
+MINUTES_FORECAST_ENABLED = _resolve_minutes_forecast_flag(
+    MINUTES_FORECAST_ENABLED, _minutes_forecast_gate_passed()
+)
+
+# v10: produced by scripts/replay/early_season_gate.py (committed, rerunnable). Passed on
+# 2024-25 and 2025-26: opening night 0/42 -> 37/42 and 0/39 -> 37/39 player-games projected,
+# paired corrected MAE -0.135 and -0.160 (95% CIs exclude 0), full season unchanged.
+_EARLY_GATE_FILE = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "reports", "early_season_fallback_gate.json"
+)
+
+
+def _early_fallback_gate_passed(path=_EARLY_GATE_FILE) -> bool:
+    return _gate_decision_on(path)
+
+
+EARLY_SEASON_FALLBACK_ENABLED = _resolve_gated_flag(
+    EARLY_SEASON_FALLBACK_ENABLED, _early_fallback_gate_passed(), "early-season fallback"
+)
+
 NULL_POS_PLAYERS = set()  # v8 Fix 6: players whose position lookup failed (DvP=1.0 for these)
 
 # v8 Fix 5: manual position overrides for players missing from the auto-detect roster fetch.
@@ -493,19 +588,19 @@ MANUAL_POSITIONS = {
     "Jaxson Hayes": "C",
 }
 
-# Optional extra haircut on top of MARKET_PROJ_ADJ / PLAYER_PROJ_ADJ.
-# Kept empty: a 10-name 0.85x list cannot cover a market-wide PTS OVER miss
-# rate, and stacking it on the PTS market multiplier double-penalizes those names.
-MANUAL_PLAYER_PENALTIES = {}
-
 # Set to True by get_league_logs() when playoff game logs are available.
 # Used by _blend_minutes() to apply rotation adjustments for early playoff games.
 IS_PLAYOFF_SEASON = False
+
+# TODO(v9): re-evaluate thin-sample playoff-rate weighting and the analogous
+# early regular-season low-games regime using chronological as-of validation.
+# Leave _adaptive_po_weight unchanged in this phase.
 
 # =============================================================================
 # CACHES
 # =============================================================================
 PLAYER_LOGS_CACHE = {}
+PLAYER_LOGS_FETCH_META = {}  # cache-key → successful fetch provenance; failures are never cached
 LEAGUE_GAMELOGS_CACHE = {}
 TEAM_DEF_CACHE = {}
 TEAM_STATS_CACHE = {}
@@ -513,46 +608,26 @@ PLAYER_STD_CACHE = {}
 PLAYER_USG_CACHE = {}  # {player_name: usg_pct float}  — leaguedashplayerbiostats
 PLAYER_POS_CACHE = {}  # {player_name: "G"/"F"/"C"}    — built from team rosters
 TEAM_ROSTER_CACHE = {}  # {team_id: {player_name: pos_group}} — commonteamroster
+# v10: {team_id: {player_id, ...}} — every rostered player, regardless of position. Used to
+# place a player on tonight's team before he has played this season (see _team_from_roster).
+TEAM_ROSTER_IDS = {}
 TEAM_DVP_CACHE = {}  # {(team_id, pos_group, stat_col): factor} — computed
+
+
+class NbaDataUnavailable(RuntimeError):
+    """A required NBA API request failed; the model must skip rather than guess."""
 
 
 # =============================================================================
 # CALIBRATION
 # =============================================================================
-_STAT_TO_MKT = {"PTS": "PTS", "REB": "REB", "AST": "AST", "FG3M": "3PM"}
-_MARKET_ADJ_MIN_N = 20
-_MARKET_ADJ_CLAMP = (0.92, 1.08)
-
-
-def _build_market_proj_adj(market_direction: dict) -> dict:
-    """Map OVER hit rates to per-stat projection multipliers, including PTS.
-
-    bias = (0.5 - over_rate) * 0.6, then clamp to ±8%. Combo markets inherit
-    the PTS/REB/AST factors inside project_stat() because they are applied
-    per stat-column before summing.
-    """
-    out = {}
-    lo, hi = _MARKET_ADJ_CLAMP
-    for key, info in market_direction.items():
-        if "_OVER" not in key or info.get("n", 0) < _MARKET_ADJ_MIN_N:
-            continue
-        mkt_label = key.replace("_OVER", "")
-        stat_key = next((s for s, m in _STAT_TO_MKT.items() if m == mkt_label), None)
-        if stat_key is None:
-            continue
-        over_rate = info["raw_rate"]
-        bias = (0.5 - over_rate) * 0.6
-        out[stat_key] = round(max(lo, min(hi, 1.0 - bias)), 3)
-    return out
-
-
 def _load_calibration():
     """Load calibration.json into the CALIB global (no-op if file is absent).
 
     calibration.json is produced by calibrate.py after graded bets accumulate
     in bet_log.csv.  The file is optional — if absent, all adjustments are 0.
     """
-    global CALIB, MARKET_PROJ_ADJ, PLAYER_PROJ_ADJ
+    global CALIB
     if not os.path.isfile(CALIB_FILE):
         return
     try:
@@ -567,32 +642,10 @@ def _load_calibration():
             f"{md} market-direction, {pm} player-market, {fp} flag-penalty adjustments)"
         )
 
-        # Projection multipliers from OVER hit rates (PTS included). A 38.9%
-        # PTS_OVER hit rate is market-wide, not a 10-player problem; combo
-        # markets inherit the PTS column factor in project_stat().
-        MARKET_PROJ_ADJ.clear()
-        MARKET_PROJ_ADJ.update(_build_market_proj_adj(CALIB.get("market_direction", {})))
-        if MARKET_PROJ_ADJ:
-            print(f"  Projection multipliers: {MARKET_PROJ_ADJ}")
-
-        # v8 Fix 3: load per-player per-stat residual adjustments from player_market.
-        # Keys: (player_name, stat_col); values: shrinkage-weighted mean residual
-        # (actual − projection) in stat units. Applied as additive nudge in project_stat.
-        # Only applied when n >= 3 graded bets exist for that player-market pair.
-        _MARKET_TO_STAT = {"PTS": "PTS", "REB": "REB", "AST": "AST", "3PM": "FG3M"}
-        PLAYER_PROJ_ADJ.clear()
-        for key, info in CALIB.get("player_market", {}).items():
-            if "|" not in key or info.get("n", 0) < 3:
-                continue
-            player, market_label = key.split("|", 1)
-            stat_col = _MARKET_TO_STAT.get(market_label)
-            if stat_col is None:
-                continue
-            adj = info.get("adj", 0.0)
-            if adj != 0.0:
-                PLAYER_PROJ_ADJ[(player, stat_col)] = round(adj, 2)
-        if PLAYER_PROJ_ADJ:
-            print(f"  Player-stat nudges loaded: {len(PLAYER_PROJ_ADJ)} adjustments")
+        # v9: calibration.json may still provide confidence/probability terms,
+        # but selected-bet hit rates or player residuals never alter projections.
+        # Exact-market projection correction is loaded separately from the
+        # unconditional replay artifact and applied once in project_prop().
     except (OSError, json.JSONDecodeError, KeyError, ValueError) as e:
         print(f"  Warning: could not load calibration.json — {e}")
         CALIB = {}
@@ -667,53 +720,33 @@ _INJURY_RAMP_GAMES = 8
 _INJURY_MAX_DISCOUNT = 0.22
 
 
-def detect_injury_return(logs: pd.DataFrame) -> int:
-    """
-    Detect how many games ago the player returned from a real absence
-    (≥ _INJURY_GAP_THRESHOLD consecutive missed games).
+def detect_injury_return(
+    logs: pd.DataFrame, team_game_dates=None, injury_absence_dates=None
+) -> int:
+    """Count played games since a confirmed injury absence, across RS and PO.
 
-    logs: player game log DataFrame, most-recent-first (as returned by
-          _fetch_logs / get_player_logs_blended), must have GAME_DATE column.
-
-    Returns:
-        0 if the player shows no recent return (≥ _INJURY_RAMP_GAMES games back
-          or no gap found).
-        1 if the most recent game in logs is their FIRST game back.
-        2 if their second game back, etc.
-    None if logs are empty or undatable.
+    A calendar gap is never sufficient. Both the player's missed scheduled
+    team games and historical injury-status evidence for the gap are required.
+    Without either source (the current live/replay data situation), return 0.
+    The schedule must describe the player's team at the time of the absence.
     """
-    if logs is None or logs.empty:
+    if logs is None or logs.empty or team_game_dates is None or injury_absence_dates is None:
         return 0
-
     try:
-        df = logs.copy()
-        df["GAME_DATE"] = pd.to_datetime(df["GAME_DATE"], errors="coerce")
-        df = df.sort_values("GAME_DATE", ascending=False).reset_index(drop=True)
-    except (KeyError, ValueError, TypeError):
+        dates = sorted(set(pd.to_datetime(logs["GAME_DATE"], errors="coerce").dropna().dt.normalize()))
+        scheduled = set(pd.to_datetime(list(team_game_dates), errors="coerce").dropna().normalize())
+        injured = set(pd.to_datetime(list(injury_absence_dates), errors="coerce").dropna().normalize())
+    except (KeyError, ValueError, TypeError, OverflowError):
         return 0
-
-    # Walk forward in time (oldest first for gap detection)
-    df_asc = df.sort_values("GAME_DATE").reset_index(drop=True)
-    dates  = df_asc["GAME_DATE"].tolist()
-
-    # Find the most recent gap of ≥ threshold calendar days between consecutive games.
-    gap_idx = None   # index in df_asc of the game AFTER the gap (first game back)
+    gap_idx = None
     for i in range(1, len(dates)):
-        if pd.isna(dates[i]) or pd.isna(dates[i - 1]):
-            continue
-        delta = (dates[i] - dates[i - 1]).days
-        # A season-to-season gap (off-season) should not count; cap at 30 days.
-        if _INJURY_GAP_THRESHOLD * 1.3 <= delta <= 30:
+        missed = {d for d in scheduled if dates[i - 1] < d < dates[i] and d not in dates}
+        if len(missed) >= _INJURY_GAP_THRESHOLD and missed.intersection(injured):
             gap_idx = i
-
     if gap_idx is None:
         return 0
-
-    # How many games have been played since the return (game_idx = 1 on first game back)?
-    games_since = len(df_asc) - gap_idx   # 1 = most recent game was their first back
-    if games_since > _INJURY_RAMP_GAMES:
-        return 0   # fully ramped; no discount
-    return max(0, games_since)
+    games_since = len(dates) - gap_idx
+    return games_since if games_since <= _INJURY_RAMP_GAMES else 0
 
 
 def injury_rust_discount(games_since_return: int) -> float:
@@ -745,8 +778,11 @@ def get_espn_injuries():
         r.raise_for_status()
         data = r.json()
     except (requests.exceptions.RequestException, json.JSONDecodeError) as e:
+        raw_archive.save("espn", "injuries", {}, None, status="fetch_failed",
+                         http_status=raw_archive.http_status_of(e), error=type(e).__name__)
         print(f"  ESPN injuries error: {e}")
         return {}
+    raw_archive.save("espn", "injuries", {}, data, http_status=raw_archive.http_status_of(r))
 
     out = {}
     for te in data.get("injuries", []):
@@ -832,19 +868,23 @@ def _fetch_team_roster(team_id):
         ).get_data_frames()[0]
         api_sleep()
         result = {}
+        ids = set()
         for _, row in df.iterrows():
             name = row.get("PLAYER", "")
             pos = row.get("POSITION", "")
+            pid = pd.to_numeric(row.get("PLAYER_ID"), errors="coerce")
+            if pd.notna(pid):
+                ids.add(int(pid))  # membership does not depend on a mappable position
             if name:
                 pg = _pos_group(pos)
                 if pg:
                     result[name] = pg
                     PLAYER_POS_CACHE[name] = pg
         TEAM_ROSTER_CACHE[team_id] = result
+        TEAM_ROSTER_IDS[team_id] = ids
         return result
     except (requests.exceptions.RequestException, json.JSONDecodeError, KeyError) as e:
         print(f"  Roster fetch error (team {team_id}): {e}")
-        TEAM_ROSTER_CACHE[team_id] = {}
         return {}
 
 
@@ -857,7 +897,7 @@ def prefetch_rosters_for_games(events):
     seen = set()
     for ev in events:
         for tname in [ev.get("home_team", ""), ev.get("away_team", "")]:
-            abbr = TEAM_NAME_TO_ABBR.get(tname, tname[:3].upper())
+            abbr = (_team_codes.normalize_team(tname) or tname[:3].upper())
             tid = get_team_id(abbr)
             if tid and tid not in seen:
                 seen.add(tid)
@@ -962,11 +1002,9 @@ def get_dvp_factor(opp_team_id, pos_group, stat_col):
 def get_all_odds_events():
     from datetime import datetime, timezone
 
-    r = requests.get(
+    events = _get_odds_json(
         f"{BASE_URL}/sports/{SPORT}/events", params={"apiKey": ODDS_API_KEY}, timeout=20
     )
-    r.raise_for_status()
-    events = r.json()
     now = datetime.now(timezone.utc).isoformat()
     upcoming = [e for e in events if e.get("commence_time", "") > now]
     in_play = len(events) - len(upcoming)
@@ -975,24 +1013,26 @@ def get_all_odds_events():
     return upcoming
 
 
-def get_event_player_props(event_id):
-    for regions in ["us", "us,us2,uk,eu,au"]:
-        r = requests.get(
-            f"{BASE_URL}/sports/{SPORT}/events/{event_id}/odds",
-            params={
-                "apiKey": ODDS_API_KEY,
-                "regions": regions,
-                "markets": ",".join(MARKETS),
-                "oddsFormat": "american",
-                "dateFormat": "iso",
-            },
-            timeout=20,
-        )
-        r.raise_for_status()
-        data = r.json()
-        if data.get("bookmakers"):
-            return data
-    return data
+def get_event_player_props(event_id, event=None):
+    """The Odds API's props; given the event, ESPN's free DraftKings props when it refuses."""
+    def odds_api():
+        for regions in ["us", "us,us2,uk,eu,au"]:
+            data = _get_odds_json(
+                f"{BASE_URL}/sports/{SPORT}/events/{event_id}/odds",
+                params={
+                    "apiKey": ODDS_API_KEY,
+                    "regions": regions,
+                    "markets": ",".join(MARKETS),
+                    "oddsFormat": "american",
+                    "dateFormat": "iso",
+                },
+                timeout=20,
+            )
+            if data.get("bookmakers"):
+                return data
+        return data
+
+    return espn_odds.odds_api_or_espn(odds_api, event)
 
 
 def _auto_fetch_spread(event_id, home_name):
@@ -1001,7 +1041,7 @@ def _auto_fetch_spread(event_id, home_name):
     Convention: Odds API 'point' for home team = negative when home is favorite;
     we negate it so GAME_SPREADS positive = home favored."""
     try:
-        r = requests.get(
+        data = _get_odds_json(
             f"{BASE_URL}/sports/{SPORT}/events/{event_id}/odds",
             params={
                 "apiKey": ODDS_API_KEY,
@@ -1011,8 +1051,6 @@ def _auto_fetch_spread(event_id, home_name):
             },
             timeout=15,
         )
-        r.raise_for_status()
-        data = r.json()
         for bk in data.get("bookmakers", []):
             for mkt in bk.get("markets", []):
                 if mkt.get("key") != "spreads":
@@ -1088,6 +1126,7 @@ def get_player_id(name):
 
 
 def get_team_id(abbr):
+    abbr = _team_codes.normalize_team(abbr) or abbr  # v10: ESPN NY/UTAH/... too
     for t in teams.get_teams():
         if t["abbreviation"] == abbr:
             return t["id"]
@@ -1106,6 +1145,8 @@ def _fetch_logs(
     if ck in PLAYER_LOGS_CACHE:
         return PLAYER_LOGS_CACHE[ck]
 
+    fetched = {}
+
     def _fetch() -> pd.DataFrame:
         df = playergamelog.PlayerGameLog(
             player_id=pid,
@@ -1114,35 +1155,153 @@ def _fetch_logs(
             timeout=30,
         ).get_data_frames()[0]
         api_sleep()
+        fetched["raw_count"] = int(len(df))
         if not df.empty:
             df["GAME_DATE"] = pd.to_datetime(df["GAME_DATE"], format="mixed")
             df = df.sort_values("GAME_DATE", ascending=False).reset_index(drop=True)
+            fetched["source_last_game_date"] = str(df["GAME_DATE"].max().date())
             if "MIN" in df.columns:
                 df["_MIN_F"] = df["MIN"].apply(_parse_minutes)
                 df = df[df["_MIN_F"] >= min_minutes].reset_index(drop=True)
                 df = df.drop(columns=["_MIN_F"])
         return df
 
-    result = safe_dataframe_call(
+    outcome = dataframe_call_result(
         _fetch,
         retries=retries,
         label=f"fetch_logs pid={pid} {season_type}",
     )
+    if not outcome.ok:
+        # v9: never cache or interpret a failed request as a zero-game history.
+        raise NbaDataUnavailable(
+            f"player logs unavailable pid={pid} season={season} type={season_type}: {outcome.error}"
+        )
+    result = outcome.frame
+    PLAYER_LOGS_FETCH_META[ck] = {
+        "status": outcome.status,
+        "fetched_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "raw_count": int(fetched.get("raw_count", len(result))),
+        "usable_count": int(len(result)),
+        "source_last_game_date": fetched.get("source_last_game_date"),
+        "season": season,
+        "season_type": season_type,
+        "min_minutes": float(min_minutes),
+    }
     PLAYER_LOGS_CACHE[ck] = result
     return result
 
 
-def get_player_logs_blended(pid):
-    po_logs = _fetch_logs(pid, SEASON, SEASON_TYPE_PO, MIN_MINUTES_PO)
-    # Raw count (no minute filter) — used only for NO-PO flag so it fires only
-    # when the player has truly had zero playoff appearances, not just short ones.
-    po_raw = _fetch_logs(pid, SEASON, SEASON_TYPE_PO, 0)
-    rs_logs = _fetch_logs(pid, SEASON, SEASON_TYPE_RS, MIN_MINUTES_RS)
-    if not rs_logs.empty:
-        rs_logs = rs_logs.head(20)
-    using_playoffs = len(po_logs) >= PLAYOFF_GAMES_THRESHOLD
-    # Return raw_po_count as 5th element for flag logic
-    return po_logs, rs_logs, using_playoffs, len(po_logs), len(po_raw)
+class PlayerLogHistory(NamedTuple):
+    """Separate production-rate samples from expected-minutes samples."""
+
+    po_rates: pd.DataFrame
+    rs_rates: pd.DataFrame
+    po_minutes: pd.DataFrame
+    rs_minutes: pd.DataFrame
+    using_playoffs: bool
+    po_rate_count: int
+    po_raw_count: int
+
+
+def _minute_filter(logs: pd.DataFrame, minimum: float) -> pd.DataFrame:
+    if logs.empty or "MIN" not in logs.columns:
+        return logs.copy()
+    keep = logs["MIN"].apply(_parse_minutes) >= minimum
+    return logs.loc[keep].reset_index(drop=True)
+
+
+def _no_playoffs_this_season() -> bool:
+    """True once get_league_logs() has looked and found no playoff games in SEASON. Every
+    player's current-season playoff log is then empty, so fetching it only adds a
+    stats.nba.com call that can time out (all three games lost on Oct 24 2026 were). Before
+    get_league_logs() runs, and in replay (which never fills its cache), logs are fetched."""
+    return (SEASON, SEASON_TYPE_PO) in LEAGUE_GAMELOGS_CACHE and not IS_PLAYOFF_SEASON
+
+
+def _skipped_playoff_logs(pid, rs_all: pd.DataFrame) -> pd.DataFrame:
+    """An empty playoff log with the regular-season columns, recorded as skipped."""
+    PLAYER_LOGS_FETCH_META[(pid, SEASON, SEASON_TYPE_PO, 0)] = {
+        "status": "skipped",
+        "fetched_at_utc": None,
+        "raw_count": 0,
+        "usable_count": 0,
+        "source_last_game_date": None,
+        "season": SEASON,
+        "season_type": SEASON_TYPE_PO,
+        "min_minutes": 0.0,
+    }
+    return rs_all.iloc[0:0].copy()
+
+
+def get_player_logs_blended(pid) -> PlayerLogHistory:
+    """Fetch once without a minutes floor, then build rate and minutes histories.
+
+    Short played appearances remain available to the minutes model. The old
+    filters still protect per-minute rate estimates from tiny denominators.
+    """
+    if _no_playoffs_this_season():
+        rs_all = _fetch_logs(pid, SEASON, SEASON_TYPE_RS, 0)
+        po_all = _skipped_playoff_logs(pid, rs_all)
+    else:
+        po_all = _fetch_logs(pid, SEASON, SEASON_TYPE_PO, 0)
+        rs_all = _fetch_logs(pid, SEASON, SEASON_TYPE_RS, 0)
+    po_rates = _minute_filter(po_all, MIN_MINUTES_PO)
+    rs_rates = _minute_filter(rs_all, MIN_MINUTES_RS).head(20)
+    po_minutes = po_all.reset_index(drop=True)
+    rs_minutes = rs_all.head(20).reset_index(drop=True)
+    return PlayerLogHistory(
+        po_rates=po_rates,
+        rs_rates=rs_rates,
+        po_minutes=po_minutes,
+        rs_minutes=rs_minutes,
+        using_playoffs=len(po_rates) >= PLAYOFF_GAMES_THRESHOLD,
+        po_rate_count=len(po_rates),
+        po_raw_count=len(po_all),
+    )
+
+
+def _player_fetch_provenance(pid, history: PlayerLogHistory) -> dict:
+    """Describe the exact player-history snapshot used by a live projection."""
+    keys = {
+        "po": (pid, SEASON, SEASON_TYPE_PO, 0),
+        "rs": (pid, SEASON, SEASON_TYPE_RS, 0),
+    }
+    meta = {name: PLAYER_LOGS_FETCH_META.get(key) for name, key in keys.items()}
+    available = [m for m in meta.values() if m]
+    if available:
+        fetch_status = ";".join(
+            f"{name}={meta[name]['status'] if meta[name] else 'unknown'}"
+            for name in ("rs", "po")
+        )
+        fetched_at = max(str(m.get("fetched_at_utc") or "") for m in available) or None
+        dates = [str(m.get("source_last_game_date")) for m in available if m.get("source_last_game_date")]
+        source_last = max(dates) if dates else None
+        rs_raw = int(meta["rs"].get("raw_count", len(history.rs_minutes))) if meta["rs"] else len(history.rs_minutes)
+    else:
+        # Replay workers inject strict as-of frames instead of making API calls.
+        fetch_status, fetched_at = "replay_asof", None
+        dates = []
+        for frame in (history.rs_minutes, history.po_minutes):
+            if frame is not None and not frame.empty and "GAME_DATE" in frame:
+                dates.append(str(pd.to_datetime(frame["GAME_DATE"]).max().date()))
+        source_last = max(dates) if dates else None
+        rs_raw = len(history.rs_minutes)
+    age = None
+    if source_last:
+        age = max(0, (date.today() - date.fromisoformat(source_last)).days)
+    return {
+        "rs_raw_count": int(rs_raw),
+        "rs_usable_count": int(len(history.rs_rates)),
+        "po_raw_count": int(history.po_raw_count),
+        "po_usable_count": int(len(history.po_rates)),
+        "fetch_status": fetch_status,
+        "source_last_game_date": source_last,
+        "data_as_of_utc": fetched_at,
+        "data_age_days": age,
+        "active_season": SEASON,
+        "season_mode": "playoffs" if IS_PLAYOFF_SEASON else "regular",
+        "model_version": _LEARNED_PARAMS_VERSION,
+    }
 
 
 def _avg_minutes(logs, half_life=4):
@@ -1155,6 +1314,33 @@ def _avg_minutes(logs, half_life=4):
         return 0.0
     w = np.array([0.5 ** (i / half_life) for i in range(len(mins))])
     return float(np.average(mins, weights=w))
+
+
+def _robust_avg_minutes(logs, half_life=4):
+    """EWM minutes where extreme short appearances count with lower leverage."""
+    if logs.empty or "MIN" not in logs.columns:
+        return 0.0
+    mins = logs["MIN"].apply(_parse_minutes).to_numpy(dtype=float)
+    if len(mins) == 0:
+        return 0.0
+    recency = np.array([0.5 ** (i / half_life) for i in range(len(mins))])
+    reliability = np.clip(
+        mins / SHORT_APPEARANCE_REFERENCE_MIN,
+        SHORT_APPEARANCE_WEIGHT_FLOOR,
+        1.0,
+    )
+    return float(np.average(mins, weights=recency * reliability))
+
+
+def _minutes_average(rate_logs: pd.DataFrame, played_logs: pd.DataFrame) -> float:
+    """Select the replay-validated source used for expected minutes."""
+    if MINUTES_HISTORY_MODE == "filtered":
+        return _avg_minutes(rate_logs)
+    if MINUTES_HISTORY_MODE == "all_played":
+        return _avg_minutes(played_logs)
+    if MINUTES_HISTORY_MODE == "robust":
+        return _robust_avg_minutes(played_logs)
+    raise ValueError("unknown MINUTES_HISTORY_MODE: %s" % MINUTES_HISTORY_MODE)
 
 
 def _playoff_rotation_adj(rs_min: float) -> float:
@@ -1177,13 +1363,14 @@ def _std_minutes(logs):
 # =============================================================================
 # LEAGUE LOGS
 # =============================================================================
-def safe_lgf(retries: int = 3, **kw) -> pd.DataFrame:
+def _safe_lgf_result(retries: int = 3, **kw):
+    """Status-preserving LeagueGameFinder call for required model inputs."""
     def _call():
         df = leaguegamefinder.LeagueGameFinder(timeout=30, **kw).get_data_frames()[0]
         api_sleep()
         return df
 
-    return safe_dataframe_call(_call, retries=retries, label="safe_lgf")
+    return dataframe_call_result(_call, retries=retries, label="safe_lgf")
 
 
 def get_league_logs():
@@ -1192,16 +1379,23 @@ def get_league_logs():
     if ck in LEAGUE_GAMELOGS_CACHE:
         return LEAGUE_GAMELOGS_CACHE[ck]
     print("  Loading league game logs (Playoffs)...")
-    df = safe_lgf(
+    po_result = _safe_lgf_result(
         season_nullable=SEASON, season_type_nullable=SEASON_TYPE_PO, player_or_team_abbreviation="P"
     )
-    if df.empty:
+    if not po_result.ok:
+        raise NbaDataUnavailable(f"playoff league logs unavailable: {po_result.error}")
+    df = po_result.frame
+    IS_PLAYOFF_SEASON = False
+    if po_result.status == "ok_empty":
         print("  Playoff logs empty — falling back to regular season.")
-        df = safe_lgf(
+        rs_result = _safe_lgf_result(
             season_nullable=SEASON,
             season_type_nullable=SEASON_TYPE_RS,
             player_or_team_abbreviation="P",
         )
+        if not rs_result.ok:
+            raise NbaDataUnavailable(f"regular-season league logs unavailable: {rs_result.error}")
+        df = rs_result.frame
     else:
         IS_PLAYOFF_SEASON = True
         print("  Playoffs detected — rotation minute adjustments active.")
@@ -1237,7 +1431,6 @@ def get_team_season_stats():
         return result
     except (requests.exceptions.RequestException, json.JSONDecodeError, KeyError, ValueError) as e:
         print(f"  Team stats error: {e}")
-        TEAM_STATS_CACHE["stats"] = pd.DataFrame()
         return pd.DataFrame()
 
 
@@ -1360,10 +1553,10 @@ def _get_injured_player_recent_stat(injured_name: str, inj_field: str, n_games: 
     if not pid:
         return None
     try:
-        po_logs, rs_logs, _, _, _ = get_player_logs_blended(pid)
+        history = get_player_logs_blended(pid)
     except (requests.exceptions.RequestException, json.JSONDecodeError, KeyError, ValueError):
         return None
-    logs = po_logs if not po_logs.empty else rs_logs
+    logs = history.po_rates if not history.po_rates.empty else history.rs_rates
     if logs.empty:
         return None
     stat_col_map = {"ppg": "PTS", "rpg": "REB", "apg": "AST"}
@@ -1713,21 +1906,56 @@ def project_stat(
     po_count,
     spread=0.0,
     pace_factor=None,
+    po_minute_logs=None,
+    rs_minute_logs=None,
+    po_minute_count=None,
+    minutes_context=None,
+    previous_rate_logs=None,
+    use_forecast=None,
 ):
-    po_rate, po_min = _per_min_rate(po_logs, stat_col) if not po_logs.empty else (None, None)
-    rs_rate, rs_min = _per_min_rate(rs_logs, stat_col) if not rs_logs.empty else (None, None)
+    # v10: project_prop decides the path per player-game (_use_forecast_path); None keeps
+    # the old global behaviour for direct callers.
+    forecast_on = MINUTES_FORECAST_ENABLED if use_forecast is None else bool(use_forecast)
+    po_minute_logs = po_logs if po_minute_logs is None else po_minute_logs
+    rs_minute_logs = rs_logs if rs_minute_logs is None else rs_minute_logs
+    po_minute_count = po_count if po_minute_count is None else po_minute_count
+    po_rate, _ = _per_min_rate(po_logs, stat_col) if not po_logs.empty else (None, None)
+    rs_rate, _ = _per_min_rate(rs_logs, stat_col) if not rs_logs.empty else (None, None)
+    po_min = _minutes_average(po_logs, po_minute_logs)
+    rs_min = _minutes_average(rs_logs, rs_minute_logs)
 
     # Fix 3: thread matchup-specific pace_factor through rate and minute blending
     rate = _blend_rate(po_rate, rs_rate, po_count, pace_factor=pace_factor)
-    avg_min = _blend_minutes(po_min, rs_min, po_count, pace_factor=pace_factor)
+    forecast_features = {}
+    if forecast_on:
+        from minutes_forecast import forecast_minutes, shrink_rate
+        from zoneinfo import ZoneInfo
+        context = minutes_context or {}
+        played = pd.concat([rs_minute_logs, po_minute_logs], ignore_index=True)
+        if played.empty and previous_rate_logs is not None:
+            played = previous_rate_logs.copy()
+        played = played.copy()
+        if not played.empty:
+            played["MIN"] = played["MIN"].apply(_parse_minutes)
+        cutoff = context.get("cutoff", datetime.now(ZoneInfo("America/New_York")).date())
+        avg_min, forecast_features = forecast_minutes(
+            played, cutoff, spread, is_home, context.get("starter"),
+            context.get("team_game_dates"), IS_PLAYOFF_SEASON)
+        games = int(context.get("current_games", len(played)))
+        if games < 10 and previous_rate_logs is not None and not previous_rate_logs.empty:
+            previous_rate, _ = _per_min_rate(previous_rate_logs, stat_col)
+            rate = shrink_rate(rate, previous_rate, games)
+    else:
+        avg_min = _blend_minutes(po_min, rs_min, po_minute_count, pace_factor=pace_factor)
 
     if rate is None or avg_min is None:
         return None, {}
 
-    # Return-from-injury ramp: detect recent real absence (≥3 missed games) and
-    # apply a tapering discount to both minutes and rate for the first ~8 games
-    # back.  Separate from _self_injury_check's same-day GTD/Probable penalty.
-    games_since_return = detect_injury_return(rs_logs)
+    # v9: historical injury ramp requires scheduled team games AND status at
+    # the time of the absence. We have neither in this path, so fail closed.
+    # Count RS+PO appearances together when those inputs become available.
+    played_history = pd.concat([rs_minute_logs, po_minute_logs], ignore_index=True)
+    games_since_return = detect_injury_return(played_history)
     rust_discount      = injury_rust_discount(games_since_return)
     if rust_discount > 0:
         avg_min  = avg_min  * (1.0 - rust_discount)
@@ -1736,7 +1964,12 @@ def project_stat(
         rust_discount = 0.0   # ensure consistent type for detail dict
 
     mins_reduced = 0.0
-    if abs(spread) > BLOWOUT_SPREAD_THRESHOLD and avg_min >= STARTER_MIN_THRESHOLD:
+    if forecast_on:
+        # forecast_minutes() already folded its own blowout cut into avg_min above;
+        # surface it the same way the legacy path does, so _build_prop_flags()'s
+        # 'BLW-Xm' flag and the console '[blowout -Xmin]' annotation still fire.
+        mins_reduced = float(forecast_features.get("blowout_reduction", 0.0) or 0.0)
+    elif abs(spread) > BLOWOUT_SPREAD_THRESHOLD and avg_min >= STARTER_MIN_THRESHOLD:
         favored_is_home = spread > 0
         player_is_favored = is_home == favored_is_home
         if player_is_favored:
@@ -1782,23 +2015,6 @@ def project_stat(
     base_proj = rate * avg_min * combined_mult
     final_proj = base_proj
 
-    # v7 Fix 1c: apply calibration-based market projection correction
-    proj_mult = MARKET_PROJ_ADJ.get(stat_col, 1.0)
-    final_proj = final_proj * proj_mult
-
-    # v8 Fix 2: apply player-specific projection penalty for confirmed bad-projection
-    # players (overrides if more restrictive than market-level). Suppresses at the
-    # player level so the rest of the market flows through normally.
-    player_penalty = MANUAL_PLAYER_PENALTIES.get((player_name, stat_col), 1.0)
-    final_proj = final_proj * player_penalty
-
-    # v8 Fix 3: apply data-driven per-player per-stat residual nudge from bet_log.
-    # Additive in stat units (actual − projection mean residual, shrinkage-weighted).
-    # Positive → model historically under-projects → nudge up; negative → nudge down.
-    data_adj = PLAYER_PROJ_ADJ.get((player_name, stat_col), 0.0)
-    if data_adj != 0.0:
-        final_proj = max(0.0, final_proj + data_adj)
-
     # Blend with a regression model: prefer Kalman (adaptive) if active,
     # otherwise fall back to static learned params from learned_params.json.
     # Either way we blend lightly (15%) to preserve existing feature engineering.
@@ -1839,6 +2055,7 @@ def project_stat(
                 logger.warning("Skipping learned player projection for %s: %s", stat_col, exc)
 
     detail = {
+        "minutes_forecast": forecast_features,
         "pos_group": pos_group,
         "rate": round(rate, 4),
         "min": round(avg_min, 1),
@@ -1853,9 +2070,9 @@ def project_stat(
         "combined_mult_uncapped": round(combined_mult_uncapped, 3),  # v9 Fix 1
         "trend_mult": 1.0,  # v9 Fix 2: removed
         "trend": "n/a (EWM)",  # v9 Fix 2: removed
-        "proj_mult": round(proj_mult, 3),
-        "player_penalty": round(player_penalty, 3),  # v8 Fix 2
-        "data_adj": round(data_adj, 2),  # v8 Fix 3
+        "proj_mult": 1.0,  # v9: retired selected-bet projection multipliers
+        "player_penalty": 1.0,  # v9: retired manual per-player projection penalties
+        "data_adj": 0.0,  # v9: retired selected-bet per-player residual nudge
         "learned_adj": round(learned_proj_adj, 2),  # from train_model.py
         "rust_discount": round(rust_discount, 3),   # return-from-injury ramp
         "games_since_return": games_since_return,
@@ -1933,10 +2150,15 @@ def _build_prop_metadata(
     self_inj_flag: str,
     proj_low,
     proj_high,
+    fetch_provenance,
+    po_minute_logs=None,
+    rs_minute_logs=None,
 ) -> dict:
     """Assemble the metadata dict returned by project_prop()."""
-    po_min = _avg_minutes(po_logs)
-    rs_min = _avg_minutes(rs_logs)
+    po_minute_logs = po_logs if po_minute_logs is None else po_minute_logs
+    rs_minute_logs = rs_logs if rs_minute_logs is None else rs_minute_logs
+    po_min = _minutes_average(po_logs, po_minute_logs)
+    rs_min = _minutes_average(rs_logs, rs_minute_logs)
 
     po_min_adj_mult = 1.0
     if IS_PLAYOFF_SEASON and po_count < PLAYOFF_GAMES_THRESHOLD and rs_min > 0:
@@ -1950,17 +2172,17 @@ def _build_prop_metadata(
     bench_penalty = max(0.0, (BENCH_MIN_THRESHOLD - avg_min) * 1.5) if avg_min > 0 else 0.0
     mins_vol_penalty = 0.0
     mins_vol_flag = False
-    if not po_logs.empty and len(po_logs) >= 3:
-        cv = _std_minutes(po_logs) / po_min if po_min > 0 else 0.0
+    if not po_minute_logs.empty and len(po_minute_logs) >= 3:
+        cv = _std_minutes(po_minute_logs) / po_min if po_min > 0 else 0.0
         if cv > 0.25:
             mins_vol_penalty = min(8.0, (cv - 0.20) * 25)
             mins_vol_flag = True
 
-    road_b2b = _is_road_b2b(po_logs, is_home)
+    road_b2b = _is_road_b2b(po_minute_logs, is_home)
     road_b2b_penalty = _flag_penalty("ROAD_B2B", 3.0) if road_b2b else 0.0
     total_penalty = bench_penalty + mins_vol_penalty + road_b2b_penalty + self_inj_penalty
 
-    return {
+    metadata = {
         "avg_min": avg_min,
         "conf_penalty": total_penalty,
         "bench_penalty": bench_penalty,
@@ -1981,6 +2203,8 @@ def _build_prop_metadata(
         "proj_low": proj_low,
         "proj_high": proj_high,
     }
+    metadata.update(fetch_provenance)
+    return metadata
 
 
 def project_prop(
@@ -1994,6 +2218,7 @@ def project_prop(
     team_abbr,
     spread=0.0,
     pace_factor=None,
+    minutes_context=None,
 ):
     """Returns (projection, details, sd, metadata)."""
     stat_cols = MARKET_TO_STATS.get(market_key)
@@ -2008,11 +2233,27 @@ def project_prop(
     if not pid:
         return None, None, None, None
 
-    po_logs, rs_logs, using_playoffs, po_count, po_raw_count = get_player_logs_blended(pid)
-    if po_logs.empty and rs_logs.empty:
+    history = get_player_logs_blended(pid)
+    po_logs, rs_logs = history.po_rates, history.rs_rates
+    po_minute_logs, rs_minute_logs = history.po_minutes, history.rs_minutes
+    using_playoffs = history.using_playoffs
+    po_count, po_raw_count = history.po_rate_count, history.po_raw_count
+    previous_logs = None
+    minutes_context = dict(minutes_context or {})
+    # From the history already fetched (no extra call). rs_minutes is the current RS capped at
+    # 20 games; current_games is only ever compared with EARLY_SEASON_MAX_GAMES, so the cap is exact.
+    minutes_context.setdefault("current_games", len(rs_minute_logs) + po_raw_count)
+    use_forecast = _use_forecast_path(minutes_context["current_games"], IS_PLAYOFF_SEASON)
+    if use_forecast and minutes_context["current_games"] < EARLY_SEASON_MAX_GAMES:
+        year = int(SEASON[:4]) - 1
+        previous_season = "%d-%02d" % (year, (year + 1) % 100)
+        previous_logs = _fetch_logs(pid, previous_season, SEASON_TYPE_RS, MIN_MINUTES_RS).head(20)
+    if po_logs.empty and rs_logs.empty and (previous_logs is None or previous_logs.empty):
         return None, None, None, None
 
-    proj_low, proj_high = _compute_prop_range(market_key, po_logs, rs_logs, po_count)
+    proj_low, proj_high = _compute_prop_range(
+        market_key, po_minute_logs, rs_minute_logs, po_raw_count
+    )
 
     total = 0.0
     details = {}
@@ -2032,6 +2273,12 @@ def project_prop(
             po_count,
             spread=spread,
             pace_factor=pace_factor,
+            po_minute_logs=po_minute_logs,
+            rs_minute_logs=rs_minute_logs,
+            po_minute_count=(po_count if MINUTES_HISTORY_MODE == "filtered" else po_raw_count),
+            minutes_context=minutes_context,
+            previous_rate_logs=previous_logs,
+            use_forecast=use_forecast,
         )
         if p is None:
             return None, None, None, None
@@ -2042,21 +2289,21 @@ def project_prop(
         total, details, stat_cols, market_key, player_name
     )
 
-    sd = get_player_std(pid, po_logs, rs_logs, market_key, stat_cols, po_count,
+    # v9: one exact-market correction after combo/USG math, before probability.
+    # Its training observations are unconditional and strictly earlier than
+    # the 2026-27 season. It never stacks with bet_log-derived adjustments.
+    raw_total_projection = total
+    calib_label = MARKET_LABELS.get(market_key, market_key)
+    total = apply_correction(total, calib_label, RESIDUAL_CORRECTIONS)
+
+    sd = get_player_std(pid, po_minute_logs, rs_minute_logs, market_key, stat_cols, po_raw_count,
                         pos_group=details[stat_cols[0]].get("pos_group"))
     raw_total = sum(d.get("rate", 0.0) * d.get("min", 0.0) for d in details.values())
     if raw_total > 0 and total > 0 and sd and sd > 0:
         sd = sd * ((total / raw_total) ** 0.5)
 
-    calib_label = MARKET_LABELS.get(market_key, market_key)
-    calib_proj_adj = (
-        CALIB.get("player_market", {}).get(f"{player_name}|{calib_label}", {}).get("adj", 0.0)
-    )
-    if calib_proj_adj != 0.0:
-        total += calib_proj_adj
-
-    po_min = _avg_minutes(po_logs)
-    rs_min = _avg_minutes(rs_logs)
+    po_min = _minutes_average(po_logs, po_minute_logs)
+    rs_min = _minutes_average(rs_logs, rs_minute_logs)
     avg_min = po_min if po_min > 0 else rs_min
 
     metadata = _build_prop_metadata(
@@ -2074,7 +2321,12 @@ def project_prop(
         self_inj_flag,
         proj_low,
         proj_high,
+        _player_fetch_provenance(pid, history),
+        po_minute_logs,
+        rs_minute_logs,
     )
+    metadata["residual_correction"] = round(total - raw_total_projection, 3)
+    metadata["residual_correction_version"] = RESIDUAL_CORRECTIONS.get("version", "none")
 
     return round(total, 1), details, sd, metadata
 
@@ -2133,6 +2385,9 @@ def evaluate_prop(line, proj, market_key, sd=None, conf_penalty=0.0):
     else:
         z = edge / sd
         over_p = normal_cdf(z)
+    # v9: fit OVER once and derive UNDER as its exact complement. Penalties
+    # affect display/ranking confidence, not the model's probability.
+    over_p = calibrate_over(over_p, MARKET_LABELS.get(market_key, market_key), PROBABILITY_CALIBRATION)
     under_p = 1.0 - over_p
     pick = "OVER" if over_p > under_p else "UNDER"
     pick_p = over_p if pick == "OVER" else under_p
@@ -2143,46 +2398,41 @@ def evaluate_prop(line, proj, market_key, sd=None, conf_penalty=0.0):
         "edge_pct": round(edge_pct, 1),
         "over_prob": round(over_p * 100, 1),
         "under_prob": round(under_p * 100, 1),
+        "p_model": pick_p,
         "confidence": round(conf, 1),
         "pick": pick,
     }
 
 
-def compute_stake_pct(p: float, decimal_odds, total_penalty: float = 0.0) -> float:
-    """Fractional-Kelly stake recommendation, as a fraction of bankroll.
+def compute_stake_decision(p: float, decimal_odds, *, p_market=None, vig_pct=None,
+                           data_is_fresh: bool = True) -> StakeDecision:
+    """Return the quarter-Kelly recommendation and its audit fields.
 
-    f* = EV / (d-1), EV = p*d - 1 — the raw Kelly fraction, clipped at 0:
-    a negative-EV pick gets no stake recommendation at all, not a negative
-    one. `p` should be p_model (or, once market_calibration.py's blended
-    p_final is validated out-of-sample — see that module's holdout_check(),
-    which currently fails on the live sample — p_final in its place).
-
-    stake_pct = f* * KELLY_FRACTION is the direct, quantifiable response to
-    not knowing p exactly: don't let sizing pretend to more certainty than
-    the probability estimate actually has.
-
-    The result is then discounted by total_penalty (already computed in
-    process_game() as meta['conf_penalty'] + direction_penalty — the same
-    number that already docks confidence) rather than inventing a second,
-    parallel risk system: stake_pct *= max(0, 1 - total_penalty/STAKE_PENALTY_DIVISOR).
-    One source of truth for "how much do we trust this pick," instead of a
-    confidence number and a stake number that can silently disagree.
-
-    Finally hard-capped at MAX_STAKE_PCT regardless of what the formula
-    says — cheap insurance against a single mis-estimated p/d pair spiking
-    the fraction.
-
-    Returns 0.0 when decimal_odds is unusable (None, <= 1.0) or p is None —
-    no market price means no stake recommendation, same as no market check
-    already means no market-driven ranking elsewhere in this pipeline.
+    ``p_market`` is the selected side's de-vig probability when paired odds
+    exist. With only one side, it stays missing and the minimum-edge check
+    uses raw implied probability from ``decimal_odds``.
     """
-    if p is None or decimal_odds is None or decimal_odds <= 1.0:
-        return 0.0
-    ev = p * decimal_odds - 1.0
-    f_star = max(0.0, ev / (decimal_odds - 1.0))
-    stake = f_star * KELLY_FRACTION
-    stake *= max(0.0, 1.0 - total_penalty / STAKE_PENALTY_DIVISOR)
-    return min(stake, MAX_STAKE_PCT)
+    return recommend_stake(
+        p,
+        decimal_odds,
+        devig_market_probability=p_market,
+        vig_pct=vig_pct,
+        min_edge=MIN_STAKE_EDGE,
+        kelly_multiplier=KELLY_FRACTION,
+        max_stake_pct=MAX_STAKE_PCT,
+        data_is_fresh=data_is_fresh,
+    )
+
+
+def compute_stake_pct(p: float, decimal_odds, total_penalty: float = 0.0) -> float:
+    """Backward-compatible stake-only wrapper around the formal policy.
+
+    ``total_penalty`` remains accepted so older callers do not break. It no
+    longer scales money independently from the documented Kelly, edge, vig,
+    and freshness gates.
+    """
+    del total_penalty
+    return compute_stake_decision(p, decimal_odds).stake_pct
 
 
 # =============================================================================
@@ -2204,9 +2454,12 @@ def determine_team(po_logs, rs_logs, home_abbr, away_abbr):
     playoffs every recent game is vs the SAME opponent, so counting o creates a
     tie on every row and makes the function fall through to wrong data.
     Normalizes ESPN abbreviations (SA→SAS, GS→GSW, etc.) before comparing against
-    the NBA API MATCHUP field which always uses canonical 3-letter codes."""
-    h = ESPN_TO_NBA_ABBR.get(home_abbr, home_abbr)
-    a = ESPN_TO_NBA_ABBR.get(away_abbr, away_abbr)
+    the NBA API MATCHUP field which always uses canonical 3-letter codes. Uses
+    team_codes.normalize_team() like every other team-code site in this file (v10
+    fix: this one was still on the bare ESPN_TO_NBA_ABBR dict lookup, which unlike
+    normalize_team() is case-sensitive and has no full-team-name fallback)."""
+    h = _team_codes.normalize_team(home_abbr) or home_abbr
+    a = _team_codes.normalize_team(away_abbr) or away_abbr
     for logs in [po_logs, rs_logs]:
         if logs.empty or "MATCHUP" not in logs.columns:
             continue
@@ -2228,6 +2481,30 @@ def determine_team(po_logs, rs_logs, home_abbr, away_abbr):
     return None
 
 
+def _team_from_roster(pid, home_tid, away_tid, home_abbr, away_abbr):
+    """v10: place a player who has no current-season games on tonight's home or away team.
+
+    determine_team() reads current-season logs, so on opening night (and for anyone who
+    hasn't played yet) it returns None and the player was skipped entirely. Current
+    commonteamroster membership is the right source: it reflects offseason moves, which
+    last season's logs do not. Matched by player id, not name. A player on exactly one of
+    the two rosters is placed; on both or neither, None (unknown stays unknown)."""
+    if pid is None:
+        return None
+    on = {}
+    for side, tid in (("home", home_tid), ("away", away_tid)):
+        if tid is None:
+            continue
+        if tid not in TEAM_ROSTER_IDS and tid not in TEAM_ROSTER_CACHE:
+            _fetch_team_roster(tid)
+        on[side] = int(pid) in TEAM_ROSTER_IDS.get(tid, set())
+    if on.get("home") and not on.get("away"):
+        return {"team_abbr": home_abbr, "opp_abbr": away_abbr, "is_home": True}
+    if on.get("away") and not on.get("home"):
+        return {"team_abbr": away_abbr, "opp_abbr": home_abbr, "is_home": False}
+    return None
+
+
 def get_player_position_from_injuries(player_name, injuries_by_team):
     for _, injs in injuries_by_team.items():
         for inj in injs:
@@ -2240,16 +2517,28 @@ def get_player_position_from_injuries(player_name, injuries_by_team):
 # GAME PROCESSOR
 # =============================================================================
 def _build_player_context(
-    cdf, home_name, away_name, home_abbr, away_abbr, home_tid, away_tid, injuries_by_team
+    cdf, home_name, away_name, home_abbr, away_abbr, home_tid, away_tid, injuries_by_team,
+    failed: set = None,
 ) -> dict:
-    """Resolve team + position context for every player in the consensus DataFrame."""
+    """Resolve team + position context for every player in the consensus DataFrame.
+
+    A player whose history can't be fetched is left out (and added to `failed`): on
+    Oct 24 2026 one stats.nba.com timeout here dropped every pick for three games."""
     ctx = {}
     for pl in cdf["player"].unique():
         pid = get_player_id(pl)
         if not pid:
             continue
-        po_logs, rs_logs, _, _, _ = get_player_logs_blended(pid)
-        ti = determine_team(po_logs, rs_logs, home_abbr, away_abbr)
+        try:
+            history = get_player_logs_blended(pid)
+        except NbaDataUnavailable as exc:
+            logger.warning("Skipping %s because required history failed: %s", pl, exc)
+            if failed is not None:
+                failed.add(pl)
+            continue
+        # Current-season logs win; the roster only places players who haven't played yet.
+        ti = (determine_team(history.po_minutes, history.rs_minutes, home_abbr, away_abbr)
+              or _team_from_roster(pid, home_tid, away_tid, home_abbr, away_abbr))
         if ti is None:
             continue
         ih = ti["is_home"]
@@ -2385,6 +2674,18 @@ def _build_prop_flags(
     return flags
 
 
+# v10: why the last process_game() call for an Odds API event returned what it
+# did — "ok", "market_unavailable" (the API answered, no usable lines) or
+# "fetch_failed" (the request failed). nba_combined.py writes it to run_log.jsonl.
+LAST_PROPS_STATUS: dict = {}
+
+
+def _set_props_status(odds_event, status: str, **detail) -> None:
+    event_id = (odds_event or {}).get("id")
+    if event_id:
+        LAST_PROPS_STATUS[event_id] = {"status": status, **detail}
+
+
 def process_game(
     home_name,
     away_name,
@@ -2398,9 +2699,10 @@ def process_game(
     home_tid = get_team_id(home_abbr)
     away_tid = get_team_id(away_abbr)
     try:
-        pj = get_event_player_props(odds_event["id"])
+        pj = get_event_player_props(odds_event["id"], odds_event)
     except (requests.exceptions.RequestException, json.JSONDecodeError, KeyError) as e:
         print(f"  Error fetching props: {e}")
+        _set_props_status(odds_event, "fetch_failed", error=type(e).__name__)
         return []
 
     bookmakers = pj.get("bookmakers", [])
@@ -2409,6 +2711,7 @@ def process_game(
         time_hint = f" (tip-off: {commence[:16].replace('T', ' ')} UTC)" if commence else ""
         print(f"  No bookmakers returned props — lines not posted yet{time_hint}.")
         print("  Props typically go up 2–4 hours before tip-off. Try again later.")
+        _set_props_status(odds_event, "market_unavailable", reason="no bookmakers")
         return []
 
     print(
@@ -2418,54 +2721,79 @@ def process_game(
     pdf = flatten_props(pj)
     if pdf.empty:
         print("  Props empty after parsing.")
+        _set_props_status(odds_event, "market_unavailable", reason="no parsable props")
         return []
     cdf = consensus_lines(pdf)
     if cdf.empty:
         print("  No consensus lines.")
+        _set_props_status(odds_event, "market_unavailable", reason="no consensus lines")
         return []
 
     print(f"  {len(cdf)} consensus lines, {cdf['player'].nunique()} players")
-
-    ctx = _build_player_context(
-        cdf, home_name, away_name, home_abbr, away_abbr, home_tid, away_tid, injuries_by_team
+    _set_props_status(
+        odds_event, "ok", lines=int(len(cdf)), players=int(cdf["player"].nunique())
     )
 
+    failed_player_data = set()
+    ctx = _build_player_context(
+        cdf, home_name, away_name, home_abbr, away_abbr, home_tid, away_tid, injuries_by_team,
+        failed=failed_player_data,
+    )
+
+    # ESPN's feed carries one book, DraftKings, for every line: there its count of 1 says
+    # nothing about how thin a market is, so the thin-market penalty and filter skip it.
+    odds_source = pj.get("source") or "the_odds_api"
+    one_book_feed = odds_source == espn_odds.SOURCE
     results = []
     for _, row in cdf.iterrows():
         pl, mkt, line = row["player"], row["market"], row["consensus_line"]
         label = MARKET_LABELS.get(mkt, mkt)
         book_count = int(row.get("book_count", 0))
-        if pd.isna(line) or pl not in ctx:
+        if pd.isna(line) or pl not in ctx or pl in failed_player_data:
             continue
         c = ctx[pl]
 
-        proj, details, sd, meta = project_prop(
-            pl,
-            mkt,
-            c["opp_abbr"],
-            c["opp_tid"],
-            c["injuries"],
-            c["pos"],
-            c["is_home"],
-            c["team_abbr"],
-            spread=spread,
-            pace_factor=pace_factor,
-        )
+        try:
+            proj, details, sd, meta = project_prop(
+                pl,
+                mkt,
+                c["opp_abbr"],
+                c["opp_tid"],
+                c["injuries"],
+                c["pos"],
+                c["is_home"],
+                c["team_abbr"],
+                spread=spread,
+                pace_factor=pace_factor,
+            )
+        except NbaDataUnavailable as exc:
+            # v9: skip this player's remaining markets. A fetch failure is not
+            # evidence that the player has no history and must never trigger a
+            # regular-season/no-playoff fallback projection.
+            logger.warning("Skipping %s because required history failed: %s", pl, exc)
+            failed_player_data.add(pl)
+            continue
         if proj is None:
             continue
 
         proj = (1.0 - MARKET_ANCHOR_WEIGHT) * proj + MARKET_ANCHOR_WEIGHT * line
         # A skewed count distribution can favor UNDER even when its mean is
         # above the line. Use the probability-based pick for every adjustment.
-        pick_dir = evaluate_prop(line, proj, mkt, sd=sd)["pick"]
+        # The historical combo-SD convention chooses its inflation using the
+        # uncalibrated distribution; calibrate the final pick after SD is set.
+        raw_sd = sd if sd is not None and sd > 0 else PROP_STD_DEV_PO.get(mkt, 5.0)
+        raw_over = _nb_over_prob(proj, raw_sd, line) if mkt in SINGLE_STAT_MARKETS else normal_cdf((proj - line) / raw_sd)
+        pick_dir = "OVER" if raw_over > 0.5 else "UNDER"
         adj_sd = (
             sd * COMBO_UNDER_SD_MULT
             if (pick_dir == "UNDER" and mkt in COMBO_UNDER_MARKETS and sd)
             else sd
         )
 
+        preliminary = evaluate_prop(line, proj, mkt, sd=adj_sd)
+        pick_dir = preliminary["pick"]
         direction_penalty, book_flag = _compute_direction_penalty(
-            mkt, label, pick_dir, proj, line, book_count, meta
+            mkt, label, pick_dir, proj, line, None if one_book_feed else book_count, meta
         )
 
         total_penalty = meta["conf_penalty"] + direction_penalty
@@ -2480,6 +2808,10 @@ def process_game(
 
         po_count_local = meta["po_count"]
         po_raw_count_local = meta.get("po_raw_count", po_count_local)
+        meta["probability_calibration_version"] = (
+            PROBABILITY_CALIBRATION.get("version", "identity")
+            if PROBABILITY_CALIBRATION.get("method") == "platt" else "identity"
+        )
 
         flags = _build_prop_flags(
             ev, meta, details, book_flag, pick_dir, proj, line, po_count_local, po_raw_count_local
@@ -2498,6 +2830,7 @@ def process_game(
                 "Edge": ev["edge"],
                 "Edge%": ev["edge_pct"],
                 "Confidence": ev["confidence"],
+                "P_Model": ev["p_model"],
                 "Conf_Label": conf_label,
                 "Pick": ev["pick"],
                 "PO_Games": po_count_local,
@@ -2508,11 +2841,15 @@ def process_game(
                 "details": details,
                 "meta": meta,
                 "book_count": book_count,
+                "odds_source": odds_source,
                 "direction_penalty": direction_penalty,
                 "total_penalty": total_penalty,
             }
         )
 
+    if failed_player_data:
+        # Still "ok" (the game has picks), but the run log shows how many players it lost.
+        LAST_PROPS_STATUS[odds_event["id"]]["skipped_players"] = len(failed_player_data)
     return results
 
 
@@ -2585,7 +2922,7 @@ def _print_top(title, top_df, show_verbose=False, verbose_limit=5):
                 pen_parts.append(f"b2b={meta['road_b2b_penalty']:.1f}")
             if meta.get("self_inj_penalty", 0) > 0:
                 pen_parts.append(f"inj={meta['self_inj_penalty']:.1f}")
-            bk = r.get("book_count", 0)
+            bk = r.get("book_count", 0) if r.get("odds_source") != espn_odds.SOURCE else None
             book_pen = 4.0 if bk == 1 else (2.0 if bk == 2 else 0.0)
             if book_pen > 0:
                 pen_parts.append(f"book={book_pen:.1f}")
@@ -2644,8 +2981,8 @@ def _prefetch_spreads(gday):
     for ev in gday:
         hn = ev.get("home_team", "")
         an = ev.get("away_team", "")
-        ha = TEAM_NAME_TO_ABBR.get(hn, hn[:3].upper())
-        aa = TEAM_NAME_TO_ABBR.get(an, an[:3].upper())
+        ha = (_team_codes.normalize_team(hn) or hn[:3].upper())
+        aa = (_team_codes.normalize_team(an) or an[:3].upper())
         game_key = f"{aa}@{ha}"
         if game_key not in GAME_SPREADS:
             # Only fetch if not already manually set — auto-fetch from API
@@ -2709,8 +3046,8 @@ def _print_flag_warnings(df):
 def _process_and_display_game(ev, injuries, verbose):
     hn = ev.get("home_team", "")
     an = ev.get("away_team", "")
-    ha = TEAM_NAME_TO_ABBR.get(hn, hn[:3].upper())
-    aa = TEAM_NAME_TO_ABBR.get(an, an[:3].upper())
+    ha = (_team_codes.normalize_team(hn) or hn[:3].upper())
+    aa = (_team_codes.normalize_team(an) or an[:3].upper())
 
     game_key = f"{aa}@{ha}"
     spread = GAME_SPREADS.get(game_key, 0.0)

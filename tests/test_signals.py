@@ -256,11 +256,23 @@ class TestDetectInjuryReturn:
         logs = self._logs_with_gap(n_before=10, gap_days=6, n_after=10)
         assert detect_injury_return(logs) == 0
 
-    def test_detects_large_gap(self):
-        # 20-day gap between blocks — should be detected (within 30-day cap)
+    def test_calendar_gap_alone_is_not_an_injury(self):
         logs = self._logs_with_gap(n_before=8, gap_days=20, n_after=2)
-        result = detect_injury_return(logs)
-        assert result > 0, "Large gap should be detected"
+        assert detect_injury_return(logs) == 0
+
+    def test_requires_missed_scheduled_games_and_historical_status(self):
+        played = _make_logs([date(2026, 4, 1), date(2026, 4, 3), date(2026, 4, 12)])
+        schedule = [date(2026, 4, d) for d in (1, 3, 5, 7, 9, 12)]
+        injured = [date(2026, 4, 7)]
+        assert detect_injury_return(played, schedule) == 0
+        assert detect_injury_return(played, schedule, []) == 0
+        assert detect_injury_return(played, schedule, injured) == 1
+        assert detect_injury_return(played, schedule, [date(2026, 4, 2)]) == 0
+
+    def test_return_counter_crosses_regular_playoff_boundary(self):
+        played = _make_logs([date(2026, 4, d) for d in (1, 3, 12, 15, 18, 20)])
+        schedule = [date(2026, 4, d) for d in (1, 3, 5, 7, 9, 12, 15, 18, 20)]
+        assert detect_injury_return(played, schedule, [date(2026, 4, 7)]) == 4
 
     def test_off_season_gap_ignored(self):
         # Gap > 30 days → treated as off-season, not injury

@@ -23,7 +23,22 @@ def predictor(monkeypatch, tmp_path):
         yield newnbapredictor
 
 
+# v10: a deployable artifact must carry held-out evidence: tested on the latest
+# completed season and better than hand-tuned there. These tests exercise the
+# loader and inference, so their artifacts pass that gate by default;
+# tests/test_learned_gate.py covers artifacts that fail it.
+PASSING_TEST_METRICS = {
+    "test_log_loss": 0.600, "test_brier": 0.200,
+    "ht_test_log_loss": 0.610, "ht_test_brier": 0.210,
+}
+
+
 def _save_model(tmp_path, model, **sections):
+    from config import validation_season
+
+    if isinstance(model, dict):
+        model = {**PASSING_TEST_METRICS, **model}
+    sections = {"tested_on": validation_season(), **sections}
     path = tmp_path / "learned_params.json"
     path.write_text(json.dumps({"game_model": model, **sections}))
     return path
@@ -133,8 +148,8 @@ def test_extreme_logits_do_not_overflow(predictor, tmp_path, model, intercept, e
 def test_real_training_artifact_activates_and_matches_the_fitted_estimator(
     predictor, tmp_path, monkeypatch
 ):
-    # Training currently patches requests.get at import, so restore it after the
-    # import. Fit/save below exercise the actual trainer without making requests.
+    # Import with the network forbidden. Fit/save below exercise the actual
+    # trainer without making requests.
     with mock.patch("requests.get", side_effect=AssertionError("Network forbidden")):
         import train_model as trainer
 
@@ -148,9 +163,10 @@ def test_real_training_artifact_activates_and_matches_the_fitted_estimator(
         data["actual_margin"] = 3.0 * signal
         return data
 
-    train, validation = frame(200), frame(100)
-    fitted = trainer.fit_game_models(train, validation)
+    train, validation, test = frame(200), frame(100), frame(100)
+    fitted = trainer.fit_game_models(train, validation, test)
     assert fitted["recommendation"] == "swap"
+    assert fitted["test_gate"] == "passed"
     monkeypatch.setattr(trainer, "PARAMS_FILE", tmp_path / "learned_params.json")
     trainer.save_params(fitted, {"stat_models": {}, "variance": {}}, {},
                         ["2022-23", trainer.VAL_SEASON], no_bootstrap=True)

@@ -18,6 +18,7 @@ from zoneinfo import ZoneInfo
 
 import requests
 
+import espn_odds
 import oddstracker
 from odds_api import get_json
 from roi_analysis import american_to_decimal
@@ -35,13 +36,10 @@ TRACKER_FIELDS = [
 
 
 def normalize_team(team: str) -> str:
-    """Use the existing full-name/ESPN aliases; never truncate LA teams."""
-    model = oddstracker._props_model
-    if not isinstance(team, str):
-        return ""
-    abbr = model.TEAM_NAME_TO_ABBR.get(team, team.upper())
-    abbr = model.ESPN_TO_NBA_ABBR.get(abbr, abbr)
-    return abbr if abbr in model.TEAM_NAME_TO_ABBR.values() else ""
+    """Canonical NBA code via team_codes (v10); "" when unknown. Never truncates LA teams."""
+    import team_codes
+
+    return team_codes.normalize_team(team)
 
 
 def _timestamp(value: str) -> datetime:
@@ -70,6 +68,19 @@ def get_event_game_odds(event_id: str) -> dict:
                for book in data.get("bookmakers", []) for m in book.get("markets", [])):
             return data
     return {}
+
+
+def _game_odds(event: dict) -> dict:
+    """DraftKings' moneyline from ESPN, which costs nothing; The Odds API's books (a credit
+    per game) only when ESPN has no line or can't be reached."""
+    if espn_odds.enabled():
+        try:
+            data = espn_odds.h2h_for_event(event)
+            if data:
+                return data
+        except requests.exceptions.RequestException as exc:
+            logger.warning("ESPN moneyline unavailable for event %s (%s)", event.get("id"), exc)
+    return get_event_game_odds(event["id"])
 
 
 def _american_from_decimal(decimal: float) -> float:
@@ -178,7 +189,7 @@ def snapshot(snap_date: date = None, *, events: list = None, path: str = None,
         try:
             if _game_date(event) != snap_date or _timestamp(event["commence_time"]) <= now:
                 continue
-            data = get_event_game_odds(event["id"])
+            data = _game_odds(event)
             row = parse_game_odds_to_row(data, event, now)
             if row and usable_snapshot(row, snap_date, now):
                 rows.append(row)

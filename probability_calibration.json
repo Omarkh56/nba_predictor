@@ -1,0 +1,69 @@
+{
+  "candidate_method": "platt",
+  "markets": {
+    "3PM": {
+      "as_of_last_date": "2026-06-13",
+      "intercept": -0.4236311722560537,
+      "n": 22565,
+      "slope": 0.4426644968084734
+    },
+    "AST": {
+      "as_of_last_date": "2026-06-13",
+      "intercept": -0.19096923634196047,
+      "n": 22565,
+      "slope": 0.44566004432689027
+    },
+    "PRA": {
+      "as_of_last_date": "2026-06-13",
+      "intercept": -0.1493772918176666,
+      "n": 22565,
+      "slope": 0.5412026898003919
+    },
+    "PTS": {
+      "as_of_last_date": "2026-06-13",
+      "intercept": -0.08031762413824331,
+      "n": 22565,
+      "slope": 0.35249505167038897
+    },
+    "PTS+AST": {
+      "as_of_last_date": "2026-06-13",
+      "intercept": -0.16127383920102276,
+      "n": 22565,
+      "slope": 0.537287534733496
+    },
+    "PTS+REB": {
+      "as_of_last_date": "2026-06-13",
+      "intercept": -0.16260784526333144,
+      "n": 22565,
+      "slope": 0.5073766297779153
+    },
+    "REB": {
+      "as_of_last_date": "2026-06-13",
+      "intercept": -0.13498499705042027,
+      "n": 22565,
+      "slope": 0.49296635509770226
+    },
+    "REB+AST": {
+      "as_of_last_date": "2026-06-13",
+      "intercept": -0.19296794311186544,
+      "n": 22565,
+      "slope": 0.5604871983298715
+    }
+  },
+  "method": "platt",
+  "real_line_heldout_gate": {
+    "ci95_upper_brier": -0.003253594636802852,
+    "ci95_upper_log_loss": -0.006658981532960759,
+    "delta_brier": -0.019209372403507962,
+    "delta_log_loss": -0.04125413463027715,
+    "margin_brier": 0.005,
+    "margin_log_loss": 0.01,
+    "n_dates": 8,
+    "n_rows": 226,
+    "passed": true
+  },
+  "review_after": null,
+  "training_cutoff": "2026-06-13",
+  "training_line_source": "proxy_l10",
+  "version": "v9-probability-1"
+}

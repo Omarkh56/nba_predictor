@@ -177,7 +177,7 @@ def test_old_kalman_state_stays_inactive(predictor, monkeypatch):
 
 
 def test_complete_extended_inputs_are_used_by_live_prediction(logs, monkeypatch, tmp_path):
-    from tests.test_learned_game_model import _save_model
+    from tests.test_learned_game_model import PASSING_TEST_METRICS, _save_model
 
     # The gate/inference tests cover the engine separately. Here a real fitted
     # artifact is used with the raw-log fetch path, including nonzero star form.
@@ -197,6 +197,7 @@ def test_complete_extended_inputs_are_used_by_live_prediction(logs, monkeypatch,
         fitted = trainer.fit_game_models(training, games, features=GAME_FEATURES_EXTENDED)
         saved = {k: v for k, v in fitted.items() if k not in ("log_model", "ridge_model", "scaler")}
         saved["recommendation"] = "swap"  # Exercise availability, independently of model selection.
+        saved.update(PASSING_TEST_METRICS)  # v10: ... and of the held-out gate.
         _save_model(tmp_path, saved)
         monkeypatch.setattr(predictor, "__file__", str(tmp_path / "newnbapredictor.py"))
         monkeypatch.setattr(predictor, "_LEARNED_GAME_PARAMS", {})

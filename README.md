@@ -12,6 +12,9 @@
 | `newnbapredictor.py` | 10-factor team model (win probability, spread, over/under). |
 | `playerlinepredictor.py` | Player props engine (projections vs market lines, DvP, calibration). |
 | `oddstracker.py` | Fetches and logs book odds; computes lean/devig for calibration. |
+| `snapshot_injuries.py` | Archives the ESPN injury report and appends it to `data/injury_snapshots.csv` (run on a schedule). |
+| `dashboard.py` | Local web dashboard at http://127.0.0.1:8765: games, predictions, model performance, pipeline status. |
+| `scripts/launchd_agents.py` | Installs the macOS schedules (predictions, injury snapshots, dashboard). |
 | `calibrate.py` | Reads `bet_log.csv` → produces `calibration.json` for confidence adjustments. |
 | `train_model.py` | Walk-forward backtest that learns regression weights from historical data. |
 | `diagnose.py` | Diagnostic script for manual inspection of model internals. |
@@ -22,15 +25,14 @@
 
 ### 1. Install dependencies
 
+Use one Python version for local runs and CI (CI uses 3.11):
+
 ```bash
+python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-If you see TLS errors on macOS (LibreSSL), run:
-
-```bash
-pip install --upgrade certifi
-```
+If you see TLS errors on macOS (LibreSSL), run `pip install --upgrade certifi`.
 
 ### 2. Configure API keys
 
@@ -49,25 +51,169 @@ API_FOOTBALL_KEY=your_key_here      # https://www.api-football.com/
 
 Scripts load `.env` automatically via `python-dotenv`. You can still `export ODDS_API_KEY=...` in the shell if you prefer; existing environment variables are not overwritten.
 
-### 3. Run the full pipeline
+### 3. Run one slate
+
+Every run belongs to one slate date on the US Eastern (NBA) calendar:
 
 ```bash
-python3 nba_combined.py           # today's games
-python3 nba_combined.py --verbose # with per-factor breakdown
+python3 nba_combined.py                     # today's slate
+python3 nba_combined.py --date 2026-10-20   # a specific slate
+python3 nba_combined.py --next              # the next date with games (scans 44 days)
+python3 nba_combined.py --date 2026-10-20 --verbose
 ```
 
-### 4. Grade results and recalibrate (after games)
+Only odds events that tip off on that date feed props, spreads and book lean, and every team is stored with its NBA Stats code (`team_codes.py`), whichever source it came from.
+
+### 4. Daily cycle
 
 ```bash
-# Append graded bets to bet_log.csv with: checkresults.py (manual grading)
-python3 calibrate.py --summary    # recompute calibration.json
+python3 oddstracker.py 2026-10-20           # odds snapshot for that slate only
+python3 nba_combined.py --date 2026-10-20   # predictions and picks → predictions.db
+python3 checkresults.py 2026-10-20          # after the games: grade props and games
+python3 calibrate.py --summary              # refresh calibration.json
 ```
+
+Each run appends one line to `run_log.jsonl`, with a status for every stage:
+
+| Status | Meaning |
+|---|---|
+| `ok` | The source answered and returned data |
+| `no_games` | The source answered: nothing scheduled or played |
+| `market_unavailable` | The source answered: no lines posted for that event |
+| `fetch_failed` | A request failed, or games weren't final: unknown, not empty |
+| `skipped` | Nothing to do |
+
+Exit codes: `0` ok or no games, `2` failed (nothing saved, rerun later), `3` partial (some games' odds or props failed, or the team model produced no games and only props ran — normal for the first days of a season, until every team has played), `4` another `nba_combined` run is in progress (nothing done; it doesn't add a run-log line). Grading writes nothing when stats.nba.com can't be reached or a game isn't final, and regrading a date never duplicates rows in `bet_log.csv` or `game_log.csv`.
+
+### Schedules and dashboard (macOS)
+
+`scripts/launchd_agents.py` installs launchd agents that run the pipeline on its own
+(the existing `...nba-props.closing` agent, every 15 minutes, is left alone):
+
+| Agent | Runs | Madrid time |
+|---|---|---|
+| `predict` | `nba_combined.py` once a day at 16:30 ET (weekend games tipping earlier need a manual run) | 22:30 |
+| `injuries` | `snapshot_injuries.py` at 10:00, 14:00, 17:00, 18:30 ET | 16:00, 20:00, 23:00, 00:30 |
+| `dashboard` | `dashboard.py`, always on | — |
+
+```bash
+python3 scripts/launchd_agents.py install            # all three (or name some)
+python3 scripts/launchd_agents.py status
+python3 scripts/launchd_agents.py uninstall dashboard
+```
+
+launchd times are local. Between the EU and US clock changes (late Oct to early Nov,
+and March) ET is 5 hours behind Madrid instead of 6, so runs land an hour later in ET.
+A job due while the Mac slept runs once on wake, so scheduled jobs start through
+`scripts/when_online.py`, which waits up to 10 minutes for the network first. Logs go
+to `~/Library/Logs/nba-props/`.
+
+**Dashboard:** open <http://127.0.0.1:8765>. The main view is the slate: every game
+with tip time, each team's win %, the model's line, head-to-head and injury counts.
+Click a game for its best predictions, the last 10 meetings and that game's injuries.
+Below are model performance (record and hit rate by slate, market and side, against
+the 52.4% break-even) and the pipeline: last run of each job, the schedule, recent
+runs, and buttons to run predictions, grading or an injury snapshot now.
+
+Win % comes only from the pipeline's files: the model's `home_prob` in
+`predictions.db`, or, when the model has no prediction for a game, the de-vigged
+consensus moneyline in `game_odds_tracker.csv` (labelled "Market"). ESPN supplies
+only the schedule, logos, records and live scores, and each of those fetches is
+archived. Head-to-head reads `data_cache/team_games_*.csv` plus this season's team
+logs from stats.nba.com, fetched once and cached for six hours. The dashboard
+listens on 127.0.0.1 only and never writes to the pipeline's files.
+
+### Auditable prop cycle (paper stakes)
+
+Run the entry snapshot and prediction on the same Eastern slate date, then
+collect closing quotes and grade after the games are final:
+
+```bash
+python3 oddstracker.py YYYY-MM-DD
+python3 nba_combined.py --date YYYY-MM-DD
+python3 oddstracker.py --closing YYYY-MM-DD          # next 30 minutes only
+python3 oddstracker.py --closing YYYY-MM-DD --minutes 45
+python3 checkresults.py YYYY-MM-DD
+python3 calibrate.py
+```
+
+`prop_predictions` keeps the entire first priced entry for each
+`(date, player, market)`, including its line, direction, price, timestamp,
+model version and prediction run ID. Until priced, a proposal can update.
+Every prediction run also appends its proposal to `pick_runs`, keyed by
+`(run_id, date, player, market)`; retries with the same run ID cannot rewrite it.
+`paper_stake` records the proposed amount when a paper bankroll is configured,
+and `stake_pct` retains the proposal's fraction. No wagers are placed.
+Historical rows without run provenance are left unlabelled.
+
+Closing collection reads event IDs and start times from saved picks, so it
+does not fetch the full event feed. It quotes each eligible event once per
+invocation, excludes started games and other slate dates, and appends only to
+`prop_odds_snapshots.csv`. Entry and closing observations are tagged separately;
+an entry observation alone leaves `clv_unmatched_reason="no_closing_snapshot"`.
+Old untagged snapshots retain their existing CLV behavior. Grading carries the
+frozen entry's `run_id` and `model_version` into `bet_log.csv`.
+
+Example cron entry (replace both absolute paths; create the log directory first):
+
+```cron
+*/15 * * * * cd /absolute/path/to/project && /absolute/path/to/python3 oddstracker.py --closing >> /absolute/path/to/closing.log 2>&1
+```
+
+This checks every 15 minutes through every game window. Outside the 30-minute
+window, or without saved picks, it makes no Odds API requests. Omitting DATE
+uses the current Eastern slate date, including when local time is past midnight.
+The scheduler host must be awake and its environment must load the repo's `.env`.
+
+Closing quotes come from ESPN's free DraftKings feed (see *Odds sources* below), so
+this job normally spends no credits. Only for a game ESPN has no props for does it
+ask The Odds API: up to 8 credits per event per check, more if the five-region
+fallback runs. Empty responses do not consume quota. See the
+[Odds API usage rules](https://the-odds-api.com/liveapi/guides/v4/).
+Check the job's `run_log.jsonl` stages for `ok`, `market_unavailable`, `skipped`
+or `fetch_failed`. Scheduling this job is a manual deployment step.
+
+### Weekly paper evidence
+
+```bash
+python3 evidence_report.py
+python3 evidence_report.py --as-of 2026-10-05
+```
+
+This reads `bet_log.csv` and `run_log.jsonl` and writes
+`reports/evidence_weekly.md` and `.json`. It reports cumulative evidence and
+the trailing seven Eastern slate dates, with market, direction, model-version,
+entry-price and closing-quote coverage. The inputs stay unchanged.
+Only explicit sourced entry odds count; a legacy `decimal_odds` alias alone
+does not. Historical exact-line verified prices are counted separately from
+prospective run provenance. No price is invented or backfilled by this report.
+
+ROI uses one paper unit per settled priced pick at its actual decimal payout;
+pushes return zero profit and voids are excluded from staked units. Break-even
+is the average of each decision's actual `1 / decimal_odds`, rather than an
+assumed standard price. Win rates and positive-CLV rates have Wilson 95%
+intervals. ROI and mean CLV are continuous, so their intervals use a repeatable
+2,000-draw bootstrap of whole slate dates. With fewer than two dates those
+intervals are unavailable. Wilson rates assume independent trials; bets from
+the same game can be correlated.
+
+Missing entry-price reasons are linked to their prediction run where possible;
+mixed event statuses without a game identity stay ambiguous. Missing closing
+quotes are reported separately because they can overlap missing entry prices.
+Runs that produced no logged picks contribute event-stage counts, never
+invented pick counts. The report states how many more verified settled rows
+are needed to reach `MIN_CONCLUSIVE_REAL_ODDS = 200`. Reaching that number is
+not a production approval: staking-policy selection also requires at least
+50 validation and 50 test rows and eligible validation outcomes. All comparisons
+remain paper reporting and leave production Kelly, caps and edge thresholds unchanged.
 
 ### 5. (Optional) Train learned model weights
 
 ```bash
-python3 train_model.py            # writes learned_params.json
+python3 train_model.py --no-fetch           # writes learned_params.json
 ```
+
+A learned game model goes live only if it beat the hand-tuned model on validation **and** on the held-out test season, and that test season is the latest completed one. Otherwise the hand-tuned model stays in charge and the run prints why.
 
 ---
 
@@ -130,31 +276,144 @@ Outputs `calibration.json`, loaded at startup to adjust confidence and projectio
 
 | File | Contents |
 |---|---|
-| `calibration.json` | Market-direction hit rates + player-market bias (gitignored) |
-| `learned_params.json` | Logistic/ridge regression weights from `train_model.py` (gitignored) |
-| `predictions_YYYY-MM-DD.json` | Top prop picks exported after each run (gitignored) |
-| `game_predictions_YYYY-MM-DD.json` | Team model picks exported after each run (gitignored) |
-| `bet_log.csv` | Graded bet history for calibration (gitignored) |
+| `predictions.db` | Prop and game picks per slate, with odds provenance (gitignored) |
+| `bet_log.csv`, `game_log.csv` | Graded props and games, upserted so reruns never duplicate (gitignored) |
+| `odds_tracker.csv`, `prop_odds_snapshots.csv` | Consensus lines and per-book quotes for each slate (gitignored) |
+| `run_log.jsonl` | One status line per pipeline run (gitignored) |
+| `calibration.json` | Market-direction hit rates and diagnostics (tracked) |
+| `learned_params.json` | Learned model weights from `train_model.py` (gitignored) |
 | `data_cache/` | Cached NBA API responses from `train_model.py` (gitignored) |
+| `data/raw/` | Every external response, gzipped, before it is used (see *Raw archive*; gitignored) |
+| `data/injury_snapshots.csv` | One row per player per ESPN injury snapshot (`snapshot_injuries.py`) |
+
+---
+
+## Raw archive
+
+Live runs used to refetch everything and keep nothing, so a past day couldn't be replayed and
+ESPN injury reports, which ESPN doesn't serve historically, were lost. `raw_archive.py` now
+saves every external response before the pipeline uses it:
+
+```
+data/raw/{source}/{endpoint}/dt={YYYY-MM-DD}/{fetched_at}_{params_hash}.json.gz
+```
+
+`dt` is the US Eastern date of the fetch. Each file is one gzipped JSON envelope with `source`,
+`endpoint`, `params` (API keys removed), `params_hash`, `fetched_at_utc`, `run_id` (matches
+`run_log.jsonl`), `status`, `http_status` when known, and the raw `payload`. A failed fetch is
+saved with `status: "fetch_failed"` and no payload, so gaps are visible. Read one back with
+`raw_archive.load(path)`.
+
+| source | written by | endpoints |
+|---|---|---|
+| `odds_api` | `odds_api.get_json()` | `events`, `event_odds` (event id moved into params) |
+| `nba_api` | the session nba_api sends through (`nba_api_utils.ArchivingSession`) | every stats.nba.com endpoint, e.g. `playergamelog`, `leaguegamefinder` |
+| `espn` | the ESPN fetches in `newnbapredictor.py`, `playerlinepredictor.py`, `snapshot_injuries.py`, `espn_odds.py` | `scoreboard`, `injuries`, `prop_bets`, `roster`, `athlete` |
+
+The archive never changes what a fetch returns: if a file can't be written, it logs a warning
+and the run carries on. `NBA_RAW_ARCHIVE=0` turns it off and `NBA_RAW_ARCHIVE_DIR` moves it.
+Replays never write to it, and tests point it at a temp directory.
+
+### Injury snapshots
+
+`python3 snapshot_injuries.py [DATE]` fetches the ESPN injury report once, archives it, and
+appends one row per listed player to `data/injury_snapshots.csv`: snapshot time, slate date,
+NBA team code, player, ESPN player id, status, position, injury type/location/detail/side,
+expected return, ESPN's comments, and the run id. `DATE` (default: today, US Eastern) only
+labels the slate; the report itself is always current. Each run logs to `run_log.jsonl` and
+exits 0, or 2 when the report couldn't be fetched or saved.
+
+Snapshot at 10:00, 14:00, 17:00 and 18:30 ET so status changes before tip-off are kept. With
+cron on Linux (cronie supports `CRON_TZ`):
+
+```
+CRON_TZ=America/New_York
+0 10,14,17 * * *  cd /path/to/nba-props && python3 snapshot_injuries.py
+30 18 * * *       cd /path/to/nba-props && python3 snapshot_injuries.py
+```
+
+macOS cron has no `CRON_TZ` and uses local time. From Madrid, ET is 6 hours behind (5 hours
+between the EU and US clock changes, late Oct to early Nov and in March), so:
+
+```
+0 16,20,23 * * *  cd /path/to/nba-props && python3 snapshot_injuries.py
+30 0 * * *        cd /path/to/nba-props && python3 snapshot_injuries.py
+```
+
+The 00:30 run is still the previous Eastern date, so the default slate date is right.
 
 ---
 
 ## Tests
 
 ```bash
-python3 -m pytest tests/ -v
+NBA_SEASON=2025-26 python3 -m pytest -q   # last completed season
+NBA_SEASON=2026-27 python3 -m pytest -q   # live season
 ```
 
-72 tests covering pure functions in `calibrate.py`, `oddstracker.py`, `playerlinepredictor.py`, and `newnbapredictor.py`. Tests stub all NBA API network calls so they run offline.
-
-CI runs automatically on every push via `.github/workflows/ci.yml`.
+The season decides which fitted artifacts are active: `probability_calibration.json` and `residual_corrections.json` switch on only for seasons that start after their training cutoff. The suite must pass under both settings, and CI runs both. Tests stub every network call and never write to your data files.
 
 ---
 
 ## Known limitations
 
-- **Hand-tuned weights are the default.** Training saves a `swap` recommendation only when the learned game model beats the baseline on both validation metrics. The predictor applies that recommendation automatically when the required inputs are available; no manual source-code toggle is needed.
-- **2026-27 season.** Season constants are hardcoded; update `SEASON` in `nba_combined.py` and `playerlinepredictor.py` when the season rolls over.
-- **Odds API key required.** Copy `.env.example` to `.env` and set `ODDS_API_KEY`. Without it, scripts exit immediately instead of calling the Odds API.
+- **Hand-tuned weights are the default.** Training saves `swap` only when the learned game model beats the baseline on both validation metrics and on the held-out test season, and the predictor also requires that test season to be the latest completed one.
+- **Season rollover.** The season is defined only in `config.py`: `config.current_season()` switches seasons every Oct 1; set `NBA_SEASON=YYYY-YY` to backtest another season. Early in a season players have few current-season games; see *Early-season fallback* below for how props are projected then and what was validated.
+- **Odds API key required.** Copy `.env.example` to `.env` and set `ODDS_API_KEY`; `config.py` reads it, with no fallback value in source. The slate's event list always comes from The Odds API (that endpoint is free and answers even with no credits left). Without a key, the scripts print a warning and skip every Odds API request (reported as a failed odds fetch) instead of crashing.
+- **Odds sources.** Props come from The Odds API (six books: FanDuel, DraftKings, BetMGM, BetRivers, Bovada, BetOnline) once per game per slate day. A rerun the same day, a refused key (401: out of credits) or no key uses ESPN's free DraftKings feed instead (`espn_odds.py`). Game spreads, moneylines and closing quotes come from ESPN first, and from The Odds API only when ESPN has nothing. ESPN's API is unofficial: no key, no guarantees. It lists each prop's two prices without labelling them; the first is the over (checked against The Odds API's DraftKings prices, Oct 25 2026). ESPN lines carry `odds_source = espn_draftkings`, and because that feed always has exactly one book, they skip the one-book confidence penalty and the fewer-than-3-books filter. `NBA_ESPN_ODDS=0` turns ESPN off; `NBA_ODDS_ONCE_PER_DAY=0` lets The Odds API be paid again on a same-day rerun.
 - **LibreSSL on macOS Python 3.9** may produce TLS warnings. `pip install --upgrade certifi` resolves this.
 - **No live score integration.** The model is pre-game only; it does not update based on in-game events.
+
+
+## Experimental minutes forecast (Phase 3)
+
+`playerlinepredictor.MINUTES_FORECAST_ENABLED` controls the minutes forecast and
+low-games rate prior together. It stays off unless the chronological gate passes;
+see `reports/phase3_minutes_gate.md` for the evaluated decision and numbers.
+It does not alter paper stake, edge thresholds, or Kelly settings.
+
+The fixed forecast uses EWM played minutes (20 appearances, half-life four), an
+explicit starter flag when provided, rest days, favored-team blowout risk, and a
+ramp after a gap of at least three scheduled team games. Without a lineup flag it
+records `starter_source="minutes_proxy"`; without team-game dates it records
+absence evidence as unavailable. A calendar gap alone never establishes an injury.
+The schedule feature measures gaps in appearances and cannot prove roster or
+injury status. `project_prop(..., minutes_context={...})` accepts pregame `cutoff`,
+`starter`, and `team_game_dates`; current-season game count comes from full logs.
+
+For fewer than ten current-season appearances, the same flag shrinks the current
+per-minute rate toward the previous regular season's rate: current weight is
+`games / 10`. At ten games the prior has no effect. Missing previous history leaves
+current rates unchanged; an unavailable required NBA request fails closed. With
+zero current appearances, prior-season minutes and rates can supply a forecast.
+The replay evaluates players after at least one current-season appearance, so it
+does not claim evidence for opening-game predictions without current history.
+
+Replay commands, paired coverage, first-three-week diagnostics, and source hashes
+are recorded in the Phase 3 report. See `scripts/replay/README.md` for reproduction.
+
+## Early-season fallback (v10)
+
+Before v10 the live props model projected nobody who hadn't played yet this season:
+on opening night every player was skipped. Two fixes:
+
+- **Team assignment.** A player with no current-season games is placed on tonight's
+  home or away team from the current `commonteamroster` (matched by player id).
+  Current-season logs still take precedence once he has played.
+- **Projection.** `EARLY_SEASON_FALLBACK_ENABLED` runs the same prior-season path as the
+  experimental minutes forecast, but only for regular-season players with fewer than
+  10 current-season games. The full minutes forecast stays off, and the playoffs never
+  use this path.
+
+The flag is forced off at import unless `reports/early_season_fallback_gate.json` says
+`"on"`. `python3 scripts/replay/early_season_gate.py` regenerates it from the first 30
+days of 2024-25 and 2025-26 against predeclared criteria. Its result: opening night
+went from 0 to 37 of 42 (2024-25) and 0 to 37 of 39 (2025-26) projected player-games,
+week 1 from about 53% to 90%, corrected MAE improved by 0.135 and 0.160 (95% CIs exclude
+zero), and the full-season population was unchanged.
+
+Limits: rookies and players with no prior-season regular-season games of 15+ minutes
+still get no projection, and neither do players missing from `nba_api`'s static player
+list (23 of 117 rostered players for the Oct 20, 2026 games). Early-season projections
+inherit the full-season residual correction, whose mean over-corrects early-season
+outcomes by about 4-5% (the median is on target).

@@ -1,0 +1,16 @@
+{
+  "attempted_rows": 504,
+  "average_implied_probability_clv": 0.025570329832214748,
+  "average_line_clv": 0.0475,
+  "average_raw_implied_probability_clv": 0.004398612562277581,
+  "closing_snapshot_rows": 400,
+  "line_clv_coverage": 0.7936507936507936,
+  "line_clv_rows": 400,
+  "price_clv_coverage": 0.5912698412698413,
+  "price_clv_rows": 298,
+  "raw_price_clv_rows": 281,
+  "unmatched_reasons": {
+    "different_line_with_no_same_line_comparison": 42,
+    "no_closing_snapshot": 164
+  }
+}

@@ -2,8 +2,8 @@
 calibrate.py — NBA Props Calibration Engine
 =============================================
 Reads bet_log.csv (appended by checkresults.py after each grading run) and
-produces calibration.json, which playerlinepredictor.py loads at startup to
-apply data-driven confidence and projection adjustments.
+produces calibration.json, which playerlinepredictor.py loads at startup for
+historical confidence/risk diagnostics and direction penalties.
 
 Two types of calibration are computed:
 
@@ -13,10 +13,12 @@ Two types of calibration are computed:
      point-penalty adjustment relative to the population baseline.
      → Applied in process_game() as direction_penalty correction.
 
-  2. Player-market projection bias
+  2. Player-market projection bias (v9 diagnostic only)
      For each (player, market) pair we compute the mean signed residual
      (actual − projection) with shrinkage toward 0.
-     → Applied in project_prop() as a projection nudge.
+     → No longer applied in project_prop(): selected bets are a biased
+       training population. The separate unconditional replay artifact
+       residual_corrections.json provides the live projection correction.
      (Requires "projection" column in bet_log.csv, which checkresults.py
      writes when the PREDICTIONS dict includes a "projection" key.)
 
@@ -58,6 +60,31 @@ PLAYER_MARKET_MIN_BETS = 2  # v9 Fix 6: was 3; shrinkage estimator handles small
 FLAG_SHRINK_N = 40
 
 # ---------------------------------------------------------------------------
+
+
+def _choose_prior(total_bets: int, empirical_rate: float) -> tuple:
+    """Return (prior, source): the empirical hit rate once there is enough data."""
+    if total_bets >= MIN_BETS_FOR_EMPIRICAL_PRIOR:
+        return empirical_rate, "empirical"
+    return DEFAULT_PRIOR, "default"
+
+
+def _load_existing_calib() -> dict:
+    """Return calibration.json as it is now, or {} if absent or unreadable.
+
+    Other tools write their own top-level sections into this file (e.g.
+    `oddstracker.py --analyze --update-calib` writes "book_lean"), so calibrate()
+    must merge into it rather than rebuild it from scratch.
+    """
+    if not CALIB_FILE.exists():
+        return {}
+    try:
+        with open(CALIB_FILE) as f:
+            existing = json.load(f)
+    except (OSError, json.JSONDecodeError) as exc:
+        print(f"  Warning: could not read existing {CALIB_FILE.name} ({exc}) — rebuilding it")
+        return {}
+    return existing if isinstance(existing, dict) else {}
 
 
 def _laplace_smooth(hits, n, prior, k=LAPLACE_K):
@@ -316,12 +343,13 @@ def calibrate(verbose=False):
         f"{empirical_rate * 100:.1f}%)"
     )
 
-    prior = empirical_rate if total_bets >= MIN_BETS_FOR_EMPIRICAL_PRIOR else DEFAULT_PRIOR
-    prior_source = "empirical" if total_bets >= MIN_BETS_FOR_EMPIRICAL_PRIOR else "default"
+    prior, prior_source = _choose_prior(total_bets, empirical_rate)
     print(f"  Prior hit rate: {prior:.3f} (source: {prior_source})")
 
     market_dir = _calibrate_market_direction(graded, prior)
     margin_stats = _calibrate_margins(graded)
+    # v9: retain these numbers for historical comparison only; do not
+    # double-correct a projection using selected-bet residuals.
     player_market = _calibrate_player_market(graded)
     flag_penalties = _calibrate_flag_penalties(graded)
 
@@ -341,6 +369,9 @@ def calibrate(verbose=False):
         "player_market": player_market,
         "flag_penalties": flag_penalties,
     }
+    # Keep top-level sections calibrate.py doesn't own (e.g. "book_lean").
+    for key, value in _load_existing_calib().items():
+        calib.setdefault(key, value)
 
     with open(CALIB_FILE, "w") as f:
         json.dump(calib, f, indent=2)

@@ -24,17 +24,20 @@ date, it updates the 'result' column so accuracy can be measured.
 """
 
 import csv
+import argparse
 import json
 import logging
 import os
 import sys
 import time
 import warnings
-from datetime import date
+from datetime import date, datetime, timezone, timedelta
 
 from dotenv import load_dotenv
 
 from odds_api import get_json as _get_odds_json
+from finance import american_to_decimal
+from run_log import RunLog
 
 load_dotenv()
 
@@ -51,11 +54,12 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 
 # ---------------------------------------------------------------------------
 # CONFIG — import shared constants from playerlinepredictor to avoid duplication
-# v7 Fix 4b: single source of truth for API key, base URL, and market lists
+# v7 Fix 4b: single source of truth for base URL and market lists; the API key
+# comes from config.py like the season does.
 # ---------------------------------------------------------------------------
 import playerlinepredictor as _props_model
+from config import ODDS_API_KEY  # noqa: E402
 
-ODDS_API_KEY = _props_model.ODDS_API_KEY
 BASE_URL = _props_model.BASE_URL
 SPORT = _props_model.SPORT
 MARKETS = _props_model.MARKETS
@@ -65,6 +69,7 @@ MARKET_LABELS = _props_model.MARKET_LABELS
 NEUTRAL_BAND = 0.04  # |devig_over − 0.50| ≤ 4% → NEUTRAL
 
 TRACKER_FILE = os.path.join(_HERE, "odds_tracker.csv")
+SNAPSHOT_FILE = os.path.join(_HERE, "prop_odds_snapshots.csv")
 BET_LOG_FILE = os.path.join(_HERE, "bet_log.csv")
 CALIB_FILE = os.path.join(_HERE, "calibration.json")
 
@@ -85,7 +90,19 @@ TRACKER_FIELDS = [
     "lean_strength",
     "vig_pct",
     "k_value",  # v7 Fix 5: power-method de-vig exponent
+    "snapshot_at",
+    "event_id",
+    "commence_time",
+    "odds_source",
     "result",  # filled after games: OVER_HIT / UNDER_HIT / PUSH / DNP
+]
+
+SNAPSHOT_FIELDS = [
+    "snapshot_at", "date", "event_id", "commence_time", "game",
+    "book_key", "book_title", "player", "market", "line", "side",
+    "american_odds", "decimal_odds", "raw_implied_probability",
+    "opposing_american_odds", "devig_probability", "vig_pct", "k_value",
+    "odds_source", "snapshot_kind",
 ]
 
 
@@ -98,6 +115,24 @@ def american_to_implied(price: float) -> float:
         return 100.0 / (price + 100.0)
     else:
         return abs(price) / (abs(price) + 100.0)
+
+
+def implied_to_american(probability: float) -> float:
+    """Inverse of american_to_implied: -100 at even money, never between -100 and +100."""
+    if probability >= 0.5:
+        return -100.0 * probability / (1.0 - probability)
+    return 100.0 * (1.0 - probability) / probability
+
+
+def average_american(prices) -> float:
+    """Average several books' American prices through their implied probabilities.
+
+    A plain mean breaks across even money, where American odds jump from -100 to
+    +100: -110 and +104 averaged to -3, an impossible price that read as a 3%
+    implied probability (85 saved picks on Oct 21-25 2026 carried one).
+    """
+    implied = [american_to_implied(float(p)) for p in prices]
+    return implied_to_american(sum(implied) / len(implied))
 
 
 def devig(over_price: float, under_price: float):
@@ -152,6 +187,10 @@ def book_lean(devig_over: float) -> tuple:
 # ===========================================================================
 # ODDS API HELPERS
 # ===========================================================================
+import team_codes  # noqa: E402  (v10: canonical team codes and slate dates)
+import espn_odds  # noqa: E402
+
+
 def get_all_events() -> list:
     from datetime import datetime, timezone
 
@@ -168,10 +207,11 @@ def get_all_events() -> list:
     return upcoming
 
 
-def get_event_props(event_id: str) -> dict:
-    """Fetch player prop odds for a single event. Tries wider regions if needed."""
-    for regions in ["us", "us,us2,uk,eu,au"]:
-        try:
+def get_event_props(event_id: str, event: dict = None) -> dict:
+    """Fetch player prop odds for a single event. Tries wider regions if needed. Given the
+    event, falls back to ESPN's free DraftKings props when The Odds API refuses."""
+    def odds_api():
+        for regions in ["us", "us,us2,uk,eu,au"]:
             data = _get_odds_json(
                 f"{BASE_URL}/sports/{SPORT}/events/{event_id}/odds",
                 params={
@@ -185,15 +225,17 @@ def get_event_props(event_id: str) -> dict:
             )
             if data.get("bookmakers"):
                 return data
-        except (requests.exceptions.RequestException, json.JSONDecodeError) as e:
-            print(f"    Warning: props fetch ({regions}): {type(e).__name__}")
-    return {}
+        return {}
+
+    return espn_odds.odds_api_or_espn(odds_api, event)
 
 
 # ===========================================================================
 # PARSE & AGGREGATE ODDS
 # ===========================================================================
-def parse_props_to_rows(props_json: dict, game_key: str, snap_date: str) -> list:
+def parse_props_to_rows(props_json: dict, game_key: str, snap_date: str, *,
+                        snapshot_at: str = "", event_id: str = "",
+                        commence_time: str = "") -> list:
     """
     Parse raw Odds API response into per-(player, market) rows with averaged
     odds across all bookmakers, implied probabilities, and book lean.
@@ -209,36 +251,26 @@ def parse_props_to_rows(props_json: dict, game_key: str, snap_date: str) -> list
         for mkt in bk.get("markets", []):
             mk = mkt.get("key", "")
             label = MARKET_LABELS.get(mk, mk)
-            over_row = None
-            under_row = None
+            paired = {}
             for oc in mkt.get("outcomes", []):
                 side = oc.get("name", "").lower()
                 price = oc.get("price")
                 point = oc.get("point")
                 player = oc.get("description", "")
-                if not player or price is None:
+                if not player or price is None or point is None or side not in {"over", "under"}:
                     continue
-                entry = {
-                    "book": book,
-                    "player": player,
-                    "market": label,
-                    "line": point,
-                    "price": float(price),
-                }
-                if side == "over":
-                    over_row = entry
-                elif side == "under":
-                    under_row = entry
-            # Only process when both sides are present from the same book
-            if over_row and under_row and over_row["player"] == under_row["player"]:
+                paired.setdefault((str(player).strip(), float(point)), {})[side] = float(price)
+            for (player, point), sides in paired.items():
+                if "over" not in sides or "under" not in sides:
+                    continue
                 raw.append(
                     {
                         "book": book,
-                        "player": over_row["player"],
-                        "market": over_row["market"],
-                        "line": over_row["line"],
-                        "over_p": over_row["price"],
-                        "under_p": under_row["price"],
+                        "player": player,
+                        "market": label,
+                        "line": point,
+                        "over_p": sides["over"],
+                        "under_p": sides["under"],
                     }
                 )
 
@@ -248,10 +280,16 @@ def parse_props_to_rows(props_json: dict, game_key: str, snap_date: str) -> list
     df = pd.DataFrame(raw)
     rows = []
     for (player, market), grp in df.groupby(["player", "market"]):
-        consensus_line = float(grp["line"].median())
-        avg_over_odds = round(float(grp["over_p"].mean()), 1)
-        avg_under_odds = round(float(grp["under_p"].mean()), 1)
-        n_books = int(grp["book"].nunique())
+        counts = grp["line"].value_counts()
+        most_common = counts[counts == counts.max()].index.astype(float).tolist()
+        median_line = float(grp["line"].median())
+        consensus_line = min(most_common, key=lambda value: (abs(value - median_line), value))
+        comparable = grp[(grp["line"] - consensus_line).abs() < 1e-9]
+        if comparable.empty:
+            continue
+        avg_over_odds = round(average_american(comparable["over_p"]), 1)
+        avg_under_odds = round(average_american(comparable["under_p"]), 1)
+        n_books = int(comparable["book"].nunique())
 
         dv_over, dv_under, vig, k_val = devig_power(avg_over_odds, avg_under_odds)  # v7 Fix 5
         lean, strength = book_lean(dv_over)
@@ -274,110 +312,351 @@ def parse_props_to_rows(props_json: dict, game_key: str, snap_date: str) -> list
                 "lean_strength": strength,
                 "vig_pct": vig,
                 "k_value": k_val,
+                "snapshot_at": snapshot_at,
+                "event_id": event_id,
+                "commence_time": commence_time,
+                "odds_source": props_json.get("source") or "odds_tracker_consensus",
                 "result": "",  # filled after game via update_results()
             }
         )
     return rows
 
 
+def parse_props_to_snapshot_rows(props_json: dict, game_key: str, snap_date: str,
+                                 snapshot_at: str, event_id: str,
+                                 commence_time: str) -> list:
+    """Preserve bookmaker-level lines and prices for entry/closing joins."""
+    rows = []
+    for bookmaker in props_json.get("bookmakers", []):
+        book_key = str(bookmaker.get("key") or "").strip()
+        book_title = str(bookmaker.get("title") or book_key or "unknown").strip()
+        for market in bookmaker.get("markets", []):
+            label = MARKET_LABELS.get(market.get("key", ""), market.get("key", ""))
+            grouped = {}
+            for outcome in market.get("outcomes", []):
+                side = str(outcome.get("name") or "").strip().upper()
+                player = str(outcome.get("description") or "").strip()
+                price = outcome.get("price")
+                line = outcome.get("point")
+                if side not in {"OVER", "UNDER"} or not player or price is None or line is None:
+                    continue
+                try:
+                    american = float(price)
+                    decimal = american_to_decimal(american)
+                    numeric_line = float(line)
+                except (TypeError, ValueError):
+                    continue
+                grouped.setdefault((player, label, numeric_line), {})[side] = {
+                    "american": american,
+                    "decimal": decimal,
+                }
+
+            for (player, label, line), sides in grouped.items():
+                over = sides.get("OVER")
+                under = sides.get("UNDER")
+                paired = over is not None and under is not None
+                if paired:
+                    dv_over, dv_under, vig, k_value = devig_power(
+                        over["american"], under["american"]
+                    )
+                else:
+                    dv_over = dv_under = vig = k_value = None
+                for side, quote in sides.items():
+                    opposing = under if side == "OVER" else over
+                    rows.append({
+                        "snapshot_at": snapshot_at,
+                        "date": snap_date,
+                        "event_id": event_id,
+                        "commence_time": commence_time,
+                        "game": game_key,
+                        "book_key": book_key,
+                        "book_title": book_title,
+                        "player": player,
+                        "market": label,
+                        "line": line,
+                        "side": side,
+                        "american_odds": quote["american"],
+                        "decimal_odds": round(quote["decimal"], 8),
+                        "raw_implied_probability": round(american_to_implied(quote["american"]), 8),
+                        "opposing_american_odds": opposing["american"] if opposing else "",
+                        "devig_probability": dv_over if side == "OVER" else dv_under,
+                        "vig_pct": vig,
+                        "k_value": k_value,
+                        "odds_source": props_json.get("source") or "the_odds_api",
+                    })
+    return rows
+
+
 # ===========================================================================
 # SNAPSHOT — fetch and save today's odds
 # ===========================================================================
-def snapshot(snap_date: date):
+# v10: outcome of the last snapshot() call for run_log.jsonl — "ok",
+# "market_unavailable" (the API answered, no lines for this slate) or
+# "fetch_failed" (a request failed, so the slate's odds are unknown).
+LAST_SNAPSHOT_STATUS: dict = {}
+
+
+def _set_snapshot_status(status: str, **detail) -> None:
+    LAST_SNAPSHOT_STATUS.clear()
+    LAST_SNAPSHOT_STATUS.update({"status": status, **detail})
+
+
+def snapshot(snap_date: date, *, events=None, now=None, tracker_path=None,
+             snapshot_path=None):
     """Fetch all player prop odds for snap_date and log to odds_tracker.csv."""
+    tracker_path = tracker_path or TRACKER_FILE
+    snapshot_path = snapshot_path or SNAPSHOT_FILE
+    observed = now or datetime.now(timezone.utc)
+    if observed.tzinfo is None:
+        observed = observed.replace(tzinfo=timezone.utc)
+    snapshot_at = observed.astimezone(timezone.utc).isoformat()
     print(f"\n  Fetching events for {snap_date.isoformat()}…")
-    try:
-        events = get_all_events()
-    except (requests.exceptions.RequestException, json.JSONDecodeError) as e:
-        print(f"  Error fetching events: {e}")
-        return
+    if events is None:
+        try:
+            events = get_all_events()
+        except (requests.exceptions.RequestException, json.JSONDecodeError) as e:
+            print(f"  Error fetching events: {e}")
+            _set_snapshot_status("fetch_failed", error=type(e).__name__)
+            return []
+
+    # v10: the feed lists every upcoming game. Stamping them all with snap_date
+    # filed other dates' odds under this slate, so keep only this slate's events.
+    slate_events = team_codes.events_for_date(events, snap_date)
+    if len(slate_events) != len(events or []):
+        print(f"  Ignoring {len(events or []) - len(slate_events)} event(s) "
+              f"not on {snap_date.isoformat()}.")
+    events = slate_events
 
     if not events:
         print("  No events found.")
-        return
+        _set_snapshot_status("market_unavailable", reason="no odds events for slate")
+        return []
 
     print(f"  Found {len(events)} event(s).")
     all_rows = []
+    all_snapshot_rows = []
+    failed_events = 0
 
     for ev in events:
         home = ev.get("home_team", "?")
         away = ev.get("away_team", "?")
-        gk = f"{away[:3].upper()}@{home[:3].upper()}"
+        gk = team_codes.game_key(away, home)  # v10: NYK@LAL, never "NEW@LOS"
         print(f"  Fetching props: {gk}…")
         try:
-            props = get_event_props(ev["id"])
-            rows = parse_props_to_rows(props, gk, snap_date.isoformat())
+            props = get_event_props(ev["id"], ev)
+            event_id = str(ev.get("id") or props.get("id") or "")
+            commence_time = str(ev.get("commence_time") or props.get("commence_time") or "")
+            rows = parse_props_to_rows(
+                props, gk, snap_date.isoformat(), snapshot_at=snapshot_at,
+                event_id=event_id, commence_time=commence_time,
+            )
+            all_snapshot_rows.extend(parse_props_to_snapshot_rows(
+                props, gk, snap_date.isoformat(), snapshot_at, event_id, commence_time
+            ))
             print(f"    {len(rows)} player-market line(s) parsed")
             all_rows.extend(rows)
         except Exception:
             # intentionally broad: one bad event must not abort the rest of the snapshot batch
             logger.exception("Props fetch/parse failed for event %s (%s)", ev.get("id"), gk)
+            failed_events += 1
         time.sleep(0.8)  # rate-limit courtesy pause
 
-    if not all_rows:
+    if not all_rows and not all_snapshot_rows:
         print("  No prop rows collected — lines may not be posted yet or have already closed.")
         print("  Tip: books post player props 2–6 hours before tip and close ~15 min before.")
-        return
+        _set_snapshot_status(
+            "fetch_failed" if failed_events else "market_unavailable",
+            events=len(events), failed_events=failed_events,
+        )
+        return []
 
-    _append_rows(all_rows, snap_date.isoformat())
-    print(f"\n  Logged {len(all_rows)} prop line(s) → {os.path.basename(TRACKER_FILE)}")
+    if all_rows:
+        _append_rows(all_rows, snap_date.isoformat(), path=tracker_path)
+    for row in all_snapshot_rows:
+        row["snapshot_kind"] = "entry"
+    _append_snapshot_rows(all_snapshot_rows, path=snapshot_path)
+    print(f"\n  Logged {len(all_rows)} consensus line(s) → {os.path.basename(tracker_path)}")
+    print(f"  Logged {len(all_snapshot_rows)} book quote(s) → {os.path.basename(snapshot_path)}")
+    _set_snapshot_status(
+        "fetch_failed" if failed_events else "ok",
+        events=len(events), failed_events=failed_events, rows=len(all_rows),
+    )
+    return all_rows
 
 
-def _append_rows(rows: list, snap_date: str):
-    """Append rows to odds_tracker.csv; skip duplicates (same date/player/market)."""
-    # Load existing keys to deduplicate
-    existing_keys = set()
-    if os.path.isfile(TRACKER_FILE) and os.path.getsize(TRACKER_FILE) > 0:
+def _append_rows(rows: list, snap_date: str, path=None):
+    """Upsert the latest daily consensus while preserving one public row."""
+    path = path or TRACKER_FILE
+    _migrate_tracker_csv(path)
+    existing = pd.DataFrame(columns=TRACKER_FIELDS)
+    if os.path.isfile(path) and os.path.getsize(path) > 0:
         try:
-            existing = pd.read_csv(TRACKER_FILE, usecols=["date", "player", "market"])
-            for _, r in existing.iterrows():
-                if str(r["date"]) == snap_date:
-                    existing_keys.add((r["player"], r["market"]))
-        except (OSError, KeyError, pd.errors.ParserError) as exc:
+            existing = pd.read_csv(path)
+        except (OSError, pd.errors.ParserError) as exc:
             logger.warning("Could not read existing tracker rows: %s", exc)
-
-    new_rows = [r for r in rows if (r["player"], r["market"]) not in existing_keys]
-    if not new_rows:
-        print("  All rows already logged for this date — nothing new added.")
+            return
+    incoming = pd.DataFrame(rows)
+    if incoming.empty:
         return
+    keys = set(zip(incoming["date"].astype(str), incoming["player"], incoming["market"]))
+    if not existing.empty:
+        keep = [
+            (str(row.get("date")), row.get("player"), row.get("market")) not in keys
+            for _, row in existing.iterrows()
+        ]
+        old_result = {
+            (str(row.get("date")), row.get("player"), row.get("market")): row.get("result", "")
+            for _, row in existing.iterrows()
+        }
+        for index, row in incoming.iterrows():
+            key = (str(row.get("date")), row.get("player"), row.get("market"))
+            if not str(row.get("result") or "").strip() and key in old_result and pd.notna(old_result[key]):
+                incoming.at[index, "result"] = old_result[key]
+        existing = existing.loc[keep]
+    combined = incoming.reset_index(drop=True) if existing.empty else pd.concat(
+        [existing, incoming], ignore_index=True
+    )
+    for field in TRACKER_FIELDS:
+        if field not in combined:
+            combined[field] = ""
+    combined[TRACKER_FIELDS].to_csv(path, index=False)
 
-    file_exists = os.path.isfile(TRACKER_FILE) and os.path.getsize(TRACKER_FILE) > 0
-    with open(TRACKER_FILE, "a", newline="") as fh:
-        writer = csv.DictWriter(fh, fieldnames=TRACKER_FIELDS)
+
+def _append_snapshot_rows(rows: list, path=None):
+    """Append immutable bookmaker-level observations, deduplicating retries."""
+    path = path or SNAPSHOT_FILE
+    if not rows:
+        return 0
+    fields = list(SNAPSHOT_FIELDS)
+    def quote_key(row, key_fields):
+        return tuple("" if pd.isna(row.get(f, "")) else str(row.get(f, "")) for f in key_fields)
+    if os.path.isfile(path) and os.path.getsize(path) > 0:
+        # Extend the old header atomically before appending the new quote kind.
+        from bet_log_utils import read_bet_rows, write_bet_rows
+        old_fields, old_rows = read_bet_rows(path)
+        fields = list(dict.fromkeys([*old_fields, *SNAPSHOT_FIELDS]))
+        if fields != old_fields:
+            write_bet_rows(path, fields, old_rows)
+    existing_keys = set()
+    if os.path.isfile(path) and os.path.getsize(path) > 0:
+        try:
+            existing = pd.read_csv(path)
+            key_fields = ["snapshot_at", "event_id", "book_key", "player", "market", "line", "side", "snapshot_kind"]
+            existing_keys = {
+                quote_key(row, key_fields)
+                for _, row in existing.iterrows()
+            }
+        except (OSError, pd.errors.ParserError):
+            existing_keys = set()
+    key_fields = ["snapshot_at", "event_id", "book_key", "player", "market", "line", "side", "snapshot_kind"]
+    additions = [
+        row for row in rows
+        if quote_key(row, key_fields) not in existing_keys
+    ]
+    if not additions:
+        return 0
+    file_exists = os.path.isfile(path) and os.path.getsize(path) > 0
+    with open(path, "a", newline="", encoding="utf-8") as fh:
+        writer = csv.DictWriter(fh, fieldnames=fields, extrasaction="ignore")
         if not file_exists:
             writer.writeheader()
-        writer.writerows(new_rows)
+        writer.writerows(additions)
+    return len(additions)
+
+
+def _closing_props(event_id: str, pick: dict) -> dict:
+    """Closing quotes from ESPN's DraftKings feed, which costs nothing; The Odds API (about
+    8 credits a game, 80-90 a day) only when ESPN has nothing for the game."""
+    away, _, home = str(pick.get("game") or "").partition("@")
+    if espn_odds.enabled() and away and home:
+        try:
+            props = espn_odds.props_for_event(
+                {"away_team": away, "home_team": home, "commence_time": pick.get("game_start_at")})
+            if props:
+                return props
+        except requests.exceptions.RequestException as exc:
+            print(f"  ESPN closing props unavailable for {pick.get('game')} ({exc})")
+    return get_event_props(event_id)
+
+
+def closing_snapshot(snap_date: date, *, minutes=30, now=None, predictions=None,
+                     db_path=None, snapshot_path=None) -> int:
+    """Quote only picked events about to tip; never change entry consensus."""
+    import predictions_db
+    if minutes <= 0:
+        raise ValueError("closing window must be positive")
+    observed = now or datetime.now(timezone.utc)
+    if observed.tzinfo is None:
+        observed = observed.replace(tzinfo=timezone.utc)
+    observed = observed.astimezone(timezone.utc)
+    run = RunLog("oddstracker --closing", snap_date)
+    picks = predictions if predictions is not None else predictions_db.load_prop_predictions(
+        snap_date, path=db_path or predictions_db.DB_PATH)
+    eligible = {}
+    for pick in picks:
+        event_id = pick.get("odds_event_id")
+        start = team_codes._parse_utc(pick.get("game_start_at"))
+        if (event_id and start and pick.get("pick") in ("OVER", "UNDER")
+                and team_codes.slate_date_of(pick.get("game_start_at")) == snap_date
+                and observed < start <= observed + timedelta(minutes=minutes)):
+            eligible.setdefault(event_id, pick)
+    if not eligible:
+        run.stage("closing_snapshot", "skipped", reason="no picked events in closing window")
+        run.finish(events=0, quotes=0)
+        return run.exit_code()
+    quotes = []
+    failures = 0
+    started = 0
+    for event_id, pick in eligible.items():
+        try:
+            props = _closing_props(event_id, pick)
+            # A slow response must not be backdated to the batch start and
+            # mistaken for a pregame close. Tests can inject a fixed clock.
+            quote_time = observed if now is not None else datetime.now(timezone.utc)
+            if quote_time >= team_codes._parse_utc(pick["game_start_at"]):
+                started += 1
+                run.stage(f"closing:{event_id}", "skipped", reason="game started during fetch")
+                continue
+            rows = parse_props_to_snapshot_rows(
+                props, pick.get("game", ""), snap_date.isoformat(), quote_time.isoformat(),
+                event_id, pick["game_start_at"],
+            )
+            for row in rows:
+                row["snapshot_kind"] = "closing"
+            quotes.extend(rows)
+            run.stage(f"closing:{event_id}", "ok" if rows else "market_unavailable", quotes=len(rows))
+        except (requests.RequestException, json.JSONDecodeError) as exc:
+            failures += 1
+            run.stage(f"closing:{event_id}", "fetch_failed", error=type(exc).__name__)
+    written = _append_snapshot_rows(quotes, path=snapshot_path or SNAPSHOT_FILE)
+    status = ("fetch_failed" if failures else "ok" if quotes else
+              "skipped" if started == len(eligible) else "market_unavailable")
+    run.stage("closing_snapshot", status, required=failures == len(eligible),
+              events=len(eligible), failed_events=failures, quotes=written)
+    record = run.finish()
+    print(f"  Closing: {written} quote(s); run {run.run_id}: {record['status']}")
+    return run.exit_code()
 
 
 # ===========================================================================
 # SCHEMA MIGRATION — add k_value column to old odds_tracker.csv rows
 # ===========================================================================
-def _migrate_tracker_csv():
-    """One-time migration: insert 'k_value' column before 'result' if missing."""
-    if not os.path.isfile(TRACKER_FILE):
+def _migrate_tracker_csv(path=None):
+    """Add tracker metadata columns without inventing historical values."""
+    path = path or TRACKER_FILE
+    if not os.path.isfile(path):
         return
-    with open(TRACKER_FILE) as fh:
-        lines = fh.readlines()
-    if not lines:
+    try:
+        frame = pd.read_csv(path)
+    except (OSError, pd.errors.ParserError):
         return
-    header_fields = [c.strip() for c in lines[0].strip().split(",")]
-    if "k_value" in header_fields:
-        return  # already migrated
-
-    new_lines = []
-    # Find position of 'result' column to insert k_value before it
-    result_idx = header_fields.index("result") if "result" in header_fields else len(header_fields)
-    for i, line in enumerate(lines):
-        fields = line.rstrip("\n").split(",")
-        if i == 0:
-            fields = fields[:result_idx] + ["k_value"] + fields[result_idx:]
-        elif len(fields) == len(header_fields):
-            fields = fields[:result_idx] + [""] + fields[result_idx:]
-        new_lines.append(",".join(fields) + "\n")
-
-    with open(TRACKER_FILE, "w") as fh:
-        fh.writelines(new_lines)
-    print("  Migrated odds_tracker.csv → added 'k_value' column to existing rows.")
+    missing = [field for field in TRACKER_FIELDS if field not in frame]
+    if not missing:
+        return
+    for field in missing:
+        frame[field] = ""
+    frame[TRACKER_FIELDS].to_csv(path, index=False)
+    print(f"  Migrated odds_tracker.csv → added {', '.join(missing)}.")
 
 
 # ===========================================================================
@@ -707,11 +986,20 @@ def analyze_disagreements():
 # ===========================================================================
 # MAIN
 # ===========================================================================
-if __name__ == "__main__":
-    args = sys.argv[1:]
+def main(argv=None) -> int:
+    args = sys.argv[1:] if argv is None else argv
+    if "--closing" in args:
+        parser = argparse.ArgumentParser(description="Closing quotes for picked NBA events")
+        parser.add_argument("--closing", action="store_true")
+        parser.add_argument("date", nargs="?", type=date.fromisoformat, default=team_codes.today_slate_date())
+        parser.add_argument("--minutes", type=int, default=30)
+        parsed = parser.parse_args(args)
+        if parsed.minutes <= 0:
+            parser.error("--minutes must be positive")
+        return closing_snapshot(parsed.date, minutes=parsed.minutes)
 
     # Parse date argument if provided
-    snap_date = date.today()
+    snap_date = team_codes.today_slate_date()  # v10: US Eastern slate date, not local time
     for a in args:
         try:
             snap_date = date.fromisoformat(a)
@@ -729,6 +1017,22 @@ if __name__ == "__main__":
     elif "--show" in args:
         show_today(snap_date)
     else:
+        run = RunLog("oddstracker", snap_date)
         snapshot(snap_date)
-        update_results()
-        show_today(snap_date)
+        info = dict(LAST_SNAPSHOT_STATUS)
+        status = info.pop("status")
+        # A complete outage fails the command; a failed event alongside saved
+        # quotes is partial, retaining the shared run-log exit-code contract.
+        complete_failure = not info.get("events") or info.get("failed_events") == info.get("events")
+        run.stage("odds_snapshot", status, required=complete_failure, **info)
+        if status != "fetch_failed":
+            update_results()
+            show_today(snap_date)
+        record = run.finish()
+        print(f"  Run {record['run_id']}: {record['status']} → {run.path.name}")
+        return run.exit_code()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

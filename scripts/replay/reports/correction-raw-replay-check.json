@@ -1,0 +1,150 @@
+{
+  "comparison_to": "after-injury-ramp",
+  "note": "Replay workers disable final trained artifact to avoid future leakage; corrections are applied date-by-date by evaluate_corrections.py.",
+  "raw_deltas": {
+    "combined": {
+      "3PM": {
+        "d_mae": 0.0,
+        "d_pct_bias": 0.0,
+        "d_rmse": 0.0
+      },
+      "ALL": {
+        "d_mae": 0.0,
+        "d_pct_bias": 0.0,
+        "d_rmse": 0.0
+      },
+      "AST": {
+        "d_mae": 0.0,
+        "d_pct_bias": 0.0,
+        "d_rmse": 0.0
+      },
+      "PRA": {
+        "d_mae": 0.0,
+        "d_pct_bias": 0.0,
+        "d_rmse": 0.0
+      },
+      "PTS": {
+        "d_mae": 0.0,
+        "d_pct_bias": 0.0,
+        "d_rmse": 0.0
+      },
+      "PTS+AST": {
+        "d_mae": 0.0,
+        "d_pct_bias": 0.0,
+        "d_rmse": 0.0
+      },
+      "PTS+REB": {
+        "d_mae": 0.0,
+        "d_pct_bias": 0.0,
+        "d_rmse": 0.0
+      },
+      "REB": {
+        "d_mae": 0.0,
+        "d_pct_bias": 0.0,
+        "d_rmse": 0.0
+      },
+      "REB+AST": {
+        "d_mae": 0.0,
+        "d_pct_bias": 0.0,
+        "d_rmse": 0.0
+      }
+    },
+    "playoffs": {
+      "3PM": {
+        "d_mae": 0.0,
+        "d_pct_bias": 0.0,
+        "d_rmse": 0.0
+      },
+      "ALL": {
+        "d_mae": 0.0,
+        "d_pct_bias": 0.0,
+        "d_rmse": 0.0
+      },
+      "AST": {
+        "d_mae": 0.0,
+        "d_pct_bias": 0.0,
+        "d_rmse": 0.0
+      },
+      "PRA": {
+        "d_mae": 0.0,
+        "d_pct_bias": 0.0,
+        "d_rmse": 0.0
+      },
+      "PTS": {
+        "d_mae": 0.0,
+        "d_pct_bias": 0.0,
+        "d_rmse": 0.0
+      },
+      "PTS+AST": {
+        "d_mae": 0.0,
+        "d_pct_bias": 0.0,
+        "d_rmse": 0.0
+      },
+      "PTS+REB": {
+        "d_mae": 0.0,
+        "d_pct_bias": 0.0,
+        "d_rmse": 0.0
+      },
+      "REB": {
+        "d_mae": 0.0,
+        "d_pct_bias": 0.0,
+        "d_rmse": 0.0
+      },
+      "REB+AST": {
+        "d_mae": 0.0,
+        "d_pct_bias": 0.0,
+        "d_rmse": 0.0
+      }
+    },
+    "regular": {
+      "3PM": {
+        "d_mae": 0.0,
+        "d_pct_bias": 0.0,
+        "d_rmse": 0.0
+      },
+      "ALL": {
+        "d_mae": 0.0,
+        "d_pct_bias": 0.0,
+        "d_rmse": 0.0
+      },
+      "AST": {
+        "d_mae": 0.0,
+        "d_pct_bias": 0.0,
+        "d_rmse": 0.0
+      },
+      "PRA": {
+        "d_mae": 0.0,
+        "d_pct_bias": 0.0,
+        "d_rmse": 0.0
+      },
+      "PTS": {
+        "d_mae": 0.0,
+        "d_pct_bias": 0.0,
+        "d_rmse": 0.0
+      },
+      "PTS+AST": {
+        "d_mae": 0.0,
+        "d_pct_bias": 0.0,
+        "d_rmse": 0.0
+      },
+      "PTS+REB": {
+        "d_mae": 0.0,
+        "d_pct_bias": 0.0,
+        "d_rmse": 0.0
+      },
+      "REB": {
+        "d_mae": 0.0,
+        "d_pct_bias": 0.0,
+        "d_rmse": 0.0
+      },
+      "REB+AST": {
+        "d_mae": 0.0,
+        "d_pct_bias": 0.0,
+        "d_rmse": 0.0
+      }
+    }
+  },
+  "rows_paired": 182128,
+  "runtime_s": 277.05,
+  "step": "projection-correction-raw-check"
+}

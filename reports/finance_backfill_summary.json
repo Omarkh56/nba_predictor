@@ -1,0 +1,18 @@
+{
+  "ambiguous_matches": 0,
+  "input_rows": 956,
+  "legacy_decimal_odds_without_exact_line_match": 26,
+  "profits_backfilled": 0,
+  "rows_remaining_without_recovered_entry_odds": 864,
+  "rows_with_closing_odds_recovered": 0,
+  "rows_with_entry_odds_recovered": 92,
+  "rows_with_line_clv": 0,
+  "rows_with_price_clv": 0,
+  "stakes_backfilled": 0,
+  "timestamps_backfilled": 0,
+  "unmatched_reasons": {
+    "invalid_selected_odds": 4,
+    "no_exact_line_match": 34,
+    "no_player_market_match": 826
+  }
+}

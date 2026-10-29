@@ -28,9 +28,12 @@ from typing import Dict, List, Optional, Tuple
 import requests
 import urllib3
 
-from config import current_season
+from config import current_season, validation_season
+import team_codes
 from game_features import GAME_FEATURE_VERSION, build_live_game_features
+import raw_archive
 from nba_api_utils import api_call_with_retry as _api_call
+from nba_api_utils import configure_stats_http
 
 logger = logging.getLogger(__name__)
 
@@ -46,28 +49,8 @@ warnings.filterwarnings("ignore")
 urllib3.disable_warnings()
 
 # ── Patch nba_api ─────────────────────────────────────────────────────────────
-import nba_api.stats.library.http as _nba_http  # noqa: E402
-
-_nba_http.STATS_HEADERS.update(
-    {
-        "User-Agent": (
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
-        ),
-        "Accept": "application/json, text/plain, */*",
-        "Accept-Language": "en-US,en;q=0.9",
-        "Accept-Encoding": "gzip, deflate, br",
-        "x-nba-stats-origin": "stats",
-        "x-nba-stats-token": "true",
-        "Sec-Fetch-Mode": "cors",
-        "Sec-Fetch-Site": "same-site",
-        "Origin": "https://www.nba.com",
-        "Referer": "https://www.nba.com/",
-        "Connection": "keep-alive",
-        "DNT": "1",
-    }
-)
-_nba_http.STATS_TIMEOUT = 90
+# Headers and timeout live in nba_api_utils so train_model.py sends the same ones.
+configure_stats_http()
 
 # ─────────────────────────────────────────────────────────────────────────────
 # TLS NOTE: verify=False was previously set globally here as a workaround for
@@ -219,6 +202,29 @@ _LEARNED_GAME_PARAMS: dict = {}
 _VENUE_RESIDUALS: dict = {}   # {team_id_str: float} — isolated home-court edge
 
 
+def _held_out_gate(params: dict, gm: dict) -> tuple:
+    """v10: (ok, reason). Learned game weights go live only if they were tested
+    on the latest completed season and beat hand-tuned there on log loss and Brier.
+
+    Validation alone said "swap" while the deployed model lost on 2025-26 (log
+    loss 0.6065 vs 0.5977), and a 2026-27 retrain lost there too (0.6010).
+    Missing evidence fails closed: the hand-tuned model stays in charge.
+    """
+    latest = validation_season()
+    tested = params.get("tested_on")
+    if tested != latest:
+        return False, f"tested on {tested or 'no season'}; latest completed season is {latest} — retrain"
+    try:
+        ll, bs = float(gm["test_log_loss"]), float(gm["test_brier"])
+        hll, hbs = float(gm["ht_test_log_loss"]), float(gm["ht_test_brier"])
+    except (KeyError, TypeError, ValueError):
+        return False, "no held-out test metrics — retrain"
+    if ll > hll or bs > hbs:
+        return False, (f"lost to hand-tuned on {tested} (log loss {ll:.4f} vs {hll:.4f}, "
+                       f"Brier {bs:.4f} vs {hbs:.4f})")
+    return True, f"beat hand-tuned on {tested}"
+
+
 def _load_learned_params() -> None:
     """Load parameters and apply the saved training recommendation."""
     global _LEARNED_GAME_PARAMS, USE_LEARNED_GAME_MODEL, _VENUE_RESIDUALS
@@ -239,10 +245,13 @@ def _load_learned_params() -> None:
         if gm:
             _LEARNED_GAME_PARAMS = gm
             rec = gm.get("recommendation", "keep_hand_tuned")
-            USE_LEARNED_GAME_MODEL = (rec in ("swap", "use_learned")
-                                      and gm.get("feature_version") == GAME_FEATURE_VERSION)
-            if rec in ("swap", "use_learned") and not USE_LEARNED_GAME_MODEL:
+            versions_match = gm.get("feature_version") == GAME_FEATURE_VERSION
+            gate_ok, gate_reason = _held_out_gate(data, gm)
+            USE_LEARNED_GAME_MODEL = rec in ("swap", "use_learned") and versions_match and gate_ok
+            if rec in ("swap", "use_learned") and not versions_match:
                 logger.warning("Learned game inputs changed; rerun train_model.py before using these weights")
+            elif rec in ("swap", "use_learned") and not gate_ok:
+                print(f"  [train_model] learned game model inactive: {gate_reason}")
             ll_h = gm.get("hand_tuned_log_loss", "?")
             ll_l = gm.get("learned_log_loss", "?")
             print(
@@ -373,47 +382,83 @@ def _sigmoid(x: float) -> float:
 # =============================================================================
 # ESPN — GAMES & INJURIES
 # =============================================================================
-def get_todays_games() -> List[Dict]:
-    for days_ahead in range(-1, 45):  # include preseason / early-season slate
-        target = date.today() + timedelta(days=days_ahead)
-        date_str = target.strftime("%Y%m%d")
+class ScheduleFetchError(RuntimeError):
+    """ESPN's scoreboard couldn't be fetched: the slate is unknown, not empty."""
+
+
+def _scoreboard_matchups(events: list, target: date) -> List[Dict]:
+    """Parse ESPN scoreboard events into matchups (pre-game and live only).
+
+    v10: team codes are canonical NBA codes (team_codes), not ESPN's NY, GS,
+    SA, NO, UTAH or WSH, so odds matching, rosters and grading all agree.
+    """
+    matchups = []
+    for event in events:
         try:
-            resp = requests.get(
-                f"{ESPN_SCOREBOARD_URL}?dates={date_str}", headers=ESPN_HEADERS, timeout=12
-            )
-            resp.raise_for_status()
-            events = resp.json().get("events", [])
-        except requests.RequestException as e:
-            print(f"  ESPN error ({date_str}): {e}")
-            continue
-        if not events:
-            continue
-        matchups = []
-        for event in events:
-            try:
-                comp = event["competitions"][0]
-                status_type = event["status"]["type"]
-                status_txt = status_type.get("shortDetail", "")
-                state = status_type.get("state", "pre")
-                if state == "post":
-                    continue
-                competitors = comp["competitors"]
-                home = next(c for c in competitors if c["homeAway"] == "home")
-                away = next(c for c in competitors if c["homeAway"] == "away")
-                ha = home["team"]["abbreviation"]
-                aa = away["team"]["abbreviation"]
-                matchups.append(
-                    {
-                        "away_abbr": aa,
-                        "away_name": ESPN_ABBR_TO_NAME.get(aa, away["team"]["displayName"]),
-                        "home_abbr": ha,
-                        "home_name": ESPN_ABBR_TO_NAME.get(ha, home["team"]["displayName"]),
-                        "status": status_txt,
-                        "game_date": target,
-                    }
-                )
-            except (KeyError, StopIteration):
+            comp = event["competitions"][0]
+            status_type = event["status"]["type"]
+            status_txt = status_type.get("shortDetail", "")
+            state = status_type.get("state", "pre")
+            if state == "post":
                 continue
+            competitors = comp["competitors"]
+            home = next(c for c in competitors if c["homeAway"] == "home")
+            away = next(c for c in competitors if c["homeAway"] == "away")
+            ha_raw = home["team"]["abbreviation"]
+            aa_raw = away["team"]["abbreviation"]
+            matchups.append(
+                {
+                    "away_abbr": team_codes.normalize_team(aa_raw) or aa_raw,
+                    "away_name": ESPN_ABBR_TO_NAME.get(aa_raw, away["team"]["displayName"]),
+                    "home_abbr": team_codes.normalize_team(ha_raw) or ha_raw,
+                    "home_name": ESPN_ABBR_TO_NAME.get(ha_raw, home["team"]["displayName"]),
+                    "status": status_txt,
+                    "game_date": target,
+                }
+            )
+        except (KeyError, StopIteration):
+            continue
+    return matchups
+
+
+def get_games_for_date(target: date) -> List[Dict]:
+    """Matchups on one US Eastern date. Raises ScheduleFetchError if ESPN fails."""
+    date_str = target.strftime("%Y%m%d")
+    try:
+        resp = requests.get(
+            f"{ESPN_SCOREBOARD_URL}?dates={date_str}", headers=ESPN_HEADERS, timeout=12
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        events = data.get("events", [])
+    except (requests.RequestException, ValueError) as e:
+        raw_archive.save("espn", "scoreboard", {"dates": date_str}, None, status="fetch_failed",
+                         http_status=raw_archive.http_status_of(e), error=type(e).__name__)
+        raise ScheduleFetchError(f"ESPN scoreboard {date_str}: {e}") from e
+    raw_archive.save("espn", "scoreboard", {"dates": date_str}, data,
+                     http_status=raw_archive.http_status_of(resp))
+    return _scoreboard_matchups(events, target)
+
+
+def get_todays_games() -> List[Dict]:
+    """Next date with games, scanning from yesterday up to 44 days ahead.
+
+    v10: after 3 straight failed requests this raises ScheduleFetchError
+    instead of returning [] — an outage is not an empty schedule.
+    """
+    failures = 0
+    anchor = team_codes.today_slate_date()  # US Eastern, not UTC/local — see v10 fix
+    for days_ahead in range(-1, 45):  # include preseason / early-season slate
+        target = anchor + timedelta(days=days_ahead)
+        try:
+            matchups = get_games_for_date(target)
+        except ScheduleFetchError as e:
+            failures += 1
+            print(f"  ESPN error ({target:%Y%m%d}): {e}")
+            if failures >= 3:
+                raise
+            continue
+        failures = 0
         if matchups:
             return matchups
     return []
@@ -425,8 +470,11 @@ def get_espn_injuries() -> Dict[str, List[Dict]]:
         r.raise_for_status()
         data = r.json()
     except (requests.exceptions.RequestException, json.JSONDecodeError) as e:
+        raw_archive.save("espn", "injuries", {}, None, status="fetch_failed",
+                         http_status=raw_archive.http_status_of(e), error=type(e).__name__)
         print(f"  ESPN injuries error: {e}")
         return {}
+    raw_archive.save("espn", "injuries", {}, data, http_status=raw_archive.http_status_of(r))
 
     # Build a rough name→PPG lookup from a known-good source so injury
     # weighting works even though ESPN's injury endpoint has no stats.
@@ -479,7 +527,7 @@ def _enrich_injuries_with_ppg(injuries: dict, season: str) -> dict:
             ).get_data_frames()[0]
         )
         ppg_lookup = {row["PLAYER_NAME"]: float(row["PTS"]) for _, row in df.iterrows()}
-    except (requests.exceptions.RequestException, json.JSONDecodeError, KeyError, IndexError) as exc:
+    except (requests.exceptions.RequestException, json.JSONDecodeError, KeyError, IndexError, RuntimeError) as exc:
         logger.warning("PPG enrichment fetch failed, using defaults: %s", exc)
         return enriched
 
@@ -495,6 +543,36 @@ def _enrich_injuries_with_ppg(injuries: dict, season: str) -> dict:
 # =============================================================================
 # NBA API — FULL DATA PULL
 # =============================================================================
+# Early in a season a team's ratings come from a handful of games: on Oct 23 2026 every
+# team had played once, which produced 99.5% favourites and 49-point spreads. Until a team
+# has EARLY_TEAM_GAMES games, each rate stat is blended with last season's, current weight
+# games / EARLY_TEAM_GAMES (the props model's rule for player rates). A team with no games
+# yet uses last season's row, so every matchup resolves from opening night.
+EARLY_TEAM_GAMES = 10
+_TEAM_COUNT_COLUMNS = {"GP", "W", "L", "TOTAL_PTS", "FG3M_TOTAL", "FG3A_TOTAL", "FTA", "FGA",
+                       "HOME_GP", "CLUTCH_GP"}
+
+
+def _blend_early_season(current: pd.DataFrame, prior: pd.DataFrame) -> pd.DataFrame:
+    """Shrink thin current-season team ratings toward last season's (see EARLY_TEAM_GAMES)."""
+    blended = current.copy()
+    shared = current.index.intersection(prior.index)
+    weight = (current.loc[shared, "GP"].fillna(0).clip(lower=0) / EARLY_TEAM_GAMES).clip(upper=1.0)
+    rate_columns = [c for c in current.columns
+                    if c in prior.columns and c not in _TEAM_COUNT_COLUMNS
+                    and pd.api.types.is_numeric_dtype(current[c]) and pd.api.types.is_numeric_dtype(prior[c])]
+    for column in rate_columns:
+        blended.loc[shared, column] = (weight * current.loc[shared, column]
+                                       + (1 - weight) * prior.loc[shared, column])
+    unplayed = prior.loc[prior.index.difference(current.index)].copy()
+    if len(unplayed):
+        for column in ("GP", "W", "L", "HOME_GP", "CLUTCH_GP"):
+            if column in unplayed.columns:
+                unplayed[column] = 0
+        blended = pd.concat([blended, unplayed[[c for c in blended.columns if c in unplayed.columns]]])
+    return blended
+
+
 def _fetch_all_team_data(season: str) -> pd.DataFrame:
     """
     Fetches all data needed in as few API calls as possible:
@@ -565,7 +643,7 @@ def _fetch_all_team_data(season: str) -> pd.DataFrame:
         opp_ff = opp_ff[
             ["TEAM_ID", "OPP_EFG_PCT", "OPP_TOV_PCT", "OPP_OREB_PCT", "OPP_FTA_RATE"]
         ].copy()
-    except (requests.exceptions.RequestException, json.JSONDecodeError, KeyError, IndexError) as e:
+    except (requests.exceptions.RequestException, json.JSONDecodeError, KeyError, IndexError, RuntimeError) as e:
         print(f"    ⚠ Four Factors unavailable ({e}), using defaults")
         opp_ff = pd.DataFrame(
             {
@@ -586,7 +664,7 @@ def _fetch_all_team_data(season: str) -> pd.DataFrame:
             ).get_data_frames()[0]
         )
         opp_raw = opp_raw[["TEAM_ID", "OPP_FG3_PCT", "OPP_PTS"]].copy()
-    except (requests.exceptions.RequestException, json.JSONDecodeError, KeyError, IndexError) as e:
+    except (requests.exceptions.RequestException, json.JSONDecodeError, KeyError, IndexError, RuntimeError) as e:
         print(f"    ⚠ Opponent raw stats unavailable ({e}), using defaults")
         opp_raw = pd.DataFrame({"TEAM_ID": adv["TEAM_ID"], "OPP_FG3_PCT": 0.36, "OPP_PTS": 0.0})
 
@@ -620,7 +698,7 @@ def _fetch_all_team_data(season: str) -> pd.DataFrame:
         clutch = clutch.rename(
             columns={"NET_RATING": "CLUTCH_NET_RTG", "W_PCT": "CLUTCH_W_PCT", "GP": "CLUTCH_GP"}
         )
-    except (requests.exceptions.RequestException, json.JSONDecodeError, KeyError, IndexError):
+    except (requests.exceptions.RequestException, json.JSONDecodeError, KeyError, IndexError, RuntimeError):
         print("    ⚠ Clutch stats unavailable, using defaults")
         clutch = pd.DataFrame(
             {"TEAM_ID": adv["TEAM_ID"], "CLUTCH_NET_RTG": 0.0, "CLUTCH_W_PCT": 0.5, "CLUTCH_GP": 0}
@@ -1404,7 +1482,7 @@ def _season_with_team_stats(season: str) -> str:
                     measure_type_detailed_defense="Advanced",
                 ).get_data_frames()[0]
             )
-        except (requests.exceptions.RequestException, json.JSONDecodeError, KeyError, IndexError) as e:
+        except (requests.exceptions.RequestException, json.JSONDecodeError, KeyError, IndexError, RuntimeError) as e:
             print(f"  Stats probe failed for {candidate}: {e}")
             df = None
         if df is not None and len(df) > 0:
@@ -1436,6 +1514,14 @@ def predict_games_data(
     if ratings is None or len(ratings) == 0:
         print(f"  No team ratings available for {stats_season}.")
         return []
+    if stats_season == season and (ratings["GP"] < EARLY_TEAM_GAMES).any():
+        prior_season = _prior_nba_season(season)
+        msg(f"Early season: blending team ratings with {prior_season} (6 API calls)…")
+        try:
+            ratings = _blend_early_season(ratings, _fetch_all_team_data(prior_season))
+        except (requests.exceptions.RequestException, json.JSONDecodeError, KeyError,
+                IndexError, RuntimeError) as e:
+            print(f"  ⚠ {prior_season} team ratings unavailable ({e}); using {season} unblended")
     season = stats_season  # form / H2H / injury PPG must use the same season
 
     # Enrich injury data with real PPG from nba_api so injury penalties
@@ -1615,7 +1701,7 @@ def main(season=None):
         return
 
     gd = matchups[0]["game_date"]
-    tag = "TODAY" if gd == date.today() else gd.strftime("%A %B %d")
+    tag = "TODAY" if gd == team_codes.today_slate_date() else gd.strftime("%A %B %d")
     print(f"\n{'=' * 62}")
     print(f"  NBA — {tag}  ({len(matchups)} games)")
     print(f"{'=' * 62}")

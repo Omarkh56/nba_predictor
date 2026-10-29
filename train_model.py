@@ -35,6 +35,7 @@ from sklearn.linear_model import LogisticRegression, Ridge
 from sklearn.metrics import brier_score_loss, log_loss
 from sklearn.preprocessing import StandardScaler
 
+import calibrate as _calibrate  # calibration.json's schema has one implementation
 from config import training_seasons
 from game_features import (
     _ALTITUDE_HOME_TIDS as _ALTITUDE_HOME_TIDS,
@@ -63,29 +64,14 @@ from game_features import (
 
 warnings.filterwarnings("ignore")
 
-# ── NBA-API patch (same as newnbapredictor.py) ────────────────────────────────
-import nba_api.stats.library.http as _nba_http
-_nba_http.STATS_HEADERS.update({
-    "User-Agent": (
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
-    ),
-    "Accept": "application/json, text/plain, */*",
-    "Accept-Language": "en-US,en;q=0.9",
-    "x-nba-stats-origin": "stats",
-    "x-nba-stats-token": "true",
-    "Origin": "https://www.nba.com",
-    "Referer": "https://www.nba.com/",
-})
-_nba_http.STATS_TIMEOUT = 90
-
-import requests as _req
+# ── NBA-API: the live headers, timeout and raw archive (nba_api_utils) ───────
+# Certificate verification stays on. The old process-wide requests.get patch
+# (verify=False) is gone: nba_api sends through its own Session, so it never
+# applied to these calls, only to unrelated requests.get callers.
 import requests          # needed for requests.exceptions in except clauses
-_orig_get = _req.get
-def _patched_get(url, **kwargs):
-    kwargs.setdefault("verify", False)
-    return _orig_get(url, **kwargs)
-_req.get = _patched_get
+from nba_api_utils import configure_stats_http
+
+configure_stats_http()
 # ─────────────────────────────────────────────────────────────────────────────
 
 from nba_api.stats.endpoints import leaguegamefinder, leaguegamelog
@@ -116,6 +102,8 @@ REST_DAY_ADVANTAGE   = 0.8
 
 # Game inputs have one implementation shared with live predictions.
 PLAYER_STATS  = ["PTS", "REB", "AST", "FG3M", "STL", "BLK"]
+# Bootstrap only the markets the props engine uses, under its labels (FG3M is "3PM").
+CALIB_MARKETS = {"PTS": "PTS", "REB": "REB", "AST": "AST", "FG3M": "3PM"}
 POS_GROUPS    = ["G", "F", "C"]
 
 
@@ -295,6 +283,25 @@ def hand_tuned_predict(df: pd.DataFrame) -> np.ndarray:
 # SECTION 4 — GAME MODEL FITTING
 # =============================================================================
 
+def apply_test_gate(recommendation, test_ll, test_bs, ht_test_ll, ht_test_bs):
+    """v10: a validation "swap" must also beat hand-tuned on the held-out test season.
+
+    Returns (recommendation, gate) with gate in {"passed", "failed", "not_run"}.
+    The test season still never chooses between models; it can only veto a
+    swap. In the 2026-27 configuration the learned model won on 2024-25
+    validation (log loss 0.6014 vs 0.6113) but lost on 2025-26 (0.6010 vs 0.5977).
+    """
+    if None in (test_ll, test_bs, ht_test_ll, ht_test_bs):
+        gate = "not_run"
+    elif test_ll <= ht_test_ll and test_bs <= ht_test_bs:
+        gate = "passed"
+    else:
+        gate = "failed"
+    if recommendation == "swap" and gate != "passed":
+        return "monitor", gate
+    return recommendation, gate
+
+
 def fit_game_models(df_train: pd.DataFrame, df_val: pd.DataFrame,
                     df_test: pd.DataFrame = None,
                     features: list = None) -> dict:
@@ -395,6 +402,14 @@ def fit_game_models(df_train: pd.DataFrame, df_val: pd.DataFrame,
             print(f"  {'Hand-tuned':<20} {ht_test_ll:>10.4f} {ht_test_bs:>10.4f}")
             print(f"  {'Learned (LogReg)':<20} {test_log_loss:>10.4f} {test_brier:>10.4f}")
 
+    validation_recommendation = recommendation
+    recommendation, test_gate = apply_test_gate(
+        recommendation, test_log_loss, test_brier, ht_test_ll, ht_test_bs
+    )
+    if validation_recommendation == "swap" and recommendation != "swap":
+        print(f"  ✗ Held-out gate {test_gate}: the learned model must also beat hand-tuned "
+              f"on {TEST_SEASON} → {recommendation}, not swap")
+
     return {
         "log_model":              log_model,
         "ridge_model":            ridge_model,
@@ -422,6 +437,8 @@ def fit_game_models(df_train: pd.DataFrame, df_val: pd.DataFrame,
         "val_games":              len(df_val),
         "train_games":            len(df_train),
         "recommendation":         recommendation,
+        "validation_recommendation": validation_recommendation,
+        "test_gate":              test_gate,
     }
 
 
@@ -814,89 +831,68 @@ def bootstrap_calibration(df_game: pd.DataFrame,
                            df_players: pd.DataFrame,
                            player_result: dict) -> dict:
     """
-    Build a calibration.json-compatible starting state from historical data.
+    Build a calibration.json starting state from historical data.
     This seeds the file before live bets so calibrate.py has a valid prior.
 
-    Computes:
-      - overall: historical win rate of home-team favorites using hand-tuned model
-      - market_direction: hit rates split by stat / over vs under based on EWMA
-      - player_market: per-player per-stat mean projection bias
+    Emits calibrate.py's schema, built by calibrate.py's own functions, so
+    _load_calibration() reads it like any calibrate.py output:
+      - market_direction: "3PM_OVER" -> n/hits/raw_rate/rate/conf_adj, where the
+        pick is the EWMA projection vs its rolling median and the line proxy is
+        the EWMA projection itself
+      - player_market: "Player|3PM" -> n/mean_residual/adj (actual - EWMA)
+    Only CALIB_MARKETS (PTS, REB, AST, 3PM) are included.
     """
     print("\n  === CALIBRATION BOOTSTRAP ===")
-    calib: dict = {"overall": {}, "market_direction": {}, "player_market": {}}
 
-    # ── Overall (game model) ─────────────────────────────────────────────────
+    # ── Game model favorite hit rate (printed only; not part of the schema) ──
     if not df_game.empty:
         ht_probs = hand_tuned_predict(df_game)
         fav_mask = ht_probs >= 0.5
         fav_hit  = df_game["home_win"].values[fav_mask]
         if len(fav_hit):
-            calib["overall"] = {
-                "bets": len(fav_hit),
-                "hits": int(fav_hit.sum()),
-                "rate": round(float(fav_hit.mean()), 4),
-            }
             print(f"  Game model favorite hit rate: {fav_hit.mean():.3f} "
                   f"({fav_hit.sum()}/{len(fav_hit)})")
 
-    # ── Player market direction (per stat) ───────────────────────────────────
-    for stat in PLAYER_STATS:
-        ewma_col   = f"ewma_{stat}"
-        actual_col = f"actual_{stat}"
-        if ewma_col not in df_players.columns or actual_col not in df_players.columns:
-            continue
-
-        sub = df_players[[ewma_col, actual_col]].dropna()
-        if sub.empty:
-            continue
-
-        # "Line" proxy = EWMA projection itself
-        # OVER pick = when projection > rolling median (i.e. model bullish)
-        over_mask  = sub[ewma_col] > sub[ewma_col].expanding().median().shift(1).fillna(sub[ewma_col].median())
-        under_mask = ~over_mask
-
-        for pick_label, mask in [("OVER", over_mask), ("UNDER", under_mask)]:
-            picks  = sub[mask]
-            if picks.empty:
-                continue
-            if pick_label == "OVER":
-                hits = (picks[actual_col] > picks[ewma_col]).sum()
-            else:
-                hits = (picks[actual_col] < picks[ewma_col]).sum()
-            key = f"{stat}_{pick_label}"
-            calib["market_direction"][key] = {
-                "hits": int(hits),
-                "bets": len(picks),
-                "rate": round(hits / len(picks), 4),
-            }
-
-    # ── Player-market bias (additive residual per player) ────────────────────
-    for stat in PLAYER_STATS:
+    # ── One graded row per player-game per market, as bet_log.csv would hold ──
+    frames = []
+    for stat, label in CALIB_MARKETS.items():
         ewma_col   = f"ewma_{stat}"
         actual_col = f"actual_{stat}"
         if ewma_col not in df_players.columns or actual_col not in df_players.columns:
             continue
 
         sub = df_players[["player_name", ewma_col, actual_col]].dropna()
-        sub["residual"] = sub[actual_col] - sub[ewma_col]
+        if sub.empty:
+            continue
 
-        for pname, grp in sub.groupby("player_name"):
-            n    = len(grp)
-            if n < 10:
-                continue
-            mean = float(grp["residual"].mean())
-            std  = float(grp["residual"].std())
-            shrink = n / (n + 15)
-            nudge  = mean * shrink
-            if abs(nudge) > 0.2:   # only store non-trivial biases
-                key = f"{pname}|{stat}"
-                calib["player_market"][key] = {
-                    "n":     n,
-                    "mean":  round(mean, 4),
-                    "std":   round(std, 4),
-                    "nudge": round(nudge, 4),
-                }
+        # OVER pick = when projection > rolling median (i.e. model bullish)
+        over_mask = sub[ewma_col] > sub[ewma_col].expanding().median().shift(1).fillna(sub[ewma_col].median())
+        hit = np.where(over_mask, sub[actual_col] > sub[ewma_col], sub[actual_col] < sub[ewma_col])
+        frames.append(pd.DataFrame({
+            "player":     sub["player_name"].values,
+            "market":     label,
+            "pick":       np.where(over_mask, "OVER", "UNDER"),
+            "hit":        hit.astype(int),
+            "projection": sub[ewma_col].values,
+            "actual":     sub[actual_col].values,
+        }))
 
+    graded = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(
+        columns=["player", "market", "pick", "hit", "projection", "actual"])
+    total = len(graded)
+    empirical_rate = float(graded["hit"].mean()) if total else _calibrate.DEFAULT_PRIOR
+    prior, prior_source = _calibrate._choose_prior(total, empirical_rate)
+
+    calib = {
+        "generated": datetime.now().date().isoformat(),
+        "total_bets": total,
+        "overall_hit_rate": round(empirical_rate, 3),
+        "prior_hit_rate": round(prior, 3),
+        "prior_source": prior_source,
+        "market_direction": _calibrate._calibrate_market_direction(graded, prior) if total else {},
+        "player_market": _calibrate._calibrate_player_market(graded) if total else {},
+    }
+    print(f"  market_direction entries: {len(calib['market_direction'])}")
     print(f"  player_market entries: {len(calib['player_market'])}")
     return calib
 

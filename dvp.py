@@ -90,12 +90,10 @@ STAT_TO_DVP_COL = {
     "TOV":  "TO/48",
 }
 
-# ESPN short abbreviations → standard NBA API abbreviations
-_ESPN_NORM = {
-    "NY": "NYK", "GS": "GSW", "NO": "NOP",
-    "SA": "SAS", "WSH": "WAS", "UTH": "UTA",
-    "UTAH": "UTA",
-}
+# ESPN short abbreviations → standard NBA API abbreviations (v10: team_codes.py)
+import team_codes as _team_codes  # noqa: E402
+
+_ESPN_NORM = dict(_team_codes.ESPN_TO_NBA_ABBR)
 
 MIN_MINUTES_THRESHOLD = 10   # rows below this are noise
 MIN_TOTAL_MINUTES     = 240  # v6 Fix 2: ~10 games × 24 avg min; was 80 (too noisy)

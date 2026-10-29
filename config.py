@@ -15,6 +15,15 @@ without editing code, e.g.:
 import os
 from datetime import date
 
+from dotenv import load_dotenv
+
+# Load .env here so ODDS_API_KEY below sees it whichever module imports config first.
+load_dotenv()
+
+# No fallback value: unset means None. odds_api.get_json() then skips every Odds
+# API request instead of sending one, and the props model prints a warning at import.
+ODDS_API_KEY = os.environ.get("ODDS_API_KEY")
+
 # NBA seasons start in October and are named by their starting year, e.g.
 # the 2026-27 season runs October 2026 -> June 2027.
 SEASON_START_MONTH = 10

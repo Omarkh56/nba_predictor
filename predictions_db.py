@@ -3,8 +3,8 @@ predictions_db.py — SQLite persistence for NBA predictions.
 
 Replaces the per-day predictions_YYYY-MM-DD.json and
 game_predictions_YYYY-MM-DD.json files with a single predictions.db
-database.  Writing upserts on (date, player, market) / (date, home, away)
-so re-running the same day overwrites cleanly.
+database. Props freeze the first priced entry and retain each run's proposal;
+game predictions still upsert on (date, home, away).
 """
 
 import sqlite3
@@ -12,7 +12,50 @@ from datetime import date
 from pathlib import Path
 from typing import List
 
+from finance import ensure_finance_fields, valid_decimal_odds
+from run_log import RunLog
+
 DB_PATH = Path(__file__).parent / "predictions.db"
+
+PROP_FINANCE_FIELDS = (
+    "bet_id", "logged_at", "game_start_at", "entry_american_odds",
+    "entry_decimal_odds", "market_implied_probability", "vig_pct",
+    "model_edge", "expected_value", "kelly_fraction", "stake_skip_reason",
+    "bankroll_before", "stake_amount", "closing_line", "closing_decimal_odds",
+    "line_clv", "implied_probability_clv", "raw_implied_probability_clv",
+    "odds_book", "odds_source", "odds_event_id", "odds_snapshot_at",
+    "closing_snapshot_at", "clv_unmatched_reason",
+)
+
+PROP_PROVENANCE_FIELDS = (
+    "run_id",
+    "rs_raw_count",
+    "rs_usable_count",
+    "po_raw_count",
+    "po_usable_count",
+    "fetch_status",
+    "source_last_game_date",
+    "data_as_of_utc",
+    "data_age_days",
+    "active_season",
+    "season_mode",
+    "model_version",
+    "book_spread",
+    "model_margin",
+    "residual_correction_version",
+    "probability_calibration_version",
+)
+
+PROP_WRITE_FIELDS = (
+    "run_id", "game", "player", "market", "line", "pick", "projection", "confidence",
+    "p_model", "edge_pct", "flags", "po_count", "avg_min", "book_count",
+    "usg_pct", "game_spread", "game_total", "game_pace", "fav_win_pct",
+    "p_market", "decimal_odds", "stake_pct", "rs_raw_count", "rs_usable_count",
+    "po_raw_count", "po_usable_count", "fetch_status", "source_last_game_date",
+    "data_as_of_utc", "data_age_days", "active_season", "season_mode",
+    "model_version", "book_spread", "model_margin", "residual_correction_version",
+    "probability_calibration_version",
+) + PROP_FINANCE_FIELDS
 
 _CREATE_PROP = """
 CREATE TABLE IF NOT EXISTS prop_predictions (
@@ -24,6 +67,7 @@ CREATE TABLE IF NOT EXISTS prop_predictions (
     pick        TEXT,
     projection  REAL,
     confidence  REAL,
+    p_model     REAL,
     edge_pct    REAL,
     flags       TEXT,
     po_count    INTEGER,
@@ -37,6 +81,21 @@ CREATE TABLE IF NOT EXISTS prop_predictions (
     p_market    REAL,
     decimal_odds REAL,
     stake_pct   REAL,
+    rs_raw_count INTEGER,
+    rs_usable_count INTEGER,
+    po_raw_count INTEGER,
+    po_usable_count INTEGER,
+    fetch_status TEXT,
+    source_last_game_date TEXT,
+    data_as_of_utc TEXT,
+    data_age_days INTEGER,
+    active_season TEXT,
+    season_mode TEXT,
+    model_version TEXT,
+    book_spread REAL,
+    model_margin REAL,
+    residual_correction_version TEXT,
+    probability_calibration_version TEXT,
     PRIMARY KEY (date, player, market)
 )
 """
@@ -45,9 +104,50 @@ CREATE TABLE IF NOT EXISTS prop_predictions (
 # EXISTS is a no-op on an already-existing table, so a real DB created before
 # a given column existed needs an explicit ALTER TABLE. Add new columns here.
 _MIGRATIONS = [
+    ("prop_predictions", "run_id", "TEXT"),
+    ("prop_predictions", "p_model", "REAL"),
     ("prop_predictions", "p_market", "REAL"),
     ("prop_predictions", "decimal_odds", "REAL"),
     ("prop_predictions", "stake_pct", "REAL"),
+    ("prop_predictions", "rs_raw_count", "INTEGER"),
+    ("prop_predictions", "rs_usable_count", "INTEGER"),
+    ("prop_predictions", "po_raw_count", "INTEGER"),
+    ("prop_predictions", "po_usable_count", "INTEGER"),
+    ("prop_predictions", "fetch_status", "TEXT"),
+    ("prop_predictions", "source_last_game_date", "TEXT"),
+    ("prop_predictions", "data_as_of_utc", "TEXT"),
+    ("prop_predictions", "data_age_days", "INTEGER"),
+    ("prop_predictions", "active_season", "TEXT"),
+    ("prop_predictions", "season_mode", "TEXT"),
+    ("prop_predictions", "model_version", "TEXT"),
+    ("prop_predictions", "book_spread", "REAL"),
+    ("prop_predictions", "model_margin", "REAL"),
+    ("prop_predictions", "residual_correction_version", "TEXT"),
+    ("prop_predictions", "probability_calibration_version", "TEXT"),
+    ("prop_predictions", "bet_id", "TEXT"),
+    ("prop_predictions", "logged_at", "TEXT"),
+    ("prop_predictions", "game_start_at", "TEXT"),
+    ("prop_predictions", "entry_american_odds", "REAL"),
+    ("prop_predictions", "entry_decimal_odds", "REAL"),
+    ("prop_predictions", "market_implied_probability", "REAL"),
+    ("prop_predictions", "vig_pct", "REAL"),
+    ("prop_predictions", "model_edge", "REAL"),
+    ("prop_predictions", "expected_value", "REAL"),
+    ("prop_predictions", "kelly_fraction", "REAL"),
+    ("prop_predictions", "stake_skip_reason", "TEXT"),
+    ("prop_predictions", "bankroll_before", "REAL"),
+    ("prop_predictions", "stake_amount", "REAL"),
+    ("prop_predictions", "closing_line", "REAL"),
+    ("prop_predictions", "closing_decimal_odds", "REAL"),
+    ("prop_predictions", "line_clv", "REAL"),
+    ("prop_predictions", "implied_probability_clv", "REAL"),
+    ("prop_predictions", "raw_implied_probability_clv", "REAL"),
+    ("prop_predictions", "odds_book", "TEXT"),
+    ("prop_predictions", "odds_source", "TEXT"),
+    ("prop_predictions", "odds_event_id", "TEXT"),
+    ("prop_predictions", "odds_snapshot_at", "TEXT"),
+    ("prop_predictions", "closing_snapshot_at", "TEXT"),
+    ("prop_predictions", "clv_unmatched_reason", "TEXT"),
     ("game_predictions", "home_prob", "REAL"),
     ("game_predictions", "p_market", "REAL"),
     ("game_predictions", "decimal_odds", "REAL"),
@@ -82,50 +182,61 @@ def _connect(path: Path = DB_PATH) -> sqlite3.Connection:
         existing = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
         if col not in existing:
             conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {coltype}")
+    identity = {"run_id", "date", "player", "market"}
+    definitions = [f"{row[1]} {row[2]}" + (" NOT NULL" if row[1] in identity else "")
+                   for row in conn.execute("PRAGMA table_info(prop_predictions)")]
+    conn.execute("CREATE TABLE IF NOT EXISTS pick_runs (" + ", ".join(definitions) +
+                 ", paper_stake REAL, PRIMARY KEY (run_id, date, player, market))")
+    for operation in ("UPDATE", "DELETE"):
+        conn.execute(f"CREATE TRIGGER IF NOT EXISTS pick_runs_no_{operation.lower()} "
+                     f"BEFORE {operation} ON pick_runs BEGIN "
+                     "SELECT RAISE(ABORT, 'pick_runs is append-only'); END")
     conn.commit()
     return conn
 
 
-def upsert_prop_predictions(rows: List[dict], game_date: date, path: Path = DB_PATH) -> int:
-    """Insert or replace prop pick rows for game_date. Returns row count written."""
+def upsert_prop_predictions(rows: List[dict], game_date: date, path: Path = DB_PATH,
+                            *, run_id=None) -> int:
+    """Freeze the first priced pick; append every run's proposal atomically.
+
+    Unpriced proposals may change until the first valid entry price arrives.
+    Once priced, the whole pick stays fixed so reruns cannot change grading.
+    Direct callers get their own RunLog; the daily CLI passes its run_id.
+    """
     if not rows:
         return 0
     date_str = game_date.isoformat()
+    own_run = None
+    if run_id is None:
+        own_run = RunLog("prop_predictions", game_date, path=Path(path).parent / "run_log.jsonl")
+        run_id = own_run.run_id
+    if not isinstance(run_id, str) or not run_id.strip():
+        raise ValueError("run_id must be a nonempty RunLog ID")
+    columns = ("date",) + PROP_WRITE_FIELDS
+    placeholders = ",".join("?" for _ in columns)
+    column_sql = ",".join(columns)
     with _connect(path) as conn:
-        conn.executemany(
-            """INSERT OR REPLACE INTO prop_predictions
-               (date, game, player, market, line, pick, projection, confidence,
-                edge_pct, flags, po_count, avg_min, book_count, usg_pct,
-                game_spread, game_total, game_pace, fav_win_pct, p_market,
-                decimal_odds, stake_pct)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-            [
-                (
-                    date_str,
-                    r.get("game", ""),
-                    r["player"],
-                    r["market"],
-                    r.get("line"),
-                    r.get("pick"),
-                    r.get("projection"),
-                    r.get("confidence"),
-                    r.get("edge_pct"),
-                    r.get("flags", ""),
-                    r.get("po_count"),
-                    r.get("avg_min"),
-                    r.get("book_count"),
-                    r.get("usg_pct"),
-                    r.get("game_spread"),
-                    r.get("game_total"),
-                    r.get("game_pace"),
-                    r.get("fav_win_pct"),
-                    r.get("p_market"),
-                    r.get("decimal_odds"),
-                    r.get("stake_pct"),
-                )
-                for r in rows
-            ],
-        )
+        for original in rows:
+            row = ensure_finance_fields({**original, "date": date_str, "run_id": run_id})
+            values = (date_str,) + tuple(row.get(f, "" if f in ("game", "flags") else None)
+                                        for f in PROP_WRITE_FIELDS)
+            inserted = conn.execute(f"INSERT OR IGNORE INTO pick_runs ({column_sql}, paper_stake) "
+                                    f"VALUES ({placeholders}, ?)", values + (row.get("stake_amount"),))
+            if not inserted.rowcount:
+                continue  # A retry of this run cannot rewrite its proposal.
+            existing = conn.execute(
+                "SELECT COALESCE(entry_decimal_odds, decimal_odds) FROM prop_predictions "
+                "WHERE date=? AND player=? AND market=?",
+                (date_str, row["player"], row["market"]),
+            ).fetchone()
+            if existing and valid_decimal_odds(existing[0]):
+                continue
+            conn.execute(f"INSERT INTO prop_predictions ({column_sql}) VALUES ({placeholders}) "
+                         "ON CONFLICT(date, player, market) DO UPDATE SET " +
+                         ", ".join(f"{f}=excluded.{f}" for f in PROP_WRITE_FIELDS), values)
+    if own_run:
+        own_run.stage("prop_predictions", "ok", required=True, picks=len(rows))
+        own_run.finish()
     return len(rows)
 
 
@@ -174,7 +285,11 @@ def load_prop_predictions(target_date: date, path: Path = DB_PATH) -> List[dict]
     with _connect(path) as conn:
         cur = conn.execute(
             "SELECT player, market, line, pick, projection, flags, p_market, confidence, "
-            "decimal_odds, stake_pct "
+            "decimal_odds, stake_pct, rs_raw_count, rs_usable_count, po_raw_count, "
+            "po_usable_count, fetch_status, source_last_game_date, data_as_of_utc, "
+            "data_age_days, active_season, season_mode, model_version, book_spread, model_margin, p_model, "
+            "residual_correction_version, probability_calibration_version, "
+            + ", ".join(PROP_FINANCE_FIELDS) + ", run_id, game "
             "FROM prop_predictions WHERE date = ? ORDER BY confidence DESC",
             (date_str,),
         )
@@ -190,6 +305,25 @@ def load_prop_predictions(target_date: date, path: Path = DB_PATH) -> List[dict]
                 "confidence": float(row[7]) if row[7] is not None else None,
                 "decimal_odds": float(row[8]) if row[8] is not None else None,
                 "stake_pct": float(row[9]) if row[9] is not None else None,
+                "rs_raw_count": int(row[10]) if row[10] is not None else None,
+                "rs_usable_count": int(row[11]) if row[11] is not None else None,
+                "po_raw_count": int(row[12]) if row[12] is not None else None,
+                "po_usable_count": int(row[13]) if row[13] is not None else None,
+                "fetch_status": row[14],
+                "source_last_game_date": row[15],
+                "data_as_of_utc": row[16],
+                "data_age_days": int(row[17]) if row[17] is not None else None,
+                "active_season": row[18],
+                "season_mode": row[19],
+                "model_version": row[20],
+                "book_spread": float(row[21]) if row[21] is not None else None,
+                "model_margin": float(row[22]) if row[22] is not None else None,
+                "p_model": float(row[23]) if row[23] is not None else None,
+                "residual_correction_version": row[24],
+                "probability_calibration_version": row[25],
+                **{field: row[26 + index] for index, field in enumerate(PROP_FINANCE_FIELDS)},
+                "run_id": row[26 + len(PROP_FINANCE_FIELDS)],
+                "game": row[27 + len(PROP_FINANCE_FIELDS)],
             }
             for row in cur.fetchall()
         ]
@@ -211,17 +345,15 @@ def load_all_prop_flags(path: Path = DB_PATH) -> dict:
 
 
 def load_all_prop_model_confidence(path: Path = DB_PATH) -> dict:
-    """Return {(date, player, market, pick): p_model} for every stored prop
-    prediction — p_model is confidence/100 (a 0-1 probability the picked
-    side hits). Used to backfill p_model into bet_log.csv for already-graded
-    rows, the same way load_all_prop_flags() backfills Flags."""
+    """Return stored selected-side p_model, falling back to historical confidence/100."""
     if not Path(path).exists():
         return {}
     with _connect(path) as conn:
-        cur = conn.execute("SELECT date, player, market, pick, confidence FROM prop_predictions")
+        cur = conn.execute("SELECT date, player, market, pick, confidence, p_model FROM prop_predictions")
         return {
             (row[0], row[1].strip(), row[2].strip(), (row[3] or "").strip().upper()):
-                (float(row[4]) / 100.0 if row[4] is not None else None)
+                (float(row[5]) if row[5] is not None else
+                 float(row[4]) / 100.0 if row[4] is not None else None)
             for row in cur.fetchall()
         }
 

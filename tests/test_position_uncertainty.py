@@ -26,6 +26,9 @@ def clean_variance(monkeypatch):
     monkeypatch.setattr(predictor, "PLAYER_STD_CACHE", {})
     monkeypatch.setattr(predictor, "PROP_STD_DEV_PO", {"player_points": 6, "combo": 9})
     monkeypatch.setattr(predictor, "PROP_STD_DEV_RS", {"player_points": 5.7, "combo": 8})
+    # These tests check the default (10+ games) projection path with a short mocked history;
+    # the early-season prior-season path is covered in tests/test_early_season.py.
+    monkeypatch.setattr(predictor, "EARLY_SEASON_FALLBACK_ENABLED", False)
 
 
 @pytest.fixture
@@ -106,8 +109,9 @@ def test_real_projection_threads_resolved_position_into_actual_sd(projection_set
     projection_setup({})  # Set projection factors to neutral; real project_stat still runs.
     monkeypatch.setattr(predictor, "PLAYER_POS_CACHE", {"Probe": "PG"})
     monkeypatch.setattr(predictor, "get_player_id", lambda _: 1)
-    monkeypatch.setattr(predictor, "get_player_logs_blended", lambda _: (
-        pd.DataFrame(), pd.DataFrame({"PTS": [20], "MIN": [20]}), False, 0, 0))
+    rs = pd.DataFrame({"PTS": [20], "MIN": [20]})
+    monkeypatch.setattr(predictor, "get_player_logs_blended", lambda _: predictor.PlayerLogHistory(
+        pd.DataFrame(), rs, pd.DataFrame(), rs, False, 0, 0))
     monkeypatch.setattr(predictor, "_compute_prop_range", lambda *_: (None, None))
     monkeypatch.setattr(predictor, "_apply_combo_and_usg", lambda total, *_: (total, 1, 1))
     monkeypatch.setattr(predictor, "_build_prop_metadata", lambda *_: {})
@@ -121,6 +125,28 @@ def test_real_projection_threads_resolved_position_into_actual_sd(projection_set
     evaluated = predictor.evaluate_prop(projection, 21.5, "player_points", sd=sd)
     assert evaluated == predictor.evaluate_prop(20, 21.5, "player_points", sd=7)
     assert evaluated != predictor.evaluate_prop(20, 21.5, "player_points", sd=5.7)
+
+
+def test_exact_market_residual_correction_applies_once_after_projection(projection_setup, monkeypatch):
+    projection_setup({})
+    monkeypatch.setattr(predictor, "get_player_id", lambda _: 1)
+    rs = pd.DataFrame({"PTS": [20], "MIN": [20]})
+    monkeypatch.setattr(predictor, "get_player_logs_blended", lambda _: predictor.PlayerLogHistory(
+        pd.DataFrame(), rs, pd.DataFrame(), rs, False, 0, 0))
+    monkeypatch.setattr(predictor, "_compute_prop_range", lambda *_: (None, None))
+    monkeypatch.setattr(predictor, "_apply_combo_and_usg", lambda total, *_: (total, 1, 1))
+    monkeypatch.setattr(predictor, "_build_prop_metadata", lambda *_: {})
+    monkeypatch.setattr(predictor, "CALIB", {"player_market": {"Probe|PTS": {"adj": -100}}})
+    monkeypatch.setattr(predictor, "RESIDUAL_CORRECTIONS", {
+        "version": "v9-unconditional-1", "form": "additive",
+        "markets": {"PTS": {"correction": -1.3}},
+    })
+    with mock.patch("requests.sessions.Session.request", side_effect=AssertionError("Network forbidden")):
+        projection, _, _, metadata = predictor.project_prop(
+            "Probe", "player_points", "BOS", 2, [], None, True, "NYK")
+    assert projection == pytest.approx(18.7)
+    assert metadata["residual_correction"] == pytest.approx(-1.3)
+    assert metadata["residual_correction_version"] == "v9-unconditional-1"
 
 
 @pytest.fixture

@@ -1,0 +1,453 @@
+{
+  "season": "2025-26",
+  "games": {
+    "population": "2025-26 cached regular-season and playoff games with shared pre-game features",
+    "training_seasons": [
+      "2020-21",
+      "2021-22",
+      "2022-23"
+    ],
+    "training_validation_test_seasons": [
+      "2023-24",
+      "2024-25"
+    ],
+    "feature_version": "season-history-v1",
+    "cache": {
+      "requests": 0,
+      "retries": 0,
+      "failures": 0,
+      "cache_hits": 4,
+      "cache_misses": 0,
+      "cache_writes": 0,
+      "empty_success": 0,
+      "corrupt_cache_entries": 0,
+      "rate_limit_delay_s": 0.0,
+      "backoff_delay_s": 0.0,
+      "live_call_s": 0.0
+    },
+    "overall": {
+      "n": 1262,
+      "mean_quote_probability": 0.5538676655499124,
+      "realized_rate": 0.5522979397781299,
+      "brier": 0.20925069853715095,
+      "log_loss": 0.6068957904037892,
+      "favorite_accuracy": 0.6759112519809826
+    },
+    "by_regime": {
+      "Playoffs": {
+        "n": 85,
+        "mean_quote_probability": 0.5548062234008068,
+        "realized_rate": 0.5529411764705883,
+        "brier": 0.2195164751085878,
+        "log_loss": 0.6297308465027166,
+        "favorite_accuracy": 0.6705882352941176
+      },
+      "Regular Season": {
+        "n": 1177,
+        "mean_quote_probability": 0.5537998852463218,
+        "realized_rate": 0.5522514868309261,
+        "brier": 0.20850932979579823,
+        "log_loss": 0.6052466996914623,
+        "favorite_accuracy": 0.6762956669498725
+      }
+    },
+    "by_month": {
+      "2025-10": {
+        "n": 32,
+        "mean_quote_probability": 0.564834585117238,
+        "realized_rate": 0.5625,
+        "brier": 0.21861085492050958,
+        "log_loss": 0.6260051215211992,
+        "favorite_accuracy": 0.6875
+      },
+      "2025-11": {
+        "n": 218,
+        "mean_quote_probability": 0.546906758060724,
+        "realized_rate": 0.5504587155963303,
+        "brier": 0.19421134454095168,
+        "log_loss": 0.5734753162330681,
+        "favorite_accuracy": 0.7568807339449541
+      },
+      "2025-12": {
+        "n": 195,
+        "mean_quote_probability": 0.5439180440701745,
+        "realized_rate": 0.5384615384615384,
+        "brier": 0.24216821609582553,
+        "log_loss": 0.6759770791294266,
+        "favorite_accuracy": 0.5846153846153846
+      },
+      "2026-01": {
+        "n": 231,
+        "mean_quote_probability": 0.550379635819091,
+        "realized_rate": 0.5541125541125541,
+        "brier": 0.23568047092149827,
+        "log_loss": 0.6650115121580596,
+        "favorite_accuracy": 0.5714285714285714
+      },
+      "2026-02": {
+        "n": 166,
+        "mean_quote_probability": 0.5529698975802757,
+        "realized_rate": 0.46987951807228917,
+        "brier": 0.21536359054406107,
+        "log_loss": 0.6217794180690095,
+        "favorite_accuracy": 0.6506024096385542
+      },
+      "2026-03": {
+        "n": 239,
+        "mean_quote_probability": 0.5687336917966637,
+        "realized_rate": 0.602510460251046,
+        "brier": 0.17846513085728927,
+        "log_loss": 0.5398584540584862,
+        "favorite_accuracy": 0.7364016736401674
+      },
+      "2026-04": {
+        "n": 138,
+        "mean_quote_probability": 0.5578946287788618,
+        "realized_rate": 0.6014492753623188,
+        "brier": 0.18525703377614836,
+        "log_loss": 0.5567096378981253,
+        "favorite_accuracy": 0.7753623188405797
+      },
+      "2026-05": {
+        "n": 38,
+        "mean_quote_probability": 0.554745649760073,
+        "realized_rate": 0.5263157894736842,
+        "brier": 0.20592073676210762,
+        "log_loss": 0.6005722816763177,
+        "favorite_accuracy": 0.7105263157894737
+      },
+      "2026-06": {
+        "n": 5,
+        "mean_quote_probability": 0.537750135002384,
+        "realized_rate": 0.2,
+        "brier": 0.2563578403347697,
+        "log_loss": 0.7060568540539298,
+        "favorite_accuracy": 0.4
+      }
+    },
+    "reliability": [
+      {
+        "probability_band": "0.0-0.2",
+        "n": 16,
+        "quoted": 0.15741231007326528,
+        "realized": 0.1875
+      },
+      {
+        "probability_band": "0.2-0.3",
+        "n": 92,
+        "quoted": 0.25736527074764465,
+        "realized": 0.22826086956521738
+      },
+      {
+        "probability_band": "0.3-0.4",
+        "n": 135,
+        "quoted": 0.3537201551879358,
+        "realized": 0.25925925925925924
+      },
+      {
+        "probability_band": "0.4-0.5",
+        "n": 219,
+        "quoted": 0.4545371677937721,
+        "realized": 0.4292237442922374
+      },
+      {
+        "probability_band": "0.5-0.6",
+        "n": 287,
+        "quoted": 0.5481929611762157,
+        "realized": 0.5505226480836237
+      },
+      {
+        "probability_band": "0.6-0.7",
+        "n": 239,
+        "quoted": 0.6495428298470358,
+        "realized": 0.6861924686192469
+      },
+      {
+        "probability_band": "0.7-0.8",
+        "n": 187,
+        "quoted": 0.7444479206541389,
+        "realized": 0.8021390374331551
+      },
+      {
+        "probability_band": "0.8-1.0",
+        "n": 87,
+        "quoted": 0.847184528775713,
+        "realized": 0.8275862068965517
+      }
+    ],
+    "examples": [
+      {
+        "game_date": "2025-11-17",
+        "away": "OKC",
+        "home": "NOP",
+        "p_home": 0.05817679424700282,
+        "home_american": 1618.898424953208,
+        "away_american": -1618.8984249532075,
+        "home_win": 0
+      },
+      {
+        "game_date": "2026-03-11",
+        "away": "CLE",
+        "home": "ORL",
+        "p_home": 0.5000799147244619,
+        "home_american": -100.03197099969202,
+        "away_american": 100.03197099969202,
+        "home_win": 1
+      },
+      {
+        "game_date": "2025-11-02",
+        "away": "NOP",
+        "home": "OKC",
+        "p_home": 0.9339614113940995,
+        "home_american": -1414.2661603016916,
+        "away_american": 1414.2661603016916,
+        "home_win": 1
+      }
+    ],
+    "overround_max_error": 1.1102230246251565e-16
+  },
+  "props": {
+    "population": "L10 eligible player-games; model sets floor(corrected projection)+0.5 line",
+    "quote_price": "two-sided fair odds with no vig",
+    "rows": 241400,
+    "graded": 180520,
+    "void": 60880,
+    "overall_raw": {
+      "n": 180520,
+      "mean_quote_probability": 0.4712906763073212,
+      "realized_rate": 0.44156326168845556,
+      "brier": 0.24797724690194267,
+      "log_loss": 0.6901071548841955,
+      "favorite_accuracy": 0.53522601373809
+    },
+    "overall_calibrated": {
+      "n": 180520,
+      "mean_quote_probability": 0.44269442501398976,
+      "realized_rate": 0.44156326168845556,
+      "brier": 0.24505205302098,
+      "log_loss": 0.6831561725724263,
+      "favorite_accuracy": 0.5585032129403944
+    },
+    "by_market": {
+      "PTS": {
+        "raw": {
+          "n": 22565,
+          "mean_quote_probability": 0.4314025914041651,
+          "realized_rate": 0.45778861068025706,
+          "brier": 0.25219203685353314,
+          "log_loss": 0.6992042518608086,
+          "favorite_accuracy": 0.5401728340350099
+        },
+        "calibrated": {
+          "n": 22565,
+          "mean_quote_probability": 0.45099760477265854,
+          "realized_rate": 0.45778861068025706,
+          "brier": 0.24876591096133432,
+          "log_loss": 0.6907388381805889,
+          "favorite_accuracy": 0.542078440062043
+        }
+      },
+      "REB": {
+        "raw": {
+          "n": 22565,
+          "mean_quote_probability": 0.45424230489800527,
+          "realized_rate": 0.44511411477952584,
+          "brier": 0.24786279726762606,
+          "log_loss": 0.6904658851121099,
+          "favorite_accuracy": 0.5532461777088411
+        },
+        "calibrated": {
+          "n": 22565,
+          "mean_quote_probability": 0.4482570959795439,
+          "realized_rate": 0.44511411477952584,
+          "brier": 0.24667572770397928,
+          "log_loss": 0.6867179426180606,
+          "favorite_accuracy": 0.5569687569244405
+        }
+      },
+      "AST": {
+        "raw": {
+          "n": 22565,
+          "mean_quote_probability": 0.4512172495137585,
+          "realized_rate": 0.4351872368712608,
+          "brier": 0.24794079926236445,
+          "log_loss": 0.691738150937659,
+          "favorite_accuracy": 0.5590516286284068
+        },
+        "calibrated": {
+          "n": 22565,
+          "mean_quote_probability": 0.4276311843533282,
+          "realized_rate": 0.4351872368712608,
+          "brier": 0.24454883752143664,
+          "log_loss": 0.6825217576973992,
+          "favorite_accuracy": 0.5686239751828053
+        }
+      },
+      "3PM": {
+        "raw": {
+          "n": 22565,
+          "mean_quote_probability": 0.43002343886362826,
+          "realized_rate": 0.36596499002880567,
+          "brier": 0.237254897022698,
+          "log_loss": 0.6689055222904139,
+          "favorite_accuracy": 0.5523598493241746
+        },
+        "calibrated": {
+          "n": 22565,
+          "mean_quote_probability": 0.3682265372867289,
+          "realized_rate": 0.36596499002880567,
+          "brier": 0.22821478297857242,
+          "log_loss": 0.648125599203495,
+          "favorite_accuracy": 0.6331929980057611
+        }
+      },
+      "PTS+REB": {
+        "raw": {
+          "n": 22565,
+          "mean_quote_probability": 0.5011505694882997,
+          "realized_rate": 0.4583204077110569,
+          "brier": 0.24996097958422492,
+          "log_loss": 0.6936217490367647,
+          "favorite_accuracy": 0.5153556392643475
+        },
+        "calibrated": {
+          "n": 22565,
+          "mean_quote_probability": 0.4626698438925955,
+          "realized_rate": 0.4583204077110569,
+          "brier": 0.2483182637591232,
+          "log_loss": 0.6898824330898535,
+          "favorite_accuracy": 0.5407489474850432
+        }
+      },
+      "PTS+AST": {
+        "raw": {
+          "n": 22565,
+          "mean_quote_probability": 0.5008655865741716,
+          "realized_rate": 0.46009306448039,
+          "brier": 0.24977091757707293,
+          "log_loss": 0.6927350260290766,
+          "favorite_accuracy": 0.518413472191447
+        },
+        "calibrated": {
+          "n": 22565,
+          "mean_quote_probability": 0.4576594037651428,
+          "realized_rate": 0.46009306448039,
+          "brier": 0.24837064111316465,
+          "log_loss": 0.6898920316064249,
+          "favorite_accuracy": 0.5370706846886771
+        }
+      },
+      "REB+AST": {
+        "raw": {
+          "n": 22565,
+          "mean_quote_probability": 0.5001054366635581,
+          "realized_rate": 0.44839352980279196,
+          "brier": 0.24894363297369598,
+          "log_loss": 0.6912262424682012,
+          "favorite_accuracy": 0.5296698426767117
+        },
+        "calibrated": {
+          "n": 22565,
+          "mean_quote_probability": 0.45992352430967687,
+          "realized_rate": 0.44839352980279196,
+          "brier": 0.24693506766282877,
+          "log_loss": 0.6870444165264341,
+          "favorite_accuracy": 0.5512519388433414
+        }
+      },
+      "PRA": {
+        "raw": {
+          "n": 22565,
+          "mean_quote_probability": 0.501318233052983,
+          "realized_rate": 0.4616441391535564,
+          "brier": 0.24989191467432598,
+          "log_loss": 0.6929604113385306,
+          "favorite_accuracy": 0.513538666075781
+        },
+        "calibrated": {
+          "n": 22565,
+          "mean_quote_probability": 0.4661902057522432,
+          "realized_rate": 0.4616441391535564,
+          "brier": 0.2485871924674011,
+          "log_loss": 0.6903263616571532,
+          "favorite_accuracy": 0.5380899623310437
+        }
+      }
+    },
+    "by_regime": {
+      "Playoffs": {
+        "n": 14984,
+        "mean_quote_probability": 0.43893930874846887,
+        "realized_rate": 0.41517618793379607,
+        "brier": 0.24244685528011553,
+        "log_loss": 0.6781171081378216,
+        "favorite_accuracy": 0.5883609183128671
+      },
+      "Regular Season": {
+        "n": 165536,
+        "mean_quote_probability": 0.44303433090831235,
+        "realized_rate": 0.4439517687995361,
+        "brier": 0.24528787050448272,
+        "log_loss": 0.6836122989829239,
+        "favorite_accuracy": 0.5558005509375604
+      }
+    },
+    "reliability": [
+      {
+        "probability_band": "0.0-0.2",
+        "n": 1047,
+        "quoted": 0.1172470249102795,
+        "realized": 0.14995224450811842
+      },
+      {
+        "probability_band": "0.2-0.3",
+        "n": 1879,
+        "quoted": 0.2624773379708284,
+        "realized": 0.3251729643427355
+      },
+      {
+        "probability_band": "0.3-0.4",
+        "n": 18068,
+        "quoted": 0.36403369090263127,
+        "realized": 0.3773522249280496
+      },
+      {
+        "probability_band": "0.4-0.5",
+        "n": 155114,
+        "quoted": 0.4539787619505029,
+        "realized": 0.4507201155279343
+      },
+      {
+        "probability_band": "0.5-0.6",
+        "n": 4295,
+        "quoted": 0.5189824865125261,
+        "realized": 0.5024447031431898
+      },
+      {
+        "probability_band": "0.6-0.7",
+        "n": 110,
+        "quoted": 0.63027495324799,
+        "realized": 0.45454545454545453
+      },
+      {
+        "probability_band": "0.7-0.8",
+        "n": 7,
+        "quoted": 0.7232310785099089,
+        "realized": 0.5714285714285714
+      },
+      {
+        "probability_band": "0.8-1.0",
+        "n": 0,
+        "quoted": null,
+        "realized": null
+      }
+    ],
+    "overround_max_error": 2.220446049250313e-16
+  },
+  "runtime": {
+    "game_s": 1.060915292,
+    "prop_s": 4.265563542000001,
+    "total_s": 5.326479375
+  },
+  "source": "model-own no-vig lines/odds; strictly historical; no sportsbook odds"
+}

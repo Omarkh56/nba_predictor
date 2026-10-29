@@ -1,0 +1,82 @@
+{
+  "form": "additive",
+  "k": 1000,
+  "markets": {
+    "3PM": {
+      "correction": -0.24491710847428258,
+      "mean_residual": -0.25567512957918825,
+      "n": 22766,
+      "residual_fraction": -0.1674843254099478,
+      "shrinkage": 0.9579230833964487,
+      "sum_actual_minus_projection": -5820.6999999998,
+      "sum_projection": 34753.70000000058
+    },
+    "AST": {
+      "correction": -0.3446309854413869,
+      "mean_residual": -0.3597689537028903,
+      "n": 22766,
+      "residual_fraction": -0.12342060651723523,
+      "shrinkage": 0.9579230833964487,
+      "sum_actual_minus_projection": -8190.500000000001,
+      "sum_projection": 66362.49999999983
+    },
+    "PRA": {
+      "correction": -2.1003492384078055,
+      "mean_residual": -2.1926073969955153,
+      "n": 22766,
+      "residual_fraction": -0.10935994824359231,
+      "shrinkage": 0.9579230833964487,
+      "sum_actual_minus_projection": -49916.8999999999,
+      "sum_projection": 456445.8999999999
+    },
+    "PTS": {
+      "correction": -1.291041824455101,
+      "mean_residual": -1.3477510322410582,
+      "n": 22766,
+      "residual_fraction": -0.10826715182327115,
+      "shrinkage": 0.9579230833964487,
+      "sum_actual_minus_projection": -30682.899999999932,
+      "sum_projection": 283399.90000000066
+    },
+    "PTS+AST": {
+      "correction": -1.6322098796600182,
+      "mean_residual": -1.7039049459720632,
+      "n": 22766,
+      "residual_fraction": -0.11093310714564589,
+      "shrinkage": 0.9579230833964487,
+      "sum_actual_minus_projection": -38791.09999999999,
+      "sum_projection": 349680.0999999984
+    },
+    "PTS+REB": {
+      "correction": -1.7587435832702196,
+      "mean_residual": -1.8359966616884846,
+      "n": 22766,
+      "residual_fraction": -0.10713246750716839,
+      "shrinkage": 0.9579230833964487,
+      "sum_actual_minus_projection": -41798.30000000004,
+      "sum_projection": 390155.3000000047
+    },
+    "REB": {
+      "correction": -0.5068711604813593,
+      "mean_residual": -0.5291355530176572,
+      "n": 22766,
+      "residual_fraction": -0.11186474045444966,
+      "shrinkage": 0.9579230833964487,
+      "sum_actual_minus_projection": -12046.299999999985,
+      "sum_projection": 107686.29999999984
+    },
+    "REB+AST": {
+      "correction": -0.8515442228393552,
+      "mean_residual": -0.888948431872095,
+      "n": 22766,
+      "residual_fraction": -0.11627591643311376,
+      "shrinkage": 0.9579230833964487,
+      "sum_actual_minus_projection": -20237.800000000116,
+      "sum_projection": 174049.79999999958
+    }
+  },
+  "residual_convention": "actual - raw_projection",
+  "trained_on": "2025-26 regular season and 2026 playoffs, unconditional played-game replay",
+  "training_cutoff": "2026-06-13",
+  "version": "v9-unconditional-1"
+}

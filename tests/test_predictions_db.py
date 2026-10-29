@@ -42,6 +42,19 @@ _PROP_ROW = {
     "game_total":  228.0,
     "game_pace":   100.5,
     "fav_win_pct": 0.62,
+    "rs_raw_count": 72,
+    "rs_usable_count": 18,
+    "po_raw_count": 4,
+    "po_usable_count": 3,
+    "fetch_status": "rs=ok;po=ok;po_raw=ok",
+    "source_last_game_date": "2024-01-14",
+    "data_as_of_utc": "2024-01-15T12:00:00+00:00",
+    "data_age_days": 1,
+    "active_season": "2023-24",
+    "season_mode": "regular",
+    "model_version": "test-v9",
+    "book_spread": -4.5,
+    "model_margin": 3.2,
 }
 
 _GAME_ROW = {
@@ -59,6 +72,44 @@ _GAME_ROW = {
 # upsert_prop_predictions / load_prop_predictions
 # ===========================================================================
 class TestPropPredictions:
+    def test_finance_fields_round_trip(self, tmp_path):
+        db = tmp_path / "predictions.db"
+        row = {
+            **_PROP_ROW,
+            "bet_id": "bet_123",
+            "logged_at": "2026-05-01T18:00:00+00:00",
+            "entry_american_odds": -110,
+            "entry_decimal_odds": 1.9090909,
+            "market_implied_probability": 0.5238095,
+            "vig_pct": 4.5,
+            "model_edge": 0.071,
+            "expected_value": 0.136,
+            "kelly_fraction": 0.1496,
+            "stake_pct": 0.0374,
+            "stake_skip_reason": "",
+            "odds_source": "odds_tracker_consensus",
+            "odds_snapshot_at": "2026-05-01T17:55:00+00:00",
+        }
+        upsert_prop_predictions([row], _D1, path=db)
+        loaded = load_prop_predictions(_D1, path=db)[0]
+        assert loaded["bet_id"] == "bet_123"
+        assert loaded["entry_decimal_odds"] == pytest.approx(1.9090909)
+        assert loaded["kelly_fraction"] == pytest.approx(0.1496)
+        assert loaded["stake_skip_reason"] == ""
+        assert loaded["odds_source"] == "odds_tracker_consensus"
+
+    def test_stores_calibrated_probability_separately_from_ranking_confidence(self, tmp_path):
+        db = tmp_path / "predictions.db"
+        row = {**_PROP_ROW, "p_model": .713, "confidence": 58.0,
+               "residual_correction_version": "v9-unconditional-1",
+               "probability_calibration_version": "v9-probability-1"}
+        upsert_prop_predictions([row], _D1, path=db)
+        loaded = load_prop_predictions(_D1, path=db)[0]
+        assert loaded["p_model"] == pytest.approx(.713)
+        assert loaded["confidence"] == pytest.approx(58.0)
+        assert loaded["residual_correction_version"] == "v9-unconditional-1"
+        assert loaded["probability_calibration_version"] == "v9-probability-1"
+
     def test_empty_rows_returns_zero(self, tmp_path):
         db = tmp_path / "test.db"
         count = upsert_prop_predictions([], _D1, path=db)
@@ -75,6 +126,12 @@ class TestPropPredictions:
         assert r["pick"]   == "OVER"
         assert r["line"]   == pytest.approx(27.5)
         assert r["projection"] == pytest.approx(29.1)
+        assert r["rs_raw_count"] == 72
+        assert r["po_raw_count"] == 4
+        assert r["fetch_status"] == "rs=ok;po=ok;po_raw=ok"
+        assert r["active_season"] == "2023-24"
+        assert r["book_spread"] == pytest.approx(-4.5)
+        assert r["model_margin"] == pytest.approx(3.2)
 
     def test_multiple_rows(self, tmp_path):
         db = tmp_path / "test.db"

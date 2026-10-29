@@ -21,6 +21,7 @@ import sys
 import time
 import warnings
 from datetime import date, timedelta
+from pathlib import Path
 
 from dotenv import load_dotenv
 
@@ -29,11 +30,17 @@ load_dotenv()
 import pandas as pd
 import requests.exceptions
 from nba_api.stats.endpoints import boxscoretraditionalv2, leaguegamefinder
+
+import team_codes
+from run_log import RunLog
 from nba_api.stats.static import players
 
 import oddstracker
 import predictions_db as pred_db
-from roi_analysis import american_to_decimal
+from bet_log_utils import BET_LOG_FIELDS, read_bet_rows, upsert_bet_log, write_bet_rows
+from clv import apply_closing_clv, write_clv_reports
+from finance import FINANCE_FIELDS, grade_financial_rows
+from roi_analysis import write_finance_reports
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +52,8 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 if len(sys.argv) > 1:
     CHECK_DATE = date.fromisoformat(sys.argv[1])
 else:
-    CHECK_DATE = date.today() - timedelta(days=1)
+    # v10: yesterday on the US Eastern slate calendar, not local time
+    CHECK_DATE = team_codes.today_slate_date() - timedelta(days=1)
 
 
 # =============================================================================
@@ -132,12 +140,15 @@ def build_game_results(check_date: date) -> dict:
         df = gf.get_data_frames()[0]
     except (requests.exceptions.RequestException, json.JSONDecodeError, IndexError) as e:
         print(f"  Warning: could not reach stats.nba.com for game results — {e}")
-        return {}
+        return None  # v10: a failed fetch is not "no games"
     if df.empty:
         return {}
 
+    final_ids, unfinished = _final_game_ids(df)
+    if unfinished:
+        print(f"  Skipping {len(unfinished)} game(s) that are not final yet: {unfinished}")
     results = {}
-    for game_id in df["GAME_ID"].unique():
+    for game_id in final_ids:
         sub = df[df["GAME_ID"] == game_id]
         home_rows = sub[sub["MATCHUP"].str.contains(r"vs\.", na=False)]
         away_rows = sub[sub["MATCHUP"].str.contains("@", na=False)]
@@ -167,8 +178,22 @@ def check_game_predictions(game_preds: list, game_results: dict) -> list:
     """Grade game winner and spread predictions against actual results."""
     out = []
     for pred in game_preds:
+        # v10: picks were stored with ESPN codes (NY, SA, UTAH, ...) while
+        # results use NBA codes, so the Finals came back NOT FOUND. Compare
+        # everything as canonical NBA codes.
+        pred = {
+            **pred,
+            "home_abbr": team_codes.normalize_team(pred["home_abbr"]) or pred["home_abbr"],
+            "away_abbr": team_codes.normalize_team(pred["away_abbr"]) or pred["away_abbr"],
+            "winner_pick": team_codes.normalize_team(pred.get("winner_pick")) or pred.get("winner_pick"),
+            "spread_pick": team_codes.normalize_team(pred.get("spread_pick")) or pred.get("spread_pick"),
+        }
         home = pred["home_abbr"]
         away = pred["away_abbr"]
+        if pred.get("spread") is not None and pred["spread"] < 0 and pred["spread_pick"] == away:
+            # Rows saved before v10 flipped the home line's sign when the away team
+            # was favoured; a favoured away team always means a positive home line.
+            pred["spread"] = -pred["spread"]
 
         gr = game_results.get((home, away)) or game_results.get((away, home))
         if gr is None:
@@ -338,13 +363,23 @@ def append_game_to_log(results: list, check_date: date):
     if not new_rows:
         return
 
-    with open(GAME_LOG_FILE, "a", newline="") as f:
+    # v10: upsert on (date, home, away) so regrading a date never duplicates rows.
+    keys = {(row["date"], row["home"], row["away"]) for row in new_rows}
+    kept = []
+    if file_exists:
+        with open(GAME_LOG_FILE, newline="") as f:
+            for row in csv.DictReader(f):
+                if (row.get("date"), row.get("home"), row.get("away")) not in keys:
+                    kept.append({field: row.get(field, "") for field in fieldnames})
+    tmp_path = f"{GAME_LOG_FILE}.tmp"
+    with open(tmp_path, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
-        if not file_exists:
-            writer.writeheader()
-        writer.writerows(new_rows)
+        writer.writeheader()
+        writer.writerows(kept + new_rows)
+    os.replace(tmp_path, GAME_LOG_FILE)
 
-    print(f"  Logged {len(new_rows)} game result(s) → {os.path.basename(GAME_LOG_FILE)}")
+    print(f"  Logged {len(new_rows)} game result(s) → {os.path.basename(GAME_LOG_FILE)} "
+          f"({len(kept)} other row(s) kept)")
 
 
 # =============================================================================
@@ -365,8 +400,26 @@ def _is_offseason(check_date: date) -> bool:
     return check_date.month in (7, 8, 9) or (check_date.month == 6 and check_date.day > 20)
 
 
+class GradingFetchError(RuntimeError):
+    """Results were unavailable or not final yet: grade nothing and retry later."""
+
+
+def _final_game_ids(df) -> tuple:
+    """(final_ids, unfinished_ids). A game is final when both teams have a W/L."""
+    final, unfinished = [], []
+    for game_id, sub in df.groupby("GAME_ID", sort=False):
+        done = ("WL" not in sub.columns) or (len(sub) >= 2 and sub["WL"].isin(["W", "L"]).all())
+        (final if done else unfinished).append(game_id)
+    return final, unfinished
+
+
 def get_games_on_date(check_date):
-    """Returns list of game_ids played on check_date. Returns [] on network error."""
+    """Game IDs on check_date: [] when none were played, None when the fetch failed.
+
+    v10: a failed request used to return [] as well, which voided every pick as
+    "did not play". Unfinished games raise GradingFetchError so a mid-game run
+    can never record partial stats.
+    """
     date_str = check_date.strftime("%m/%d/%Y")
     try:
         gf = leaguegamefinder.LeagueGameFinder(
@@ -377,10 +430,15 @@ def get_games_on_date(check_date):
         df = gf.get_data_frames()[0]
     except (requests.exceptions.RequestException, json.JSONDecodeError, IndexError) as e:
         print(f"  Warning: could not reach stats.nba.com — {e}")
-        return []
+        return None
     if df.empty:
         return []
-    return df["GAME_ID"].unique().tolist()
+    final, unfinished = _final_game_ids(df)
+    if unfinished:
+        raise GradingFetchError(
+            f"{len(unfinished)} game(s) on {check_date} not final yet: {unfinished}"
+        )
+    return final
 
 
 def get_box_score(game_id):
@@ -401,12 +459,15 @@ def build_actual_stats(check_date):
 
     print(f"Fetching games for {check_date.strftime('%A, %B %d %Y')}...")
     game_ids = get_games_on_date(check_date)
+    if game_ids is None:
+        raise GradingFetchError(f"stats.nba.com game list for {check_date} unavailable")
     if not game_ids:
         print("  No games found for that date.")
         return {}
 
     print(f"  Found {len(game_ids)} game(s). Fetching box scores...")
     all_rows = []
+    failed = []
     for gid in game_ids:
         try:
             df = get_box_score(gid)
@@ -414,7 +475,12 @@ def build_actual_stats(check_date):
         except Exception:
             # intentionally broad: one bad box-score must not abort the rest of the batch
             logger.exception("Box score fetch failed for game %s", gid)
+            failed.append(gid)
 
+    if failed:
+        # v10: a missing box score used to turn its players into "did not play"
+        # voids. Fail the whole run instead; rerunning later is idempotent.
+        raise GradingFetchError(f"{len(failed)} of {len(game_ids)} box score(s) failed: {failed}")
     if not all_rows:
         return {}
 
@@ -423,6 +489,10 @@ def build_actual_stats(check_date):
     for _, row in combined.iterrows():
         pid = row.get("PLAYER_ID")
         if pd.isna(pid):
+            continue
+        if _played_minutes(row.get("MIN")) <= 0:
+            # v9: box scores may include roster rows with null/zero MIN.
+            # Their props are void, never zero-stat MISS observations.
             continue
         stats[int(pid)] = {
             "name": row.get("PLAYER_NAME", ""),
@@ -434,6 +504,19 @@ def build_actual_stats(check_date):
         }
     print(f"  Loaded stats for {len(stats)} players.\n")
     return stats
+
+
+def _played_minutes(value):
+    """Interpret NBA box-score minutes; null/DNP is not a played game."""
+    try:
+        if pd.isna(value):
+            return 0.0
+        if isinstance(value, str) and ":" in value:
+            m, s = value.split(":", 1)
+            return float(m) + float(s) / 60.0
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.0
 
 
 # =============================================================================
@@ -462,7 +545,7 @@ def check_predictions(predictions, actual_stats):
             continue
 
         player_data = actual_stats.get(pid)
-        if player_data is None:
+        if player_data is None or ("MIN" in player_data and _played_minutes(player_data["MIN"]) <= 0):
             results.append({**pred, "actual": None, "result": "DID NOT PLAY"})
             continue
 
@@ -499,17 +582,17 @@ def check_predictions(predictions, actual_stats):
                 "result": outcome,
                 "minutes": player_data.get("MIN", "?"),
                 "flags": pred.get("flags", ""),  # risk flags at prediction time, for calibrate.py
-                # p_model as a 0-1 probability, matching load_all_prop_model_confidence()'s
-                # convention — pred["confidence"] (0-100) when live, already-converted
-                # pred["p_model"] when replaying a manually-built PREDICTIONS entry.
+                # v9: calibrated probability takes precedence over the separate
+                # penalty-adjusted ranking confidence; old rows retain fallback.
                 "p_model": (
-                    pred["confidence"] / 100.0
-                    if pred.get("confidence") is not None
-                    else pred.get("p_model")
+                    pred.get("p_model") if pred.get("p_model") is not None
+                    else pred["confidence"] / 100.0 if pred.get("confidence") is not None else None
                 ),
                 "p_market": pred.get("p_market"),  # de-vigged market prob at prediction time
                 "decimal_odds": pred.get("decimal_odds"),
                 "stake_pct": pred.get("stake_pct"),  # fractional-Kelly recommendation at pick time
+                **{field: pred.get(field) for field in FINANCE_FIELDS},
+                **{field: pred.get(field) for field in pred_db.PROP_PROVENANCE_FIELDS},
             }
         )
 
@@ -768,13 +851,9 @@ def _migrate_stake_columns():
     """One-time migration: add 'decimal_odds', 'stake_pct', 'realized_profit'
     columns to bet_log.csv if missing.
 
-    decimal_odds backfills from odds_tracker.csv (same source/coverage as
-    p_market — see _migrate_market_calib_columns()'s docstring). stake_pct
-    and realized_profit start empty for every historical row: stake_pct is
-    brand new (predictions.db never stored one before this was added — see
-    predictions_db.load_all_prop_stakes()) and realized_profit needs an
-    actual recommended stake to compute, not a fabricated retroactive one.
-    Use verify_kelly_sizing.py to check the formula against history instead.
+    All three fields start empty. A same-day player/market odds row is not a
+    safe entry-price match without the exact line, so migration never infers
+    a historical price or reconstructs a stake after the fact.
 
     Old schema (12 cols): ...,flags,p_model,p_market
     New schema (15 cols): ...,p_market,decimal_odds,stake_pct,realized_profit
@@ -789,50 +868,77 @@ def _migrate_stake_columns():
     if "stake_pct" in header_fields:
         return  # already migrated
 
-    try:
-        idx = {name: header_fields.index(name) for name in ("date", "player", "market", "pick")}
-    except ValueError:
-        return  # unexpected schema — leave untouched
-
-    odds_lookup = _load_historical_market_odds()
-    matched = 0
     migrated = [",".join(header_fields + ["decimal_odds", "stake_pct", "realized_profit"]) + "\n"]
     for line in lines[1:]:
         fields = line.rstrip("\n").split(",")
-        d = fields[idx["date"]].strip()
-        p = fields[idx["player"]].strip()
-        m = fields[idx["market"]].strip()
-        pick = fields[idx["pick"]].strip().upper()
-
-        decimal_odds_str = ""
-        prices = odds_lookup.get((d, p, m))
-        if prices is not None:
-            american = prices[1] if pick == "UNDER" else prices[0]
-            if american is not None:
-                try:
-                    decimal_odds_str = f"{american_to_decimal(american):.4f}"
-                    matched += 1
-                except (ValueError, TypeError):
-                    pass
-
-        migrated.append(",".join(fields + [decimal_odds_str, "", ""]) + "\n")
+        migrated.append(",".join(fields + ["", "", ""]) + "\n")
 
     with open(LOG_FILE, "w") as fh:
         fh.writelines(migrated)
     n = len(lines) - 1
     print(
         f"  Migrated bet_log.csv → added 'decimal_odds'/'stake_pct'/'realized_profit' columns "
-        f"(decimal_odds: {matched}/{n} backfilled from odds_tracker.csv; "
-        f"stake_pct/realized_profit start empty — no historical stakes were ever computed)."
+        f"({n} historical rows left blank; no odds or stakes were inferred)."
     )
 
 
+def _configured_starting_bankroll():
+    raw = os.getenv("NBA_STARTING_BANKROLL", "").strip()
+    if not raw:
+        return None
+    try:
+        amount = float(raw)
+    except ValueError as exc:
+        raise ValueError("NBA_STARTING_BANKROLL must be a positive number") from exc
+    if amount <= 0:
+        raise ValueError("NBA_STARTING_BANKROLL must be a positive number")
+    return amount
+
+
+def _grade_finance_log():
+    """Fill missing bankroll/stake/profit fields and write finance reports."""
+    fields, rows = read_bet_rows(LOG_FILE)
+    if not rows:
+        return None
+    graded, stats = grade_financial_rows(rows, _configured_starting_bankroll())
+    live_indices = [
+        index for index, row in enumerate(graded)
+        if row.get("logged_at") not in (None, "")
+    ]
+    snapshots = pd.DataFrame()
+    if os.path.isfile(oddstracker.SNAPSHOT_FILE) and os.path.getsize(oddstracker.SNAPSHOT_FILE) > 0:
+        try:
+            snapshots = pd.read_csv(oddstracker.SNAPSHOT_FILE)
+        except (OSError, pd.errors.ParserError):
+            snapshots = pd.DataFrame()
+    live_rows = apply_closing_clv([graded[index] for index in live_indices], snapshots)
+    for index, joined in zip(live_indices, live_rows):
+        graded[index] = joined
+    output_fields = list(dict.fromkeys([*BET_LOG_FIELDS, *fields, *[k for row in graded for k in row]]))
+    write_bet_rows(LOG_FILE, output_fields, graded)
+    reports_dir = Path(LOG_FILE).parent / "reports"
+    report = write_finance_reports(Path(LOG_FILE), reports_dir)
+    write_clv_reports(live_rows, reports_dir)
+    overall = report["overall"]
+    roi = "n/a" if overall["roi"] is None else f"{overall['roi'] * 100:.2f}%"
+    print(
+        f"  Finance: {report['finance_eligible_rows']} eligible, "
+        f"{report['finance_excluded_rows']} excluded; "
+        f"profit {overall['total_profit']:+.4f}, ROI {roi}"
+    )
+    return stats
+
+
 def append_to_log(results, check_date):
-    """Append graded bets to bet_log.csv for downstream calibration.
+    """Idempotently upsert graded bets into bet_log.csv for calibration.
 
     Each row: date, player, market, line, pick, projection, actual, result
     'projection' is written only when the PREDICTIONS entry has a 'projection' key.
     PUSH and DNP rows are skipped — only HIT/MISS are logged.
+
+    v9: identity is normalized date+player+market+line+pick. Re-grading a
+    date fills missing fields but cannot append a duplicate or silently
+    overwrite a conflicting result.
     """
     # v8 Fix: surface projection coverage so silent drops are visible
     graded = [r for r in results if r.get("result") in ("HIT ✓", "MISS ✗", "PUSH", "HIT", "MISS")]
@@ -845,24 +951,6 @@ def append_to_log(results, check_date):
             print(
                 "  ⚠ NO projections being written — check that check_predictions preserves the field"
             )
-
-    fieldnames = [
-        "date",
-        "player",
-        "market",
-        "line",
-        "pick",
-        "projection",
-        "actual",
-        "margin",
-        "result",
-        "flags",
-        "p_model",
-        "p_market",
-        "decimal_odds",
-        "stake_pct",
-        "realized_profit",
-    ]
 
     file_exists = os.path.isfile(LOG_FILE) and os.path.getsize(LOG_FILE) > 0
 
@@ -905,21 +993,13 @@ def append_to_log(results, check_date):
             outcome = "HIT"
         elif "MISS" in outcome:
             outcome = "MISS"
+        elif "PUSH" in outcome:
+            outcome = "PUSH"
         else:
-            continue  # PUSH — not useful for hit-rate learning
+            continue
 
         stake_pct = r.get("stake_pct")
         decimal_odds = r.get("decimal_odds")
-        realized_profit = ""
-        if stake_pct is not None and decimal_odds is not None and stake_pct > 0:
-            # Actual stake and realized profit -- what turns the sizing into
-            # something evaluable later (Sharpe, drawdown, portfolio-Kelly),
-            # not just a recommendation that was never logged.
-            realized_profit = (
-                round(stake_pct * (decimal_odds - 1.0), 6)
-                if outcome == "HIT"
-                else round(-stake_pct, 6)
-            )
 
         new_rows.append(
             {
@@ -939,54 +1019,97 @@ def append_to_log(results, check_date):
                 "p_market": r.get("p_market") if r.get("p_market") is not None else "",
                 "decimal_odds": decimal_odds if decimal_odds is not None else "",
                 "stake_pct": stake_pct if stake_pct is not None else "",
-                "realized_profit": realized_profit,
+                "realized_profit": r.get("realized_profit", ""),
+                **{field: r.get(field, "") for field in FINANCE_FIELDS},
+                **{field: r.get(field, "") for field in pred_db.PROP_PROVENANCE_FIELDS},
             }
         )
 
     if not new_rows:
         return
 
-    with open(LOG_FILE, "a", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
-        if not file_exists:
-            writer.writeheader()
-        writer.writerows(new_rows)
-
-    print(f"\n  Logged {len(new_rows)} bet(s) → {os.path.basename(LOG_FILE)}")
+    stats = upsert_bet_log(LOG_FILE, new_rows)
+    print(
+        f"\n  Upserted {len(new_rows)} graded bet(s) → {os.path.basename(LOG_FILE)} "
+        f"({stats.inserted} new, {stats.updated} enriched, {stats.unchanged} unchanged; "
+        f"{stats.duplicates_removed} duplicate row(s) removed)"
+    )
+    _grade_finance_log()
 
 
 # =============================================================================
 # MAIN
 # =============================================================================
-if __name__ == "__main__":
+def main(check_date=None, predictions=None) -> int:
+    """Grade one date and return an exit code (run_log.EXIT_CODES).
+
+    v10: fetch failures and unfinished games stop the run before anything is
+    written, so a failure can never be logged as "did not play" voids. Every run
+    appends one status line to run_log.jsonl.
+    """
+    check_date = check_date or CHECK_DATE
+    if predictions is None:
+        predictions = PREDICTIONS if check_date == CHECK_DATE else _load_predictions_db(check_date)
+    run = RunLog("checkresults", slate_date=check_date)
+
     # Off-season guard — skip everything if there are no games
-    if _is_offseason(CHECK_DATE):
-        print(f"\n  Off-season ({CHECK_DATE.isoformat()}) — NBA regular season resumes in October.")
+    if _is_offseason(check_date):
+        print(f"\n  Off-season ({check_date.isoformat()}) — NBA regular season resumes in October.")
         print("  No games to grade. Run this script again on a game day.")
-        sys.exit(0)
+        run.stage("schedule", "no_games", required=True, reason="off-season")
+        run.finish()
+        return run.exit_code()
 
     # ── Player prop predictions ───────────────────────────────────────────────
-    if not PREDICTIONS:
-        print(f"\nNo player prop predictions found for {CHECK_DATE.isoformat()}.")
+    if not predictions:
+        print(f"\nNo player prop predictions found for {check_date.isoformat()}.")
         print("  Run nba_combined.py on game day — picks are saved to predictions.db.")
-        print("Run nba_combined.py on game day to generate it automatically.")
-        print("Or add picks manually to the PREDICTIONS list in this file.")
+        run.stage("prop_grading", "skipped", reason="no predictions")
     else:
-        actual = build_actual_stats(CHECK_DATE)
-        results = check_predictions(PREDICTIONS, actual)
+        try:
+            actual = build_actual_stats(check_date)
+        except GradingFetchError as exc:
+            print(f"\n  ⚠  Grading FAILED: {exc}")
+            print("  Nothing was written. Rerun later — grading is idempotent.")
+            run.stage("box_scores", "fetch_failed", required=True, error=str(exc)[:300])
+            run.finish(predictions=len(predictions))
+            return run.exit_code()
+        run.stage("box_scores", "ok" if actual else "no_games", required=True,
+                  players=len(actual))
+        results = check_predictions(predictions, actual)
         print_results(results)
         if results:
-            append_to_log(results, CHECK_DATE)
+            append_to_log(results, check_date)
             oddstracker.update_results()  # fill result column in odds_tracker.csv
             print("  Run calibrate.py to update calibration.json with the new data.")
+        graded = sum(1 for r in results or [] if r.get("actual") is not None)
+        run.stage("prop_grading", "ok", predictions=len(predictions), graded=graded)
 
     # ── Game winner / spread predictions ─────────────────────────────────────
-    game_preds = _load_game_predictions_db(CHECK_DATE)
+    game_preds = _load_game_predictions_db(check_date)
     if game_preds:
-        game_results = build_game_results(CHECK_DATE)
-        graded_games = check_game_predictions(game_preds, game_results)
-        print_game_results(graded_games, CHECK_DATE)
-        if graded_games:
-            append_game_to_log(graded_games, CHECK_DATE)
+        game_results = build_game_results(check_date)
+        if game_results is None:
+            print("\n  ⚠  Game grading FAILED: stats.nba.com unreachable. Nothing was written.")
+            # required=True: this branch only runs when there ARE game_preds waiting to be
+            # graded, so a fetch failure here means nothing gradable that day got graded at
+            # all — the same complete-failure shape as the box_scores stage above, not a
+            # partial day.
+            run.stage("game_results", "fetch_failed", required=True, error="stats.nba.com unreachable")
+        else:
+            graded_games = check_game_predictions(game_preds, game_results)
+            print_game_results(graded_games, check_date)
+            if graded_games:
+                append_game_to_log(graded_games, check_date)
+            found = sum(1 for g in graded_games if g.get("home_score") is not None)
+            run.stage("game_results", "ok", predictions=len(game_preds), graded=found)
     else:
-        print(f"\nNo game predictions found for {CHECK_DATE.isoformat()} in predictions.db.")
+        print(f"\nNo game predictions found for {check_date.isoformat()} in predictions.db.")
+
+    record = run.finish()
+    print(f"  Run {record['run_id']}: {record['status']} → {run.path.name}")
+    return run.exit_code()
+
+
+if __name__ == "__main__":
+    sys.exit(main())
